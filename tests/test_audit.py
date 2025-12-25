@@ -232,19 +232,19 @@ class TestPartitionManagement:
     def test_create_partition(self, authz):
         """Can create a partition for a future month."""
         # Create partition for a future month
-        authz.cursor.execute(
-            "SELECT authz.create_audit_partition(2030, 6)"
-        )
+        authz.cursor.execute("SELECT authz.create_audit_partition(2030, 6)")
         result = authz.cursor.fetchone()[0]
 
         assert result == "audit_events_y2030m06"
 
         # Verify it exists
-        authz.cursor.execute("""
+        authz.cursor.execute(
+            """
             SELECT 1 FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'authz' AND c.relname = 'audit_events_y2030m06'
-        """)
+        """
+        )
         assert authz.cursor.fetchone() is not None
 
         # Cleanup
@@ -252,14 +252,10 @@ class TestPartitionManagement:
 
     def test_create_partition_idempotent(self, authz):
         """Creating same partition twice returns NULL (no error)."""
-        authz.cursor.execute(
-            "SELECT authz.create_audit_partition(2031, 1)"
-        )
+        authz.cursor.execute("SELECT authz.create_audit_partition(2031, 1)")
         first = authz.cursor.fetchone()[0]
 
-        authz.cursor.execute(
-            "SELECT authz.create_audit_partition(2031, 1)"
-        )
+        authz.cursor.execute("SELECT authz.create_audit_partition(2031, 1)")
         second = authz.cursor.fetchone()[0]
 
         assert first == "audit_events_y2031m01"
@@ -271,18 +267,22 @@ class TestPartitionManagement:
     def test_ensure_partitions(self, authz):
         """ensure_audit_partitions creates multiple partitions."""
         # First drop any far-future partitions that might exist
-        authz.cursor.execute("""
+        authz.cursor.execute(
+            """
             SELECT c.relname FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'authz' AND c.relname LIKE 'audit_events_y2032%'
-        """)
+        """
+        )
         for row in authz.cursor.fetchall():
             authz.cursor.execute(f"DROP TABLE authz.{row[0]}")
 
         # Create partitions starting far in the future
-        authz.cursor.execute("""
+        authz.cursor.execute(
+            """
             SELECT authz.create_audit_partition(2032, 1)
-        """)
+        """
+        )
 
         # ensure_partitions from 2032-01 would create more
         # But let's just verify the function works
@@ -295,9 +295,7 @@ class TestPartitionManagement:
     def test_invalid_month_rejected(self, authz):
         """Invalid month values are rejected."""
         with pytest.raises(Exception) as exc_info:
-            authz.cursor.execute(
-                "SELECT authz.create_audit_partition(2030, 13)"
-            )
+            authz.cursor.execute("SELECT authz.create_audit_partition(2030, 13)")
 
         assert "Month must be between 1 and 12" in str(exc_info.value)
 
@@ -326,4 +324,3 @@ class TestSubjectRelation:
         events = authz.get_audit_events()
 
         assert events[0]["subject_relation"] is None
-

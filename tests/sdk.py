@@ -64,6 +64,8 @@ class AuthzClient:
     def __init__(self, cursor, namespace: str):
         self.cursor = cursor
         self.namespace = namespace
+        # Set tenant context for RLS
+        self.cursor.execute("SELECT authz.set_tenant(%s)", (namespace,))
         # Actor context stored as instance state
         self._actor_id: str | None = None
         self._request_id: str | None = None

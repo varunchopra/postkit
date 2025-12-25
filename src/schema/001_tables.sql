@@ -1,32 +1,6 @@
 -- =============================================================================
 -- SCHEMA AND TABLES FOR PG-AUTHZ
 -- =============================================================================
---
--- ROW-LEVEL SECURITY (RLS) PATTERNS
--- ==================================
--- For multi-tenant deployments, you can add RLS to isolate namespaces:
---
---   -- Enable RLS
---   ALTER TABLE authz.tuples ENABLE ROW LEVEL SECURITY;
---   ALTER TABLE authz.computed ENABLE ROW LEVEL SECURITY;
---   ALTER TABLE authz.permission_hierarchy ENABLE ROW LEVEL SECURITY;
---
---   -- Create policies (set app.current_tenant via SET before queries)
---   CREATE POLICY tenant_isolation_tuples ON authz.tuples
---       USING (namespace = current_setting('app.current_tenant', true));
---
---   CREATE POLICY tenant_isolation_computed ON authz.computed
---       USING (namespace = current_setting('app.current_tenant', true));
---
---   CREATE POLICY tenant_isolation_hierarchy ON authz.permission_hierarchy
---       USING (namespace = current_setting('app.current_tenant', true));
---
--- Then in your application, before each request:
---   SET app.current_tenant = 'tenant_id';
---
--- This provides defense-in-depth beyond application-level namespace filtering.
---
--- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS authz;
 
@@ -104,4 +78,40 @@ CREATE TABLE authz.permission_hierarchy (
 
     UNIQUE (namespace, resource_type, permission, implies)
 );
+
+-- =============================================================================
+-- ROW-LEVEL SECURITY
+-- =============================================================================
+--
+-- Enforces tenant isolation at the database level. Each tenant can only
+-- access rows where namespace matches their tenant_id.
+--
+-- Set tenant context before operations:
+--   SELECT authz.set_tenant('tenant-123');
+--
+-- Without tenant context, queries return no rows and writes fail.
+-- Only superusers bypass RLS (Postgres limitation).
+
+-- Enable and force RLS on all tables
+ALTER TABLE authz.tuples ENABLE ROW LEVEL SECURITY;
+ALTER TABLE authz.tuples FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE authz.computed ENABLE ROW LEVEL SECURITY;
+ALTER TABLE authz.computed FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE authz.permission_hierarchy ENABLE ROW LEVEL SECURITY;
+ALTER TABLE authz.permission_hierarchy FORCE ROW LEVEL SECURITY;
+
+-- Tenant isolation policies
+CREATE POLICY tenant_isolation ON authz.tuples
+    USING (namespace = current_setting('authz.tenant_id', true))
+    WITH CHECK (namespace = current_setting('authz.tenant_id', true));
+
+CREATE POLICY tenant_isolation ON authz.computed
+    USING (namespace = current_setting('authz.tenant_id', true))
+    WITH CHECK (namespace = current_setting('authz.tenant_id', true));
+
+CREATE POLICY tenant_isolation ON authz.permission_hierarchy
+    USING (namespace = current_setting('authz.tenant_id', true))
+    WITH CHECK (namespace = current_setting('authz.tenant_id', true));
 

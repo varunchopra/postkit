@@ -130,6 +130,20 @@ SELECT authz.check('alice', 'view', 'doc', 'doc-1', 'tenant-acme');  -- true
 SELECT authz.check('alice', 'view', 'doc', 'doc-1', 'tenant-other'); -- false
 ```
 
+### Row-Level Security
+
+pg-authz enforces tenant isolation via RLS. Set tenant context (`authz.set_tenant`) before operations:
+
+```sql
+SELECT authz.set_tenant('acme');
+
+-- All operations now scoped to 'acme' namespace
+SELECT authz.write('doc', '1', 'read', 'user', 'alice', 'acme');
+SELECT authz.check('alice', 'read', 'doc', '1', 'acme');
+```
+
+Without tenant context, queries return no rows and writes fail. Only superusers bypass RLS.
+
 ### Audit Logging
 
 All changes are logged to `authz.audit_events`:

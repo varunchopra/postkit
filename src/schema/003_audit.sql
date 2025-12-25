@@ -94,3 +94,10 @@ CREATE INDEX audit_events_tuple_id_idx
 CREATE INDEX audit_events_event_id_idx
     ON authz.audit_events (event_id);
 
+-- Row-Level Security for tenant isolation
+ALTER TABLE authz.audit_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE authz.audit_events FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation ON authz.audit_events
+    USING (namespace = current_setting('authz.tenant_id', true))
+    WITH CHECK (namespace = current_setting('authz.tenant_id', true));
