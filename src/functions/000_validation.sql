@@ -174,3 +174,22 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+
+-- =============================================================================
+-- EXPIRATION HELPERS
+-- =============================================================================
+-- Utility function for computing minimum expiration in permission chains.
+-- NULL is treated as "never expires" (infinity).
+
+-- Returns the minimum of two expiration timestamps, treating NULL as infinity.
+-- Used when propagating expiration through group memberships and permission chains.
+-- Example: If membership expires in 7 days and grant expires in 30 days,
+-- the computed permission expires in 7 days (the minimum).
+CREATE OR REPLACE FUNCTION authz.min_expiration(a TIMESTAMPTZ, b TIMESTAMPTZ)
+RETURNS TIMESTAMPTZ AS $$
+    SELECT CASE
+        WHEN a IS NULL THEN b
+        WHEN b IS NULL THEN a
+        ELSE LEAST(a, b)
+    END;
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;

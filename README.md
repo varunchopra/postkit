@@ -53,7 +53,7 @@ SELECT authz.check('charlie', 'read', 'repo', 'acme/api'); -- false (not on team
 
 | Function | Description |
 |----------|-------------|
-| `authz.write(resource_type, resource_id, relation, subject_type, subject_id)` | Grant permission |
+| `authz.write(resource_type, resource_id, relation, subject_type, subject_id, namespace, expires_at)` | Grant permission (with optional expiration) |
 | `authz.delete(resource_type, resource_id, relation, subject_type, subject_id)` | Revoke permission |
 | `authz.check(user_id, permission, resource_type, resource_id)` | Check if user has permission |
 
@@ -143,6 +143,22 @@ SELECT authz.check('alice', 'read', 'doc', '1', 'acme');
 ```
 
 Without tenant context, queries return no rows and writes fail. Only superusers bypass RLS.
+
+### Time-Bound Permissions
+
+Grants can have an optional expiration:
+
+```sql
+-- Grant access that expires in 30 days
+SELECT authz.write('repo', 'api', 'read', 'user', 'contractor', 'default',
+                   now() + interval '30 days');
+
+-- List grants expiring soon, cleanup expired (run via cron)
+SELECT * FROM authz.list_expiring('7 days', 'default');
+SELECT * FROM authz.cleanup_expired('default');
+```
+
+Expiration propagates through groups—if a user's team membership expires, all permissions gained through that team expire.
 
 ### Audit Logging
 

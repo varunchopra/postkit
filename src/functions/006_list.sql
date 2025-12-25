@@ -51,6 +51,7 @@ BEGIN
       AND c.resource_type = p_resource_type
       AND c.permission = p_permission
       AND (p_cursor IS NULL OR c.resource_id > p_cursor)
+      AND (c.expires_at IS NULL OR c.expires_at > now())
     ORDER BY c.resource_id
     LIMIT p_limit;
 END;
@@ -81,6 +82,7 @@ BEGIN
       AND c.resource_id = p_resource_id
       AND c.permission = p_permission
       AND (p_cursor IS NULL OR c.user_id > p_cursor)
+      AND (c.expires_at IS NULL OR c.expires_at > now())
     ORDER BY c.user_id
     LIMIT p_limit;
 END;
@@ -111,6 +113,7 @@ BEGIN
           AND c.resource_type = p_resource_type
           AND c.permission = p_permission
           AND c.resource_id = ANY(p_resource_ids)
+          AND (c.expires_at IS NULL OR c.expires_at > now())
     );
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;

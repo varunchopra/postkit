@@ -14,7 +14,8 @@ CREATE TABLE authz.tuples (
     subject_type TEXT NOT NULL,
     subject_id TEXT NOT NULL,
     subject_relation TEXT,  -- For userset references (e.g., group#member)
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ DEFAULT NULL  -- Optional expiration for time-bound permissions
     -- Uniqueness constraint note:
     -- We need to treat NULL and '' as equivalent for subject_relation to prevent
     -- duplicate tuples like (doc, 1, editor, team, eng, NULL) and (doc, 1, editor, team, eng, '').
@@ -63,6 +64,7 @@ CREATE TABLE authz.computed (
     permission TEXT NOT NULL,
     user_id TEXT NOT NULL,
     computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ DEFAULT NULL,  -- Minimum expiration from permission chain
 
     UNIQUE (namespace, resource_type, resource_id, permission, user_id)
 );

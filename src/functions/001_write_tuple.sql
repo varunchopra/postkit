@@ -41,7 +41,8 @@ CREATE OR REPLACE FUNCTION authz.write_tuple(
     p_subject_type TEXT,
     p_subject_id TEXT,
     p_subject_relation TEXT DEFAULT NULL,
-    p_namespace TEXT DEFAULT 'default'
+    p_namespace TEXT DEFAULT 'default',
+    p_expires_at TIMESTAMPTZ DEFAULT NULL
 ) RETURNS BIGINT AS $$
 DECLARE
     v_tuple_id BIGINT;
@@ -70,15 +71,21 @@ BEGIN
         p_relation, p_subject_type, p_subject_id, p_subject_relation
     );
 
+    -- Validate expiration is in the future if provided
+    IF p_expires_at IS NOT NULL AND p_expires_at <= now() THEN
+        RAISE EXCEPTION 'expires_at must be in the future'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
     INSERT INTO authz.tuples (
         namespace, resource_type, resource_id, relation,
-        subject_type, subject_id, subject_relation
+        subject_type, subject_id, subject_relation, expires_at
     ) VALUES (
         p_namespace, p_resource_type, p_resource_id, p_relation,
-        p_subject_type, p_subject_id, p_subject_relation
+        p_subject_type, p_subject_id, p_subject_relation, p_expires_at
     )
     ON CONFLICT (namespace, resource_type, resource_id, relation, subject_type, subject_id, COALESCE(subject_relation, ''))
-    DO UPDATE SET created_at = authz.tuples.created_at  -- no-op, just return existing
+    DO UPDATE SET expires_at = EXCLUDED.expires_at  -- Allow updating expiration
     RETURNING id INTO v_tuple_id;
 
     RETURN v_tuple_id;
@@ -92,10 +99,11 @@ CREATE OR REPLACE FUNCTION authz.write(
     p_relation TEXT,
     p_subject_type TEXT,
     p_subject_id TEXT,
-    p_namespace TEXT DEFAULT 'default'
+    p_namespace TEXT DEFAULT 'default',
+    p_expires_at TIMESTAMPTZ DEFAULT NULL
 ) RETURNS BIGINT AS $$
 BEGIN
-    RETURN authz.write_tuple(p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, NULL, p_namespace);
+    RETURN authz.write_tuple(p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, NULL, p_namespace, p_expires_at);
 END;
 $$ LANGUAGE plpgsql SET search_path = authz, pg_temp;
 

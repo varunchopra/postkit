@@ -67,19 +67,22 @@ BEGIN
 
     -- PHASE 1: Direct permissions
     -- Find tuples where a user is directly granted access to this resource
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+    -- Skip already expired tuples
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
     SELECT DISTINCT
         t.namespace,
         t.resource_type,
         t.resource_id,
         t.relation AS permission,
-        t.subject_id AS user_id
+        t.subject_id AS user_id,
+        t.expires_at
     FROM authz.tuples t
     WHERE t.namespace = p_namespace
       AND t.resource_type = p_resource_type
       AND t.resource_id = p_resource_id
       AND t.subject_type = 'user'
       AND t.subject_relation IS NULL
+      AND (t.expires_at IS NULL OR t.expires_at > now())
     ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
@@ -87,13 +90,15 @@ BEGIN
     -- PHASE 2: Group expansion
     -- Find tuples where a non-user subject (team, org, role) has access,
     -- then find users who are members of that subject
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+    -- Expiration: use minimum of grant expiration and membership expiration
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
     SELECT DISTINCT
         t.namespace,
         t.resource_type,
         t.resource_id,
         t.relation AS permission,
-        membership.subject_id AS user_id
+        membership.subject_id AS user_id,
+        authz.min_expiration(t.expires_at, membership.expires_at)
     FROM authz.tuples t
     -- Join to find membership tuples for this group
     JOIN authz.tuples membership
@@ -102,10 +107,12 @@ BEGIN
       AND membership.resource_id = t.subject_id          -- e.g., 'engineering'
       AND membership.relation = COALESCE(t.subject_relation, authz.default_membership_relation())
       AND membership.subject_type = 'user'               -- only expand to users
+      AND (membership.expires_at IS NULL OR membership.expires_at > now())
     WHERE t.namespace = p_namespace
       AND t.resource_type = p_resource_type
       AND t.resource_id = p_resource_id
       AND t.subject_type != 'user'  -- only for group-like subjects
+      AND (t.expires_at IS NULL OR t.expires_at > now())
     ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
     GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -113,6 +120,7 @@ BEGIN
 
     -- PHASE 3: Hierarchy expansion (fixed-point iteration)
     -- Keep adding implied permissions until no new ones are found
+    -- Expiration: inherit from source permission
     --
     -- MVCC SAFETY NOTE:
     -- This loop reads from and writes to authz.computed in each iteration.
@@ -129,13 +137,14 @@ BEGIN
             RAISE EXCEPTION 'Permission hierarchy cycle detected or exceeds maximum depth of %', v_max_iterations;
         END IF;
 
-        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
         SELECT DISTINCT
             c.namespace,
             c.resource_type,
             c.resource_id,
             h.implies AS permission,
-            c.user_id
+            c.user_id,
+            c.expires_at  -- Inherit expiration from source permission
         FROM authz.computed c
         JOIN authz.permission_hierarchy h
           ON h.namespace = c.namespace
@@ -144,6 +153,7 @@ BEGIN
         WHERE c.namespace = p_namespace
           AND c.resource_type = p_resource_type
           AND c.resource_id = p_resource_id
+          AND (c.expires_at IS NULL OR c.expires_at > now())
         ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
         GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -250,13 +260,14 @@ BEGIN
             RAISE EXCEPTION 'Permission hierarchy exceeds maximum depth of %', v_max_iterations;
         END IF;
 
-        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
         SELECT DISTINCT
             c.namespace,
             c.resource_type,
             c.resource_id,
             h.implies AS permission,
-            c.user_id
+            c.user_id,
+            c.expires_at  -- Inherit expiration from source permission
         FROM authz.computed c
         JOIN authz.permission_hierarchy h
           ON h.namespace = c.namespace
@@ -266,6 +277,7 @@ BEGIN
           AND c.resource_type = p_resource_type
           AND c.resource_id = p_resource_id
           AND c.user_id = p_user_id
+          AND (c.expires_at IS NULL OR c.expires_at > now())
         ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
         GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -408,30 +420,44 @@ DECLARE
     v_relation TEXT;
     v_iteration INT := 0;
     v_max_iterations CONSTANT INT := 100;
+    v_membership_expires TIMESTAMPTZ;
 BEGIN
     v_relation := COALESCE(p_relation, authz.default_membership_relation());
 
-    -- Add the relation itself to computed
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
-    VALUES (p_namespace, p_group_type, p_group_id, v_relation, p_user_id)
+    -- Get the membership expiration from the tuple that triggered this
+    SELECT expires_at INTO v_membership_expires
+    FROM authz.tuples
+    WHERE namespace = p_namespace
+      AND resource_type = p_group_type
+      AND resource_id = p_group_id
+      AND relation = v_relation
+      AND subject_type = 'user'
+      AND subject_id = p_user_id;
+
+    -- Add the relation itself to computed (with membership expiration)
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
+    VALUES (p_namespace, p_group_type, p_group_id, v_relation, p_user_id, v_membership_expires)
     ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
     GET DIAGNOSTICS v_rows = ROW_COUNT;
     v_count := v_count + v_rows;
 
     -- BULK INSERT: Add base permissions for ALL resources this group#relation can access
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+    -- Expiration: minimum of grant expiration and membership expiration
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
     SELECT DISTINCT
         t.namespace,
         t.resource_type,
         t.resource_id,
         t.relation,
-        p_user_id
+        p_user_id,
+        authz.min_expiration(t.expires_at, v_membership_expires)
     FROM authz.tuples t
     WHERE t.namespace = p_namespace
       AND t.subject_type = p_group_type
       AND t.subject_id = p_group_id
       AND COALESCE(t.subject_relation, authz.default_membership_relation()) = v_relation
+      AND (t.expires_at IS NULL OR t.expires_at > now())
     ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
     GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -444,13 +470,14 @@ BEGIN
             RAISE EXCEPTION 'Permission hierarchy exceeds maximum depth of %', v_max_iterations;
         END IF;
 
-        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
         SELECT DISTINCT
             c.namespace,
             c.resource_type,
             c.resource_id,
             h.implies AS permission,
-            c.user_id
+            c.user_id,
+            c.expires_at  -- Inherit expiration from source permission
         FROM authz.computed c
         JOIN authz.permission_hierarchy h
           ON h.namespace = c.namespace
@@ -458,6 +485,7 @@ BEGIN
           AND h.permission = c.permission
         WHERE c.namespace = p_namespace
           AND c.user_id = p_user_id
+          AND (c.expires_at IS NULL OR c.expires_at > now())
         ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
         GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -602,15 +630,26 @@ CREATE OR REPLACE FUNCTION authz.incremental_add_direct_grant(
 ) RETURNS INT AS $$
 DECLARE
     v_count INT := 0;
+    v_expires_at TIMESTAMPTZ;
 BEGIN
-    -- Insert base permission
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
-    VALUES (p_namespace, p_resource_type, p_resource_id, p_permission, p_user_id)
+    -- Get the expiration from the tuple that triggered this
+    SELECT expires_at INTO v_expires_at
+    FROM authz.tuples
+    WHERE namespace = p_namespace
+      AND resource_type = p_resource_type
+      AND resource_id = p_resource_id
+      AND relation = p_permission
+      AND subject_type = 'user'
+      AND subject_id = p_user_id;
+
+    -- Insert base permission with expiration
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
+    VALUES (p_namespace, p_resource_type, p_resource_id, p_permission, p_user_id, v_expires_at)
     ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
 
-    -- Expand hierarchy
+    -- Expand hierarchy (inherits expiration via expand_hierarchy_for_user)
     v_count := v_count + authz.expand_hierarchy_for_user(
         p_resource_type, p_resource_id, p_user_id, p_namespace
     );
@@ -694,21 +733,36 @@ DECLARE
     v_rows INT;
     v_iteration INT := 0;
     v_max_iterations CONSTANT INT := 100;
+    v_grant_expires TIMESTAMPTZ;
 BEGIN
+    -- Get the grant expiration from the tuple that triggered this
+    SELECT expires_at INTO v_grant_expires
+    FROM authz.tuples
+    WHERE namespace = p_namespace
+      AND resource_type = p_resource_type
+      AND resource_id = p_resource_id
+      AND relation = p_permission
+      AND subject_type = p_group_type
+      AND subject_id = p_group_id
+      AND COALESCE(subject_relation, '') = COALESCE(p_subject_relation, '');
+
     -- PHASE 1: Bulk insert base permission for ALL group members at once
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+    -- Expiration: minimum of grant expiration and membership expiration
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
     SELECT DISTINCT
         p_namespace,
         p_resource_type,
         p_resource_id,
         p_permission,
-        m.subject_id
+        m.subject_id,
+        authz.min_expiration(v_grant_expires, m.expires_at)
     FROM authz.tuples m
     WHERE m.namespace = p_namespace
       AND m.resource_type = p_group_type
       AND m.resource_id = p_group_id
       AND m.relation = COALESCE(p_subject_relation, authz.default_membership_relation())
       AND m.subject_type = 'user'
+      AND (m.expires_at IS NULL OR m.expires_at > now())
     ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
     GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -722,13 +776,14 @@ BEGIN
             RAISE EXCEPTION 'Permission hierarchy exceeds maximum depth of %', v_max_iterations;
         END IF;
 
-        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
+        INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
         SELECT DISTINCT
             c.namespace,
             c.resource_type,
             c.resource_id,
             h.implies AS permission,
-            c.user_id
+            c.user_id,
+            c.expires_at  -- Inherit expiration from source permission
         FROM authz.computed c
         JOIN authz.permission_hierarchy h
           ON h.namespace = c.namespace
@@ -737,6 +792,7 @@ BEGIN
         WHERE c.namespace = p_namespace
           AND c.resource_type = p_resource_type
           AND c.resource_id = p_resource_id
+          AND (c.expires_at IS NULL OR c.expires_at > now())
         ON CONFLICT (namespace, resource_type, resource_id, permission, user_id) DO NOTHING;
 
         GET DIAGNOSTICS v_rows = ROW_COUNT;
@@ -840,19 +896,28 @@ BEGIN
     DELETE FROM authz.computed WHERE namespace = p_namespace;
 
     -- Compute ALL permissions in one recursive CTE:
-    -- 1. Base: direct user grants + group-expanded grants
-    -- 2. Recursive: hierarchy expansion
+    -- 1. Base: direct user grants + group-expanded grants (with expiration)
+    -- 2. Recursive: hierarchy expansion (inherits expiration)
     WITH RECURSIVE
     base_perms AS (
         -- Direct user permissions
-        SELECT DISTINCT t.namespace, t.resource_type, t.resource_id, t.relation AS permission, t.subject_id AS user_id
+        SELECT DISTINCT
+            t.namespace, t.resource_type, t.resource_id,
+            t.relation AS permission, t.subject_id AS user_id,
+            t.expires_at
         FROM authz.tuples t
-        WHERE t.namespace = p_namespace AND t.subject_type = 'user' AND t.subject_relation IS NULL
+        WHERE t.namespace = p_namespace
+          AND t.subject_type = 'user'
+          AND t.subject_relation IS NULL
+          AND (t.expires_at IS NULL OR t.expires_at > now())
 
         UNION
 
-        -- Group-expanded permissions
-        SELECT DISTINCT t.namespace, t.resource_type, t.resource_id, t.relation AS permission, m.subject_id AS user_id
+        -- Group-expanded permissions (expiration = min of grant and membership)
+        SELECT DISTINCT
+            t.namespace, t.resource_type, t.resource_id,
+            t.relation AS permission, m.subject_id AS user_id,
+            authz.min_expiration(t.expires_at, m.expires_at)
         FROM authz.tuples t
         JOIN authz.tuples m
           ON m.namespace = t.namespace
@@ -860,23 +925,27 @@ BEGIN
           AND m.resource_id = t.subject_id
           AND m.relation = COALESCE(t.subject_relation, authz.default_membership_relation())
           AND m.subject_type = 'user'
-        WHERE t.namespace = p_namespace AND t.subject_type != 'user'
+          AND (m.expires_at IS NULL OR m.expires_at > now())
+        WHERE t.namespace = p_namespace
+          AND t.subject_type != 'user'
+          AND (t.expires_at IS NULL OR t.expires_at > now())
     ),
     all_perms AS (
         SELECT * FROM base_perms
 
         UNION
 
-        -- Hierarchy expansion
-        SELECT e.namespace, e.resource_type, e.resource_id, h.implies AS permission, e.user_id
+        -- Hierarchy expansion (inherits expiration from source)
+        SELECT e.namespace, e.resource_type, e.resource_id, h.implies AS permission, e.user_id, e.expires_at
         FROM all_perms e
         JOIN authz.permission_hierarchy h
           ON h.namespace = e.namespace
           AND h.resource_type = e.resource_type
           AND h.permission = e.permission
+        WHERE e.expires_at IS NULL OR e.expires_at > now()
     )
-    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id)
-    SELECT DISTINCT namespace, resource_type, resource_id, permission, user_id FROM all_perms;
+    INSERT INTO authz.computed (namespace, resource_type, resource_id, permission, user_id, expires_at)
+    SELECT DISTINCT namespace, resource_type, resource_id, permission, user_id, expires_at FROM all_perms;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
 

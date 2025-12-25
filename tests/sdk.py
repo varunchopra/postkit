@@ -9,6 +9,8 @@ This module provides:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import psycopg
 
 
@@ -136,6 +138,7 @@ class AuthzClient:
         resource: Entity,
         subject: Entity,
         subject_relation: str | None = None,
+        expires_at: datetime | None = None,
     ) -> int:
         """
         Grant a permission on a resource to a subject.
@@ -145,6 +148,7 @@ class AuthzClient:
             resource: The resource as (type, id) tuple (e.g., ("repo", "api"))
             subject: The subject as (type, id) tuple (e.g., ("team", "eng"))
             subject_relation: Optional relation on the subject (e.g., "admin" for team#admin)
+            expires_at: Optional expiration time for time-bound permissions
 
         Returns:
             The tuple ID
@@ -154,13 +158,16 @@ class AuthzClient:
             authz.grant("read", resource=("repo", "api"), subject=("user", "alice"))
             # Grant only to team admins:
             authz.grant("write", resource=("repo", "api"), subject=("team", "eng"), subject_relation="admin")
+            # Grant with expiration:
+            authz.grant("read", resource=("doc", "1"), subject=("user", "bob"),
+                       expires_at=datetime.now(timezone.utc) + timedelta(days=30))
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
 
         if subject_relation is not None:
             return self._write_scalar(
-                "SELECT authz.write_tuple(%s, %s, %s, %s, %s, %s, %s)",
+                "SELECT authz.write_tuple(%s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
                     resource_id,
@@ -169,11 +176,12 @@ class AuthzClient:
                     subject_id,
                     subject_relation,
                     self.namespace,
+                    expires_at,
                 ),
             )
         else:
             return self._write_scalar(
-                "SELECT authz.write(%s, %s, %s, %s, %s, %s)",
+                "SELECT authz.write(%s, %s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
                     resource_id,
@@ -181,6 +189,7 @@ class AuthzClient:
                     subject_type,
                     subject_id,
                     self.namespace,
+                    expires_at,
                 ),
             )
 
@@ -739,6 +748,175 @@ class AuthzClient:
                 subject_type,
                 subject_id,
                 subject_relation,
+                self.namespace,
+            ),
+        )
+
+    # =========================================================================
+    # Expiration management
+    # =========================================================================
+
+    def list_expiring(self, within: timedelta = timedelta(days=7)) -> list[dict]:
+        """
+        List grants expiring within the given timeframe.
+
+        Args:
+            within: Time window to check (default 7 days)
+
+        Returns:
+            List of grants with their expiration times
+
+        Example:
+            expiring = authz.list_expiring(within=timedelta(days=30))
+            for grant in expiring:
+                print(f"{grant['subject']} access to {grant['resource']} expires {grant['expires_at']}")
+        """
+        rows = self._fetchall(
+            "SELECT * FROM authz.list_expiring(%s, %s)",
+            (within, self.namespace),
+        )
+        return [
+            {
+                "resource": (row[0], row[1]),
+                "relation": row[2],
+                "subject": (row[3], row[4]),
+                "subject_relation": row[5],
+                "expires_at": row[6],
+            }
+            for row in rows
+        ]
+
+    def cleanup_expired(self) -> dict:
+        """
+        Remove expired grants and computed entries.
+
+        This is optional for storage management - expired entries are
+        automatically filtered at query time.
+
+        Returns:
+            Dictionary with counts of deleted tuples and computed entries
+
+        Example:
+            result = authz.cleanup_expired()
+            print(f"Removed {result['tuples_deleted']} expired grants")
+        """
+        self.cursor.execute(
+            "SELECT * FROM authz.cleanup_expired(%s)",
+            (self.namespace,),
+        )
+        row = self.cursor.fetchone()
+        return {"tuples_deleted": row[0], "computed_deleted": row[1]}
+
+    def set_expiration(
+        self,
+        permission: str,
+        *,
+        resource: Entity,
+        subject: Entity,
+        expires_at: datetime | None,
+    ) -> bool:
+        """
+        Set or update expiration on an existing grant.
+
+        Args:
+            permission: The permission/relation
+            resource: The resource as (type, id) tuple
+            subject: The subject as (type, id) tuple
+            expires_at: New expiration time (None to make permanent)
+
+        Returns:
+            True if grant was found and updated
+
+        Example:
+            authz.set_expiration("read", resource=("doc", "1"), subject=("user", "alice"),
+                                expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+        """
+        resource_type, resource_id = resource
+        subject_type, subject_id = subject
+        return self._write_scalar(
+            "SELECT authz.set_expiration(%s, %s, %s, %s, %s, %s, %s)",
+            (
+                resource_type,
+                resource_id,
+                permission,
+                subject_type,
+                subject_id,
+                expires_at,
+                self.namespace,
+            ),
+        )
+
+    def clear_expiration(
+        self,
+        permission: str,
+        *,
+        resource: Entity,
+        subject: Entity,
+    ) -> bool:
+        """
+        Remove expiration from a grant (make it permanent).
+
+        Args:
+            permission: The permission/relation
+            resource: The resource as (type, id) tuple
+            subject: The subject as (type, id) tuple
+
+        Returns:
+            True if grant was found and updated
+
+        Example:
+            authz.clear_expiration("read", resource=("doc", "1"), subject=("user", "alice"))
+        """
+        resource_type, resource_id = resource
+        subject_type, subject_id = subject
+        return self._write_scalar(
+            "SELECT authz.clear_expiration(%s, %s, %s, %s, %s, %s)",
+            (
+                resource_type,
+                resource_id,
+                permission,
+                subject_type,
+                subject_id,
+                self.namespace,
+            ),
+        )
+
+    def extend_expiration(
+        self,
+        permission: str,
+        *,
+        resource: Entity,
+        subject: Entity,
+        extension: timedelta,
+    ) -> datetime:
+        """
+        Extend an existing expiration by a given interval.
+
+        Args:
+            permission: The permission/relation
+            resource: The resource as (type, id) tuple
+            subject: The subject as (type, id) tuple
+            extension: Time to add to current expiration
+
+        Returns:
+            The new expiration time
+
+        Example:
+            new_expires = authz.extend_expiration("read", resource=("doc", "1"),
+                                                  subject=("user", "alice"),
+                                                  extension=timedelta(days=30))
+        """
+        resource_type, resource_id = resource
+        subject_type, subject_id = subject
+        return self._write_scalar(
+            "SELECT authz.extend_expiration(%s, %s, %s, %s, %s, %s, %s)",
+            (
+                resource_type,
+                resource_id,
+                permission,
+                subject_type,
+                subject_id,
+                extension,
                 self.namespace,
             ),
         )

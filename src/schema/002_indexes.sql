@@ -83,3 +83,11 @@ CREATE INDEX permission_hierarchy_cycle_idx ON authz.permission_hierarchy(
     resource_type,
     implies
 );
+
+-- Tuples: expiration lookup for cleanup queries (partial index for efficiency)
+CREATE INDEX tuples_expires_at_idx ON authz.tuples (namespace, expires_at)
+    WHERE expires_at IS NOT NULL;
+
+-- Computed: expiration lookup for cleanup queries (partial index for efficiency)
+CREATE INDEX computed_expires_at_idx ON authz.computed (namespace, expires_at)
+    WHERE expires_at IS NOT NULL;

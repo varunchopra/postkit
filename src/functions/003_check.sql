@@ -36,6 +36,7 @@ CREATE OR REPLACE FUNCTION authz.check(
 ) RETURNS BOOLEAN AS $$
 BEGIN
     -- Fast path: check pre-computed permissions
+    -- Exclude expired permissions (NULL expires_at = never expires)
     RETURN EXISTS (
         SELECT 1 FROM authz.computed
         WHERE namespace = p_namespace
@@ -43,6 +44,7 @@ BEGIN
           AND permission = p_permission
           AND resource_type = p_resource_type
           AND resource_id = p_resource_id
+          AND (expires_at IS NULL OR expires_at > now())
     );
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
@@ -63,6 +65,7 @@ BEGIN
           AND permission = ANY(p_permissions)
           AND resource_type = p_resource_type
           AND resource_id = p_resource_id
+          AND (expires_at IS NULL OR expires_at > now())
     );
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
@@ -91,6 +94,7 @@ BEGIN
           AND permission = ANY(p_permissions)
           AND resource_type = p_resource_type
           AND resource_id = p_resource_id
+          AND (expires_at IS NULL OR expires_at > now())
     );
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
