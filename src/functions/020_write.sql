@@ -16,6 +16,14 @@
 -- nested groups. Using other relations for nesting will NOT propagate permissions.
 --
 -- Circular memberships are detected and rejected.
+--
+-- RESOURCE HIERARCHIES
+-- --------------------
+-- Resource containment uses the 'parent' relation:
+--   SELECT authz.write('doc', 'spec', 'parent', 'folder', 'projects');
+-- This makes doc:spec a child of folder:projects.
+--
+-- Circular resource hierarchies are detected and rejected.
 CREATE OR REPLACE FUNCTION authz.write_tuple(
     p_resource_type text,
     p_resource_id text,
@@ -63,6 +71,19 @@ BEGIN
                 IF authz.would_create_cycle (p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
                     RAISE EXCEPTION 'This would create a circular group membership'
                         USING ERRCODE = 'invalid_parameter_value';
+                    END IF;
+                END IF;
+                -- Check for cycles when adding parent relation (resource hierarchy)
+                IF p_relation = 'parent' THEN
+                    -- Self-reference check
+                    IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
+                        RAISE EXCEPTION 'A resource cannot be its own parent'
+                            USING ERRCODE = 'invalid_parameter_value';
+                    END IF;
+                    -- Transitive cycle check
+                    IF authz.would_create_resource_cycle (p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
+                        RAISE EXCEPTION 'This would create a circular resource hierarchy'
+                            USING ERRCODE = 'invalid_parameter_value';
                     END IF;
                 END IF;
                 -- Insert or update the tuple

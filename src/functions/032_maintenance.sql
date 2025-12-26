@@ -6,7 +6,8 @@
 -- =============================================================================
 -- INTEGRITY CHECK
 -- =============================================================================
--- Checks for data integrity issues like circular group memberships.
+-- Checks for data integrity issues like circular group memberships and
+-- circular resource hierarchies.
 CREATE OR REPLACE FUNCTION authz.verify_integrity(p_namespace text DEFAULT 'default')
 RETURNS TABLE (
     resource_type text,
@@ -16,13 +17,24 @@ RETURNS TABLE (
 )
 AS $$
 BEGIN
+    -- Check for group membership cycles
     RETURN QUERY
     SELECT
         'system'::text AS resource_type,
-        'cycles'::text AS resource_id,
+        'group_cycles'::text AS resource_id,
         'warning'::text AS status,
         'Circular group membership detected: ' || array_to_string(cycle_path, ' -> ') AS details
     FROM authz.detect_cycles(p_namespace);
+
+    -- Check for resource hierarchy cycles
+    RETURN QUERY
+    SELECT
+        'system'::text AS resource_type,
+        'resource_cycles'::text AS resource_id,
+        'warning'::text AS status,
+        'Circular resource hierarchy detected: ' || array_to_string(cycle_path, ' -> ') AS details
+    FROM authz.detect_resource_cycles(p_namespace);
+
     RETURN;
 END;
 $$ LANGUAGE plpgsql SET search_path = authz, pg_temp;

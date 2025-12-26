@@ -71,3 +71,87 @@ RETURNS timestamptz AS $$
         ELSE LEAST(a, b)
     END;
 $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+
+
+-- Expand resource ancestors recursively
+--
+-- Given a resource, returns itself and all ancestor resources by following
+-- 'parent' relations upward. Used by check() to find grants on containing
+-- resources.
+--
+-- Example: If doc:spec has parent folder:projects, and folder:projects has
+-- parent folder:root, this returns (doc, spec), (folder, projects), (folder, root).
+CREATE OR REPLACE FUNCTION authz._expand_resource_ancestors(
+    p_resource_type text,
+    p_resource_id text,
+    p_namespace text DEFAULT 'default'
+)
+RETURNS TABLE(resource_type text, resource_id text)
+AS $$
+    WITH RECURSIVE ancestors AS (
+        -- The resource itself
+        SELECT
+            p_resource_type AS resource_type,
+            p_resource_id AS resource_id,
+            0 AS depth
+
+        UNION
+
+        -- Walk up via parent relations
+        SELECT
+            t.subject_type,
+            t.subject_id,
+            a.depth + 1
+        FROM ancestors a
+        JOIN authz.tuples t
+          ON t.namespace = p_namespace
+          AND t.resource_type = a.resource_type
+          AND t.resource_id = a.resource_id
+          AND t.relation = 'parent'
+          AND (t.expires_at IS NULL OR t.expires_at > now())
+        WHERE a.depth < authz.max_resource_depth()
+    )
+    SELECT ancestors.resource_type, ancestors.resource_id FROM ancestors;
+$$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+
+
+-- Expand resource descendants recursively
+--
+-- Given a resource, returns itself and all descendant resources by following
+-- 'parent' relations downward. Used by list_resources() to include children
+-- of accessible resources.
+--
+-- Example: If folder:root contains folder:projects contains doc:spec,
+-- this returns (folder, root), (folder, projects), (doc, spec).
+CREATE OR REPLACE FUNCTION authz._expand_resource_descendants(
+    p_resource_type text,
+    p_resource_id text,
+    p_namespace text DEFAULT 'default'
+)
+RETURNS TABLE(resource_type text, resource_id text)
+AS $$
+    WITH RECURSIVE descendants AS (
+        -- The resource itself
+        SELECT
+            p_resource_type AS resource_type,
+            p_resource_id AS resource_id,
+            0 AS depth
+
+        UNION
+
+        -- Walk down: find resources that have current resource as parent
+        SELECT
+            t.resource_type,
+            t.resource_id,
+            d.depth + 1
+        FROM descendants d
+        JOIN authz.tuples t
+          ON t.namespace = p_namespace
+          AND t.subject_type = d.resource_type
+          AND t.subject_id = d.resource_id
+          AND t.relation = 'parent'
+          AND (t.expires_at IS NULL OR t.expires_at > now())
+        WHERE d.depth < authz.max_resource_depth()
+    )
+    SELECT descendants.resource_type, descendants.resource_id FROM descendants;
+$$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;

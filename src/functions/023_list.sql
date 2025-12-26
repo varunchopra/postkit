@@ -2,7 +2,8 @@
 -- LIST RESOURCES
 -- =============================================================================
 -- Returns resources the user can access with the given permission.
--- Supports nested teams and permission hierarchy.
+-- Supports nested teams, permission hierarchy, and resource hierarchy.
+-- Includes descendants of accessible resources.
 CREATE OR REPLACE FUNCTION authz.list_resources (p_user_id text, p_resource_type text, p_permission text, p_namespace text DEFAULT 'default', p_limit int DEFAULT 100, p_cursor text DEFAULT NULL)
     RETURNS TABLE (
         resource_id text
@@ -27,17 +28,17 @@ implied_by AS (
             AND h.resource_type = p_resource_type
             AND h.implies = ib.permission
 ),
--- Find all accessible resources
-accessible_resources AS (
+-- Find ALL resources with grants (any type, for descendant expansion)
+granted_resources AS (
     -- Direct grants to user
     SELECT DISTINCT
+        t.resource_type,
         t.resource_id
     FROM
         authz.tuples t
     JOIN implied_by ib ON t.relation = ib.permission
     WHERE
         t.namespace = p_namespace
-        AND t.resource_type = p_resource_type
         AND t.subject_type = 'user'
         AND t.subject_id = p_user_id
         AND (t.expires_at IS NULL
@@ -45,6 +46,7 @@ accessible_resources AS (
     UNION
     -- Grants via groups
     SELECT DISTINCT
+        t.resource_type,
         t.resource_id
     FROM
         authz.tuples t
@@ -55,9 +57,23 @@ accessible_resources AS (
                 OR t.subject_relation = um.membership_relation)
     WHERE
         t.namespace = p_namespace
-        AND t.resource_type = p_resource_type
         AND (t.expires_at IS NULL
-            OR t.expires_at > now()))
+            OR t.expires_at > now())
+),
+-- Expand to include descendants of granted resources, filter to requested type
+accessible_resources AS (
+    -- Direct grants on the requested type
+    SELECT gr.resource_id FROM granted_resources gr
+    WHERE gr.resource_type = p_resource_type
+    UNION
+    -- Descendants of any granted resource that match requested type
+    SELECT d.resource_id
+    FROM granted_resources gr
+    CROSS JOIN LATERAL authz._expand_resource_descendants(
+        gr.resource_type, gr.resource_id, p_namespace
+    ) d
+    WHERE d.resource_type = p_resource_type
+)
 SELECT
     ar.resource_id
 FROM
@@ -76,12 +92,17 @@ STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
 -- =============================================================================
 -- Returns users who can access the resource with the given permission.
 -- Expands nested teams to find all member users.
+-- Includes users with access via ancestor resources (resource hierarchy).
 CREATE OR REPLACE FUNCTION authz.list_users (p_resource_type text, p_resource_id text, p_permission text, p_namespace text DEFAULT 'default', p_limit int DEFAULT 100, p_cursor text DEFAULT NULL)
     RETURNS TABLE (
         user_id text
     )
     AS $$
     WITH RECURSIVE
+    -- Find resource and all ancestor resources (via parent relations)
+    resource_chain AS (
+        SELECT * FROM authz._expand_resource_ancestors(p_resource_type, p_resource_id, p_namespace)
+    ),
     -- Find permissions that imply the requested permission
     implied_by AS (
         SELECT
@@ -96,10 +117,10 @@ CREATE OR REPLACE FUNCTION authz.list_users (p_resource_type text, p_resource_id
                 AND h.implies = ib.permission
 ),
 -- Expand from grantees down to users
--- Start with subjects that have grants on the resource, then recursively
--- expand groups to find all member users
+-- Start with subjects that have grants on the resource or ancestors,
+-- then recursively expand groups to find all member users
 expanded_subjects AS (
-    -- Direct grantees on the resource
+    -- Direct grantees on the resource or ancestors
     SELECT
         t.subject_type,
         t.subject_id,
@@ -108,10 +129,10 @@ expanded_subjects AS (
     FROM
         authz.tuples t
     JOIN implied_by ib ON t.relation = ib.permission
+    JOIN resource_chain rc ON t.resource_type = rc.resource_type
+        AND t.resource_id = rc.resource_id
     WHERE
         t.namespace = p_namespace
-        AND t.resource_type = p_resource_type
-        AND t.resource_id = p_resource_id
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
     UNION
@@ -152,6 +173,7 @@ STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
 -- FILTER AUTHORIZED (batch check)
 -- =============================================================================
 -- Given a list of resource IDs, returns only those the user can access.
+-- Checks grants on each resource and its ancestors (resource hierarchy).
 CREATE OR REPLACE FUNCTION authz.filter_authorized (p_user_id text, p_resource_type text, p_permission text, p_resource_ids text[], p_namespace text DEFAULT 'default')
     RETURNS text[]
     AS $$
@@ -160,6 +182,15 @@ CREATE OR REPLACE FUNCTION authz.filter_authorized (p_user_id text, p_resource_t
     WITH RECURSIVE user_memberships AS (
         SELECT * FROM authz._expand_user_memberships(p_user_id, p_namespace)
     ),
+-- Expand each candidate resource to include its ancestors
+candidate_with_ancestors AS (
+    SELECT
+        rid AS original_resource_id,
+        a.resource_type,
+        a.resource_id
+    FROM unnest(p_resource_ids) AS rid
+    CROSS JOIN LATERAL authz._expand_resource_ancestors(p_resource_type, rid, p_namespace) a
+),
 implied_by AS (
     SELECT
         p_permission AS permission
@@ -173,35 +204,35 @@ implied_by AS (
             AND h.implies = ib.permission
 ),
 accessible AS (
-    -- Direct grants
+    -- Direct grants on resource or ancestor
     SELECT DISTINCT
-        t.resource_id
+        ca.original_resource_id AS resource_id
     FROM
         authz.tuples t
     JOIN implied_by ib ON t.relation = ib.permission
+    JOIN candidate_with_ancestors ca ON t.resource_type = ca.resource_type
+        AND t.resource_id = ca.resource_id
     WHERE
         t.namespace = p_namespace
-        AND t.resource_type = p_resource_type
-        AND t.resource_id = ANY (p_resource_ids)
         AND t.subject_type = 'user'
         AND t.subject_id = p_user_id
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
     UNION
-    -- Group grants
+    -- Group grants on resource or ancestor
     SELECT DISTINCT
-        t.resource_id
+        ca.original_resource_id AS resource_id
     FROM
         authz.tuples t
         JOIN implied_by ib ON t.relation = ib.permission
+        JOIN candidate_with_ancestors ca ON t.resource_type = ca.resource_type
+            AND t.resource_id = ca.resource_id
         JOIN user_memberships um ON t.subject_type = um.group_type
             AND t.subject_id = um.group_id
             AND (t.subject_relation IS NULL
                 OR t.subject_relation = um.membership_relation)
     WHERE
         t.namespace = p_namespace
-        AND t.resource_type = p_resource_type
-        AND t.resource_id = ANY (p_resource_ids)
         AND (t.expires_at IS NULL
             OR t.expires_at > now()))
 SELECT

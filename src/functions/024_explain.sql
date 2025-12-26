@@ -3,7 +3,7 @@
 -- =============================================================================
 --
 -- This function traces the permission graph on-demand to explain why a user
--- has (or doesn't have) a permission. Supports nested teams.
+-- has (or doesn't have) a permission. Supports nested teams and resource hierarchies.
 --
 -- ALGORITHM: BACKWARD CHAINING
 -- ============================
@@ -15,18 +15,23 @@
 --      where user is a member of that group (including nested)?
 --   3. Check hierarchy: Is there a higher permission that implies this one?
 --      If so, recursively explain how they got the higher permission.
+--   4. Check resource ancestors: Is there a grant on a parent resource?
+--      If so, recursively explain the permission on the ancestor.
 -- Return type for explain results
 DO $$
 BEGIN
     CREATE TYPE authz.permission_path AS (
-        path_type text,        -- 'direct', 'group', or 'hierarchy'
+        path_type text,        -- 'direct', 'group', 'hierarchy', or 'resource'
         via_relation text,     -- The relation that granted access (e.g., 'admin')
         via_subject_type text, -- For group/hierarchy: the group type (e.g., 'team')
+                               -- For resource: the ancestor resource type (e.g., 'folder')
         via_subject_id text,   -- For group/hierarchy: the group id (e.g., 'engineering')
+                               -- For resource: the ancestor resource id (e.g., 'projects')
         via_membership text,   -- For group/hierarchy: user's relation to group (e.g., 'member')
         path_chain text[]      -- Path traversed (usage depends on path_type):
                                --   'group': nested group chain, e.g., ['team:infra', 'team:platform']
                                --   'hierarchy': permission chain, e.g., ['admin', 'write', 'read']
+                               --   'resource': resource chain, e.g., ['folder:projects', 'folder:root']
                                --   'direct': NULL
     );
 EXCEPTION
@@ -182,6 +187,43 @@ BEGIN
                     RETURN NEXT v_path;
                 END LOOP;
         END LOOP;
+    -- ==========================================================================
+    -- PATH 4: RESOURCE HIERARCHY (access via parent resource)
+    -- ==========================================================================
+    -- Check if permission is granted on an ancestor resource
+    FOR v_group IN
+        SELECT
+            t.subject_type AS parent_type,
+            t.subject_id AS parent_id
+        FROM authz.tuples t
+        WHERE t.namespace = p_namespace
+          AND t.resource_type = p_resource_type
+          AND t.resource_id = p_resource_id
+          AND t.relation = 'parent'
+          AND (t.expires_at IS NULL OR t.expires_at > now())
+    LOOP
+        -- Recursively explain how they got the permission on the parent
+        FOR v_higher_path IN
+            SELECT *
+            FROM authz.explain(p_user_id, p_permission, v_group.parent_type, v_group.parent_id, p_namespace, v_max_depth - 1)
+        LOOP
+            -- Build the resource chain
+            IF v_higher_path.path_type = 'resource' THEN
+                -- Extend existing resource chain
+                v_chain := ARRAY[p_resource_type || ':' || p_resource_id] || v_higher_path.path_chain;
+            ELSE
+                -- Start new resource chain
+                v_chain := ARRAY[p_resource_type || ':' || p_resource_id, v_group.parent_type || ':' || v_group.parent_id];
+            END IF;
+            v_path := ('resource',
+                v_higher_path.via_relation,
+                v_group.parent_type,
+                v_group.parent_id,
+                v_higher_path.via_membership,
+                v_chain);
+            RETURN NEXT v_path;
+        END LOOP;
+    END LOOP;
     RETURN;
     END;
 $$
@@ -239,6 +281,12 @@ BEGIN
                         array_to_string(v_path.path_chain, ' -> '),
                         p_resource_type, p_resource_id);
                 END IF;
+            WHEN 'resource' THEN
+                -- path_chain contains resource containment chain
+                v_text := format('RESOURCE: user:%s has %s on %s:%s which contains %s',
+                    p_user_id, v_path.via_relation,
+                    v_path.via_subject_type, v_path.via_subject_id,
+                    array_to_string(v_path.path_chain, ' -> '));
             END CASE;
             RETURN NEXT v_text;
         END LOOP;

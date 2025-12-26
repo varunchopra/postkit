@@ -84,6 +84,39 @@ SELECT authz.check('alice', 'read', 'repo', 'api');  -- true
 
 Circular memberships are detected and rejected.
 
+## Resource Hierarchies
+
+Resources can contain other resources:
+
+```sql
+-- doc:spec is inside folder:projects
+SELECT authz.write('doc', 'spec', 'parent', 'folder', 'projects');
+
+-- folder:projects is inside folder:root
+SELECT authz.write('folder', 'projects', 'parent', 'folder', 'root');
+
+-- Grant read on the root folder
+SELECT authz.write('folder', 'root', 'read', 'user', 'alice');
+
+-- alice can read doc:spec (inherited through hierarchy)
+SELECT authz.check('alice', 'read', 'doc', 'spec');  -- true
+```
+
+This combines with nested teams and permission hierarchies:
+
+```sql
+-- team:eng has admin on folder:projects
+SELECT authz.write('folder', 'projects', 'admin', 'team', 'eng');
+
+-- alice is in team:eng
+SELECT authz.write('team', 'eng', 'member', 'user', 'alice');
+
+-- alice has read on doc:spec (via: eng membership -> admin on folder -> admin implies read -> folder contains doc)
+SELECT authz.check('alice', 'read', 'doc', 'spec');  -- true
+```
+
+Circular hierarchies are detected and rejected.
+
 ## Time-Bound Permissions
 
 ```sql
@@ -133,19 +166,37 @@ Event types:
 
 Expiration timestamps are captured in `expires_at`, enabling historical analysis of time-bound permissions.
 
+## Dry Run / What-If
+
+Use transactions to preview the impact of permission changes:
+
+```sql
+BEGIN;
+
+-- Make the change
+SELECT authz.delete('team', 'eng', 'member', 'user', 'alice');
+
+-- See the impact
+SELECT * FROM authz.list_resources('alice', 'repo', 'read');
+SELECT * FROM authz.list_users('read', ('repo', 'api'));
+
+-- Undo
+ROLLBACK;
+```
+
 ## How It Works
 
 Permissions are evaluated at query time using recursive CTEs. When you call `authz.check()`:
 
 1. Find all groups the user belongs to (including nested teams)
-2. Find all grants on the resource (direct + via groups)
-3. Expand permission hierarchy (admin -> write -> read)
-4. Check if the requested permission exists
+2. Find resource and all ancestor resources (via parent relations)
+3. Find all grants on resource or ancestors (direct + via groups)
+4. Expand permission hierarchy (admin -> write -> read)
+5. Check if the requested permission exists
 
 ## Limitations
 
-- No resource hierarchies (folders containing documents must be modeled explicitly)
-- Nested teams limited to 50 levels
+- Nested teams and resource hierarchies limited to 50 levels
 
 ## Development
 
