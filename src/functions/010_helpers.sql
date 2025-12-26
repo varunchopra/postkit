@@ -50,27 +50,10 @@ AS $$
           AND t.subject_id = um.group_id
           AND t.relation = 'member'
           AND (t.expires_at IS NULL OR t.expires_at > now())
-        WHERE um.depth < authz.max_group_depth()
+        WHERE um.depth < authz._max_group_depth()
     )
     SELECT group_type, group_id, membership_relation FROM user_memberships;
 $$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
-
-
--- Compute minimum expiration from two timestamps
---
--- Used when combining expirations in permission chains. If a user's group
--- membership expires in 7 days and the group's permission expires in 30 days,
--- the effective permission expires in 7 days.
---
--- NULL means "never expires" and is treated as infinity.
-CREATE OR REPLACE FUNCTION authz.min_expiration(a timestamptz, b timestamptz)
-RETURNS timestamptz AS $$
-    SELECT CASE
-        WHEN a IS NULL THEN b
-        WHEN b IS NULL THEN a
-        ELSE LEAST(a, b)
-    END;
-$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
 
 -- Expand resource ancestors recursively
@@ -109,7 +92,7 @@ AS $$
           AND t.resource_id = a.resource_id
           AND t.relation = 'parent'
           AND (t.expires_at IS NULL OR t.expires_at > now())
-        WHERE a.depth < authz.max_resource_depth()
+        WHERE a.depth < authz._max_resource_depth()
     )
     SELECT ancestors.resource_type, ancestors.resource_id FROM ancestors;
 $$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
@@ -151,7 +134,7 @@ AS $$
           AND t.subject_id = d.resource_id
           AND t.relation = 'parent'
           AND (t.expires_at IS NULL OR t.expires_at > now())
-        WHERE d.depth < authz.max_resource_depth()
+        WHERE d.depth < authz._max_resource_depth()
     )
     SELECT descendants.resource_type, descendants.resource_id FROM descendants;
 $$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;

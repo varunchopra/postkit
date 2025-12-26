@@ -23,7 +23,7 @@
 -- TUPLE AUDIT TRIGGER
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION authz.audit_tuple_trigger()
+CREATE OR REPLACE FUNCTION authz._audit_tuple_trigger()
 RETURNS TRIGGER AS $$
 DECLARE
     v_event_type TEXT;
@@ -108,7 +108,7 @@ $$ LANGUAGE plpgsql
 --
 -- This allows consistent querying across tuple and hierarchy events.
 
-CREATE OR REPLACE FUNCTION authz.audit_hierarchy_trigger()
+CREATE OR REPLACE FUNCTION authz._audit_hierarchy_trigger()
 RETURNS TRIGGER AS $$
 DECLARE
     v_event_type TEXT;
@@ -183,11 +183,11 @@ $$ LANGUAGE plpgsql
 CREATE TRIGGER audit_tuples
     AFTER INSERT OR UPDATE OR DELETE ON authz.tuples
     FOR EACH ROW
-    EXECUTE FUNCTION authz.audit_tuple_trigger();
+    EXECUTE FUNCTION authz._audit_tuple_trigger();
 
 -- Hierarchy audit trigger
 CREATE TRIGGER audit_hierarchy
     AFTER INSERT OR DELETE ON authz.permission_hierarchy
     FOR EACH ROW
-    EXECUTE FUNCTION authz.audit_hierarchy_trigger();
+    EXECUTE FUNCTION authz._audit_hierarchy_trigger();
 

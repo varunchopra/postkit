@@ -111,6 +111,85 @@ class TestBulkValidation:
         assert authz.check("bob", "read", ("doc", "1"))
         assert authz.check("carol", "read", ("doc", "1"))
 
+    def test_bulk_grant_resources_rejects_group_membership(self, authz):
+        """bulk_grant_resources rejects group-to-group memberships (cycle risk)."""
+        with pytest.raises(psycopg.Error, match="cannot create group-to-group"):
+            authz.bulk_grant_resources(
+                "member",
+                resource_type="team",
+                resource_ids=["eng", "sales"],
+                subject=("team", "platform"),
+            )
+
+    def test_bulk_grant_resources_rejects_parent_relation(self, authz):
+        """bulk_grant_resources rejects parent relations (cycle risk)."""
+        with pytest.raises(psycopg.Error, match="cannot create parent"):
+            authz.bulk_grant_resources(
+                "parent",
+                resource_type="folder",
+                resource_ids=["docs", "images"],
+                subject=("folder", "root"),
+            )
+
+    def test_bulk_grant_resources_allows_user_member(self, authz):
+        """bulk_grant_resources allows member relation for users (no cycle risk)."""
+        count = authz.bulk_grant_resources(
+            "member",
+            resource_type="team",
+            resource_ids=["eng", "sales"],
+            subject=("user", "alice"),
+        )
+        assert count == 2
+
+    def test_write_tuples_bulk_rejects_group_membership(self, db_connection, request):
+        """write_tuples_bulk rejects group-to-group memberships (cycle risk)."""
+        namespace = "t_" + request.node.name.lower()[:50]
+        cursor = db_connection.cursor()
+        try:
+            with pytest.raises(psycopg.Error, match="cannot create group-to-group"):
+                cursor.execute(
+                    "SELECT authz.write_tuples_bulk(%s, %s, %s, %s, %s, %s)",
+                    ("team", "eng", "member", "team", ["platform", "infra"], namespace),
+                )
+        finally:
+            cursor.execute(
+                "DELETE FROM authz.tuples WHERE namespace = %s", (namespace,)
+            )
+            cursor.close()
+
+    def test_write_tuples_bulk_rejects_parent_relation(self, db_connection, request):
+        """write_tuples_bulk rejects parent relations (cycle risk)."""
+        namespace = "t_" + request.node.name.lower()[:50]
+        cursor = db_connection.cursor()
+        try:
+            with pytest.raises(psycopg.Error, match="cannot create parent"):
+                cursor.execute(
+                    "SELECT authz.write_tuples_bulk(%s, %s, %s, %s, %s, %s)",
+                    ("folder", "docs", "parent", "folder", ["root"], namespace),
+                )
+        finally:
+            cursor.execute(
+                "DELETE FROM authz.tuples WHERE namespace = %s", (namespace,)
+            )
+            cursor.close()
+
+    def test_write_tuples_bulk_allows_user_member(self, db_connection, request):
+        """write_tuples_bulk allows member relation for users (no cycle risk)."""
+        namespace = "t_" + request.node.name.lower()[:50]
+        cursor = db_connection.cursor()
+        try:
+            cursor.execute(
+                "SELECT authz.write_tuples_bulk(%s, %s, %s, %s, %s, %s)",
+                ("team", "eng", "member", "user", ["alice", "bob"], namespace),
+            )
+            result = cursor.fetchone()[0]
+            assert result == 2
+        finally:
+            cursor.execute(
+                "DELETE FROM authz.tuples WHERE namespace = %s", (namespace,)
+            )
+            cursor.close()
+
 
 class TestSDKValidation:
     """Input validation - SDK raises exceptions for invalid inputs."""

@@ -167,9 +167,23 @@ BEGIN
         AND c.relname LIKE 'audit_events_y%'
     ORDER BY
         c.relname LOOP
+            -- Validate partition name format before parsing
+            -- Expected: audit_events_yYYYYmMM (21 chars, e.g., audit_events_y2024m01)
+            IF v_partition.name !~ '^audit_events_y\d{4}m\d{2}$' THEN
+                RAISE WARNING 'Skipping partition with unexpected name format: %', v_partition.name;
+                CONTINUE;
+            END IF;
+
             -- Extract year and month from partition name
             -- Format: audit_events_yYYYYmMM
-            v_partition_end := make_date(substring(v_partition.name FROM 16 FOR 4)::int, substring(v_partition.name FROM 21 FOR 2)::int, 1) + interval '1 month';
+            --         123456789012345678901
+            --                  1111111111222
+            -- Year at positions 15-18, month at positions 20-21
+            v_partition_end := make_date(
+                substring(v_partition.name FROM 15 FOR 4)::int,
+                substring(v_partition.name FROM 20 FOR 2)::int,
+                1
+            ) + interval '1 month';
             -- Drop if partition ends before cutoff
             IF v_partition_end <= v_cutoff THEN
                 EXECUTE format('DROP TABLE authz.%I', v_partition.name);

@@ -18,7 +18,7 @@
 -- Called before inserting: (parent, member, child) tuples where child is a group.
 -- Returns true if p_parent is already a descendant of p_child (which would
 -- make adding p_child as a member of p_parent create a cycle).
-CREATE OR REPLACE FUNCTION authz.would_create_cycle(
+CREATE OR REPLACE FUNCTION authz._would_create_cycle(
     p_parent_type text,
     p_parent_id text,
     p_child_type text,
@@ -46,7 +46,7 @@ RETURNS boolean AS $$
           AND t.subject_type = a.group_type
           AND t.subject_id = a.group_id
           AND t.relation = 'member'
-        WHERE a.depth < authz.max_group_depth()
+        WHERE a.depth < authz._max_group_depth()
     )
     -- Cycle exists if child appears in parent's ancestor chain
     SELECT EXISTS (
@@ -62,7 +62,7 @@ $$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
 -- direct SQL inserts bypassing write_tuple validation).
 --
 -- Returns the path of each cycle found.
-CREATE OR REPLACE FUNCTION authz.detect_cycles(p_namespace text DEFAULT 'default')
+CREATE OR REPLACE FUNCTION authz._detect_cycles(p_namespace text DEFAULT 'default')
 RETURNS TABLE(cycle_path text[]) AS $$
     WITH RECURSIVE
     -- All group-to-group membership edges
@@ -103,7 +103,7 @@ RETURNS TABLE(cycle_path text[]) AS $$
           ON e.parent_type = p.child_type
           AND e.parent_id = p.child_id
         WHERE NOT p.is_cycle
-          AND array_length(p.path, 1) < authz.max_group_depth()
+          AND array_length(p.path, 1) < authz._max_group_depth()
     )
 
     SELECT DISTINCT path AS cycle_path
@@ -121,7 +121,7 @@ $$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
 -- Called before inserting: (child, parent, parent_resource) tuples.
 -- Returns true if the proposed parent is already a descendant of the child
 -- (which would create a cycle).
-CREATE OR REPLACE FUNCTION authz.would_create_resource_cycle(
+CREATE OR REPLACE FUNCTION authz._would_create_resource_cycle(
     p_child_type text,
     p_child_id text,
     p_parent_type text,
@@ -149,7 +149,7 @@ RETURNS boolean AS $$
           AND t.resource_type = a.resource_type
           AND t.resource_id = a.resource_id
           AND t.relation = 'parent'
-        WHERE a.depth < authz.max_resource_depth()
+        WHERE a.depth < authz._max_resource_depth()
     )
     -- Cycle exists if child appears in parent's ancestor chain
     SELECT EXISTS (
@@ -165,7 +165,7 @@ $$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
 -- direct SQL inserts bypassing write_tuple validation).
 --
 -- Returns the path of each cycle found.
-CREATE OR REPLACE FUNCTION authz.detect_resource_cycles(p_namespace text DEFAULT 'default')
+CREATE OR REPLACE FUNCTION authz._detect_resource_cycles(p_namespace text DEFAULT 'default')
 RETURNS TABLE(cycle_path text[]) AS $$
     WITH RECURSIVE
     -- All parent relation edges
@@ -205,7 +205,7 @@ RETURNS TABLE(cycle_path text[]) AS $$
           ON e.child_type = p.parent_type
           AND e.child_id = p.parent_id
         WHERE NOT p.is_cycle
-          AND array_length(p.path, 1) < authz.max_resource_depth()
+          AND array_length(p.path, 1) < authz._max_resource_depth()
     )
 
     SELECT DISTINCT path AS cycle_path

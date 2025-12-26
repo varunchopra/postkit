@@ -40,61 +40,64 @@ DECLARE
 BEGIN
     -- Validate inputs
     PERFORM
-        authz.validate_identifier (p_resource_type, 'resource_type');
+        authz._validate_identifier (p_resource_type, 'resource_type');
     PERFORM
-        authz.validate_identifier (p_relation, 'relation');
+        authz._validate_identifier (p_relation, 'relation');
     PERFORM
-        authz.validate_identifier (p_subject_type, 'subject_type');
+        authz._validate_identifier (p_subject_type, 'subject_type');
     PERFORM
-        authz.validate_id (p_resource_id, 'resource_id');
+        authz._validate_id (p_resource_id, 'resource_id');
     PERFORM
-        authz.validate_id (p_subject_id, 'subject_id');
+        authz._validate_id (p_subject_id, 'subject_id');
     PERFORM
-        authz.validate_namespace (p_namespace);
+        authz._validate_namespace (p_namespace);
     IF p_subject_relation IS NOT NULL THEN
         PERFORM
-            authz.validate_identifier (p_subject_relation, 'subject_relation');
+            authz._validate_identifier (p_subject_relation, 'subject_relation');
     END IF;
     -- Validate expiration is in the future
     IF p_expires_at IS NOT NULL AND p_expires_at <= now() THEN
         RAISE EXCEPTION 'expires_at must be in the future'
             USING ERRCODE = 'check_violation';
+    END IF;
+
+    -- Check for cycles when adding group-to-group membership
+    IF p_relation = 'member' AND p_subject_type != 'user' THEN
+        -- Self-membership check
+        IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
+            RAISE EXCEPTION 'A group cannot be a member of itself'
+                USING ERRCODE = 'invalid_parameter_value';
         END IF;
-        -- Check for cycles when adding group-to-group membership
-        IF p_relation = 'member' AND p_subject_type != 'user' THEN
-            -- Self-membership check
-            IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
-                RAISE EXCEPTION 'A group cannot be a member of itself'
-                    USING ERRCODE = 'invalid_parameter_value';
-                END IF;
-                -- Transitive cycle check
-                IF authz.would_create_cycle (p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
-                    RAISE EXCEPTION 'This would create a circular group membership'
-                        USING ERRCODE = 'invalid_parameter_value';
-                    END IF;
-                END IF;
-                -- Check for cycles when adding parent relation (resource hierarchy)
-                IF p_relation = 'parent' THEN
-                    -- Self-reference check
-                    IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
-                        RAISE EXCEPTION 'A resource cannot be its own parent'
-                            USING ERRCODE = 'invalid_parameter_value';
-                    END IF;
-                    -- Transitive cycle check
-                    IF authz.would_create_resource_cycle (p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
-                        RAISE EXCEPTION 'This would create a circular resource hierarchy'
-                            USING ERRCODE = 'invalid_parameter_value';
-                    END IF;
-                END IF;
-                -- Insert or update the tuple
-                INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id, subject_relation, expires_at)
-                    VALUES (p_namespace, p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, p_subject_relation, p_expires_at)
-                ON CONFLICT (namespace, resource_type, resource_id, relation, subject_type, subject_id, COALESCE(subject_relation, ''))
-                    DO UPDATE SET
-                        expires_at = EXCLUDED.expires_at
-                    RETURNING
-                        id INTO v_tuple_id;
-                RETURN v_tuple_id;
+        -- Transitive cycle check
+        IF authz._would_create_cycle(p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
+            RAISE EXCEPTION 'This would create a circular group membership'
+                USING ERRCODE = 'invalid_parameter_value';
+        END IF;
+    END IF;
+
+    -- Check for cycles when adding parent relation (resource hierarchy)
+    IF p_relation = 'parent' THEN
+        -- Self-reference check
+        IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
+            RAISE EXCEPTION 'A resource cannot be its own parent'
+                USING ERRCODE = 'invalid_parameter_value';
+        END IF;
+        -- Transitive cycle check
+        IF authz._would_create_resource_cycle(p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
+            RAISE EXCEPTION 'This would create a circular resource hierarchy'
+                USING ERRCODE = 'invalid_parameter_value';
+        END IF;
+    END IF;
+
+    -- Insert or update the tuple
+    INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id, subject_relation, expires_at)
+        VALUES (p_namespace, p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, p_subject_relation, p_expires_at)
+    ON CONFLICT (namespace, resource_type, resource_id, relation, subject_type, subject_id, COALESCE(subject_relation, ''))
+        DO UPDATE SET
+            expires_at = EXCLUDED.expires_at
+        RETURNING id INTO v_tuple_id;
+
+    RETURN v_tuple_id;
 END;
 $$
 LANGUAGE plpgsql
@@ -137,29 +140,26 @@ DECLARE
 BEGIN
     -- Validate once (not per row)
     PERFORM
-        authz.validate_namespace (p_namespace);
+        authz._validate_namespace (p_namespace);
     PERFORM
-        authz.validate_identifier (p_resource_type, 'resource_type');
+        authz._validate_identifier (p_resource_type, 'resource_type');
     PERFORM
-        authz.validate_id (p_resource_id, 'resource_id');
+        authz._validate_id (p_resource_id, 'resource_id');
     PERFORM
-        authz.validate_identifier (p_relation, 'relation');
+        authz._validate_identifier (p_relation, 'relation');
     PERFORM
-        authz.validate_identifier (p_subject_type, 'subject_type');
+        authz._validate_identifier (p_subject_type, 'subject_type');
+    -- Reject relations that require cycle detection (must use write_tuple instead)
+    IF p_relation = 'member' AND p_subject_type != 'user' THEN
+        RAISE EXCEPTION 'write_tuples_bulk cannot create group-to-group memberships; use write_tuple instead'
+            USING ERRCODE = 'feature_not_supported';
+    END IF;
+    IF p_relation = 'parent' THEN
+        RAISE EXCEPTION 'write_tuples_bulk cannot create parent relations; use write_tuple instead'
+            USING ERRCODE = 'feature_not_supported';
+    END IF;
     -- Validate subject_ids array (consistent with write_tuple behavior)
-    IF EXISTS (
-        SELECT
-            1
-        FROM
-            unnest(p_subject_ids) AS id
-        WHERE
-            id IS NULL
-            OR trim(id) = ''
-            OR length(id) > 1024
-            OR id ~ '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'
-            OR id != trim(id)) THEN
-    RAISE EXCEPTION 'subject_ids contains invalid values (null, empty, too long, or invalid characters)';
-END IF;
+    PERFORM authz._validate_id_array(p_subject_ids, 'subject_ids');
 INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id)
 SELECT
     p_namespace,

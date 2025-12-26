@@ -118,7 +118,12 @@ CREATE OR REPLACE FUNCTION authz.list_users (p_resource_type text, p_resource_id
 ),
 -- Expand from grantees down to users
 -- Start with subjects that have grants on the resource or ancestors,
--- then recursively expand groups to find all member users
+-- then recursively expand groups to find all member users.
+--
+-- USERSET FEATURE: The COALESCE(es.subject_relation, 'member') handles usersets.
+-- If a grant specifies subject_relation='admin', we find users who are admins
+-- of that group, not just members.
+-- Example: (repo, api, viewer, team, eng, admin) means "admins of team:eng can view repo:api"
 expanded_subjects AS (
     -- Direct grantees on the resource or ancestors
     SELECT
@@ -152,7 +157,7 @@ expanded_subjects AS (
                 OR t.expires_at > now())
     WHERE
         es.subject_type != 'user'
-        AND es.depth < authz.max_group_depth()
+        AND es.depth < authz._max_group_depth()
 )
 SELECT DISTINCT
     es.subject_id AS user_id
@@ -177,8 +182,8 @@ STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
 CREATE OR REPLACE FUNCTION authz.filter_authorized (p_user_id text, p_resource_type text, p_permission text, p_resource_ids text[], p_namespace text DEFAULT 'default')
     RETURNS text[]
     AS $$
-    -- Find all groups/entities user belongs to (including nested)
-    -- Uses reusable helper function to avoid code duplication
+    -- Note: RECURSIVE keyword required for implied_by CTE below;
+    -- user_memberships itself is not recursive (delegates to helper function)
     WITH RECURSIVE user_memberships AS (
         SELECT * FROM authz._expand_user_memberships(p_user_id, p_namespace)
     ),

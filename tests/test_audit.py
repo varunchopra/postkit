@@ -301,6 +301,118 @@ class TestPartitionManagement:
 
         assert "Month must be between 1 and 12" in str(exc_info.value)
 
+    def test_drop_old_partitions(self, authz):
+        """drop_audit_partitions removes old partitions correctly."""
+        # Create a partition for 2010 (old enough to be dropped)
+        authz.cursor.execute("SELECT authz.create_audit_partition(2010, 6)")
+        result = authz.cursor.fetchone()[0]
+        # If partition already exists, result is NULL - clean it up first
+        if result is None:
+            authz.cursor.execute("DROP TABLE authz.audit_events_y2010m06")
+            authz.cursor.execute("SELECT authz.create_audit_partition(2010, 6)")
+
+        # Verify it exists
+        authz.cursor.execute(
+            """
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'authz' AND c.relname = 'audit_events_y2010m06'
+        """
+        )
+        assert authz.cursor.fetchone() is not None
+
+        # Drop partitions older than 12 months (2010 is definitely older)
+        authz.cursor.execute("SELECT * FROM authz.drop_audit_partitions(12)")
+        dropped = [row[0] for row in authz.cursor.fetchall()]
+
+        # Should have dropped the 2010 partition
+        assert "audit_events_y2010m06" in dropped
+
+        # Verify it no longer exists
+        authz.cursor.execute(
+            """
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'authz' AND c.relname = 'audit_events_y2010m06'
+        """
+        )
+        assert authz.cursor.fetchone() is None
+
+    def test_drop_preserves_recent_partitions(self, authz):
+        """drop_audit_partitions preserves recent partitions."""
+        # Create a partition for current year + 1 (definitely recent)
+        from datetime import date
+
+        future_year = date.today().year + 1
+        authz.cursor.execute(f"SELECT authz.create_audit_partition({future_year}, 6)")
+
+        # Try to drop with 12 month retention
+        authz.cursor.execute("SELECT * FROM authz.drop_audit_partitions(12)")
+        dropped = [row[0] for row in authz.cursor.fetchall()]
+
+        # Future partition should NOT be dropped
+        assert f"audit_events_y{future_year}m06" not in dropped
+
+        # Verify it still exists
+        authz.cursor.execute(
+            f"""
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'authz' AND c.relname = 'audit_events_y{future_year}m06'
+        """
+        )
+        assert authz.cursor.fetchone() is not None
+
+        # Cleanup
+        authz.cursor.execute(f"DROP TABLE authz.audit_events_y{future_year}m06")
+
+    def test_drop_partitions_parses_name_correctly(self, authz):
+        """drop_audit_partitions correctly parses partition names (regression test)."""
+        # This tests the fix for the off-by-one bug in position extraction
+        # Create partition with specific year/month to verify parsing
+        authz.cursor.execute("SELECT authz.create_audit_partition(2019, 12)")
+
+        # The partition name is audit_events_y2019m12
+        # Year should be extracted as 2019, month as 12
+        # With the bug (FROM 16), it would extract "019m" for year -> crash
+        # With the fix (FROM 15), it correctly extracts "2019"
+
+        # Drop partitions older than 12 months
+        authz.cursor.execute("SELECT * FROM authz.drop_audit_partitions(12)")
+        dropped = [row[0] for row in authz.cursor.fetchall()]
+
+        # Should successfully parse and drop the 2019 partition
+        assert "audit_events_y2019m12" in dropped
+
+    def test_drop_skips_malformed_partition_names(self, db_connection):
+        """drop_audit_partitions skips partitions with unexpected names."""
+        cursor = db_connection.cursor()
+
+        # Create a partition with non-standard name (manually)
+        # This simulates a scenario where naming format changes
+        try:
+            cursor.execute(
+                """
+                CREATE TABLE authz.audit_events_custom_name
+                PARTITION OF authz.audit_events
+                FOR VALUES FROM ('1990-01-01') TO ('1990-02-01')
+            """
+            )
+
+            # Drop should skip it with a warning, not crash
+            cursor.execute("SELECT * FROM authz.drop_audit_partitions(12)")
+            dropped = [row[0] for row in cursor.fetchall()]
+
+            # The malformed partition should NOT be in dropped list
+            assert "audit_events_custom_name" not in dropped
+
+            # Clean up
+            cursor.execute("DROP TABLE authz.audit_events_custom_name")
+        except Exception:
+            # Clean up on failure
+            cursor.execute("DROP TABLE IF EXISTS authz.audit_events_custom_name")
+            raise
+
 
 class TestSubjectRelation:
     """Tests for subject_relation in audit events."""

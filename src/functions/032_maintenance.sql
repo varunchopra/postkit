@@ -24,7 +24,7 @@ BEGIN
         'group_cycles'::text AS resource_id,
         'warning'::text AS status,
         'Circular group membership detected: ' || array_to_string(cycle_path, ' -> ') AS details
-    FROM authz.detect_cycles(p_namespace);
+    FROM authz._detect_cycles(p_namespace);
 
     -- Check for resource hierarchy cycles
     RETURN QUERY
@@ -33,7 +33,7 @@ BEGIN
         'resource_cycles'::text AS resource_id,
         'warning'::text AS status,
         'Circular resource hierarchy detected: ' || array_to_string(cycle_path, ' -> ') AS details
-    FROM authz.detect_resource_cycles(p_namespace);
+    FROM authz._detect_resource_cycles(p_namespace);
 
     RETURN;
 END;
@@ -73,18 +73,29 @@ DECLARE
 BEGIN
     -- Validate inputs once
     PERFORM
-        authz.validate_namespace (p_namespace);
+        authz._validate_namespace (p_namespace);
     PERFORM
-        authz.validate_identifier (p_resource_type, 'resource_type');
+        authz._validate_identifier (p_resource_type, 'resource_type');
     PERFORM
-        authz.validate_identifier (p_relation, 'relation');
+        authz._validate_identifier (p_relation, 'relation');
     PERFORM
-        authz.validate_identifier (p_subject_type, 'subject_type');
+        authz._validate_identifier (p_subject_type, 'subject_type');
     PERFORM
-        authz.validate_id (p_subject_id, 'subject_id');
+        authz._validate_id (p_subject_id, 'subject_id');
     IF p_subject_relation IS NOT NULL THEN
         PERFORM
-            authz.validate_identifier (p_subject_relation, 'subject_relation');
+            authz._validate_identifier (p_subject_relation, 'subject_relation');
+    END IF;
+    -- Validate resource_ids array
+    PERFORM authz._validate_id_array(p_resource_ids, 'resource_ids');
+    -- Reject relations that require cycle detection (must use write_tuple instead)
+    IF p_relation = 'member' AND p_subject_type != 'user' THEN
+        RAISE EXCEPTION 'grant_to_resources_bulk cannot create group-to-group memberships; use write_tuple instead'
+            USING ERRCODE = 'feature_not_supported';
+    END IF;
+    IF p_relation = 'parent' THEN
+        RAISE EXCEPTION 'grant_to_resources_bulk cannot create parent relations; use write_tuple instead'
+            USING ERRCODE = 'feature_not_supported';
     END IF;
     INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id, subject_relation)
     SELECT

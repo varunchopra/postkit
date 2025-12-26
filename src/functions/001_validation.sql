@@ -25,7 +25,7 @@
 
 
 -- Validate an identifier (resource_type, subject_type, relation)
-CREATE OR REPLACE FUNCTION authz.validate_identifier(p_value text, p_field_name text)
+CREATE OR REPLACE FUNCTION authz._validate_identifier(p_value text, p_field_name text)
 RETURNS void AS $$
 BEGIN
     IF p_value IS NULL THEN
@@ -53,7 +53,7 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
 
 
 -- Validate an ID (resource_id, subject_id)
-CREATE OR REPLACE FUNCTION authz.validate_id(p_value text, p_field_name text)
+CREATE OR REPLACE FUNCTION authz._validate_id(p_value text, p_field_name text)
 RETURNS void AS $$
 BEGIN
     IF p_value IS NULL THEN
@@ -86,9 +86,30 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
 
 
+-- Validate an array of IDs (for bulk operations)
+-- Applies the same rules as _validate_id to each element
+CREATE OR REPLACE FUNCTION authz._validate_id_array(p_values text[], p_field_name text)
+RETURNS void AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM unnest(p_values) AS id
+        WHERE id IS NULL
+           OR trim(id) = ''
+           OR length(id) > 1024
+           OR id ~ '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'
+           OR id != trim(id)
+    ) THEN
+        RAISE EXCEPTION '% contains invalid values (null, empty, too long, or invalid characters)', p_field_name
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+
+
 -- Validate namespace
 -- More flexible than identifiers: allows UUIDs, numeric tenant IDs
-CREATE OR REPLACE FUNCTION authz.validate_namespace(p_value text)
+CREATE OR REPLACE FUNCTION authz._validate_namespace(p_value text)
 RETURNS void AS $$
 BEGIN
     IF p_value IS NULL THEN
@@ -111,32 +132,6 @@ BEGIN
     IF p_value !~ '^[a-z0-9][a-z0-9_-]*$' THEN
         RAISE EXCEPTION 'namespace must be alphanumeric with underscores/hyphens (got: %)', p_value
             USING ERRCODE = 'invalid_parameter_value';
-    END IF;
-END;
-$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
-
-
--- Validate all tuple fields at once
--- Convenience function to reduce duplication in write/delete operations
-CREATE OR REPLACE FUNCTION authz.validate_tuple_fields(
-    p_namespace text,
-    p_resource_type text,
-    p_resource_id text,
-    p_relation text,
-    p_subject_type text,
-    p_subject_id text,
-    p_subject_relation text DEFAULT NULL
-)
-RETURNS void AS $$
-BEGIN
-    PERFORM authz.validate_namespace(p_namespace);
-    PERFORM authz.validate_identifier(p_resource_type, 'resource_type');
-    PERFORM authz.validate_id(p_resource_id, 'resource_id');
-    PERFORM authz.validate_identifier(p_relation, 'relation');
-    PERFORM authz.validate_identifier(p_subject_type, 'subject_type');
-    PERFORM authz.validate_id(p_subject_id, 'subject_id');
-    IF p_subject_relation IS NOT NULL THEN
-        PERFORM authz.validate_identifier(p_subject_relation, 'subject_relation');
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;

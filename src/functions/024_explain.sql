@@ -18,6 +18,9 @@
 --   4. Check resource ancestors: Is there a grant on a parent resource?
 --      If so, recursively explain the permission on the ancestor.
 -- Return type for explain results
+-- Create type idempotently. Using exception handler because
+-- CREATE TYPE IF NOT EXISTS doesn't exist in PostgreSQL.
+-- This allows the schema to be re-applied safely.
 DO $$
 BEGIN
     CREATE TYPE authz.permission_path AS (
@@ -36,6 +39,7 @@ BEGIN
     );
 EXCEPTION
     WHEN duplicate_object THEN
+        -- Type already exists, nothing to do
         NULL;
 END
 $$;
@@ -53,7 +57,7 @@ DECLARE
     v_max_depth int;
 BEGIN
     -- Use centralized default if not specified
-    v_max_depth := COALESCE(p_max_depth, authz.max_group_depth());
+    v_max_depth := COALESCE(p_max_depth, authz._max_group_depth());
 
     -- Depth limit to prevent runaway recursion on malformed data
     IF v_max_depth <= 0 THEN

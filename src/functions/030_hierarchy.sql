@@ -18,13 +18,13 @@ DECLARE
 BEGIN
     -- Validate inputs
     PERFORM
-        authz.validate_namespace (p_namespace);
+        authz._validate_namespace (p_namespace);
     PERFORM
-        authz.validate_identifier (p_resource_type, 'resource_type');
+        authz._validate_identifier (p_resource_type, 'resource_type');
     PERFORM
-        authz.validate_identifier (p_permission, 'permission');
+        authz._validate_identifier (p_permission, 'permission');
     PERFORM
-        authz.validate_identifier (p_implies, 'implies');
+        authz._validate_identifier (p_implies, 'implies');
     -- Check for direct self-cycle
     IF p_permission = p_implies THEN
         RAISE EXCEPTION 'Hierarchy cycle detected: % implies itself', p_permission;
@@ -80,13 +80,13 @@ CREATE OR REPLACE FUNCTION authz.remove_hierarchy (p_resource_type text, p_permi
 BEGIN
     -- Validate inputs
     PERFORM
-        authz.validate_namespace (p_namespace);
+        authz._validate_namespace (p_namespace);
     PERFORM
-        authz.validate_identifier (p_resource_type, 'resource_type');
+        authz._validate_identifier (p_resource_type, 'resource_type');
     PERFORM
-        authz.validate_identifier (p_permission, 'permission');
+        authz._validate_identifier (p_permission, 'permission');
     PERFORM
-        authz.validate_identifier (p_implies, 'implies');
+        authz._validate_identifier (p_implies, 'implies');
     DELETE FROM authz.permission_hierarchy
     WHERE namespace = p_namespace
         AND resource_type = p_resource_type
@@ -107,9 +107,9 @@ DECLARE
 BEGIN
     -- Validate inputs
     PERFORM
-        authz.validate_namespace (p_namespace);
+        authz._validate_namespace (p_namespace);
     PERFORM
-        authz.validate_identifier (p_resource_type, 'resource_type');
+        authz._validate_identifier (p_resource_type, 'resource_type');
     DELETE FROM authz.permission_hierarchy
     WHERE namespace = p_namespace
         AND resource_type = p_resource_type;

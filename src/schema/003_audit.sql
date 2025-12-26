@@ -77,7 +77,12 @@ CREATE INDEX audit_events_actor_time_idx ON authz.audit_events (actor_id, event_
 WHERE
     actor_id IS NOT NULL;
 
--- Index for resource queries (supports get_audit_events filtering by resource)
+-- Index for resource queries
+-- NOTE: There is no get_audit_events() function by design. Query this table directly.
+-- Audit queries have highly variable filter combinations (resource, actor, time range,
+-- event type, subject, etc.). A stored function would need 10+ optional parameters
+-- and complex conditional logic. Client-side query building is clearer and equally safe
+-- with parameterized queries. The indexes below support common access patterns.
 CREATE INDEX audit_events_resource_time_idx ON authz.audit_events (namespace, resource_type, resource_id, event_time DESC);
 
 -- Index for tuple correlation
