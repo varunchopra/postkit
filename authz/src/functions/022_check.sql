@@ -95,7 +95,7 @@ AS $$
     )
 
     SELECT perm AS permission FROM all_permissions;
-$$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- =============================================================================
@@ -115,7 +115,7 @@ BEGIN
         WHERE permission = p_permission
     );
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- =============================================================================
@@ -135,7 +135,7 @@ BEGIN
         WHERE permission = ANY(p_permissions)
     );
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- =============================================================================
@@ -157,4 +157,4 @@ BEGIN
             WHERE permission = ANY(p_permissions)
         ) = array_length(p_permissions, 1);
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

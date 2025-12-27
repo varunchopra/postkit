@@ -77,10 +77,14 @@ class AuthzClient:
         self.namespace = namespace
         # Set tenant context for RLS
         self.cursor.execute("SELECT authz.set_tenant(%s)", (namespace,))
-        # Actor context stored as instance state
+        # Actor context stored as instance state (applied per-operation in _write_scalar)
         self._actor_id: str | None = None
         self._request_id: str | None = None
         self._reason: str | None = None
+
+    def _handle_error(self, e: psycopg.Error) -> None:
+        """Convert psycopg errors to SDK exceptions."""
+        raise AuthzError(str(e)) from e
 
     def _scalar(self, sql: str, params: tuple):
         """Execute SQL and return single scalar value."""
@@ -89,12 +93,7 @@ class AuthzClient:
             result = self.cursor.fetchone()
             return result[0] if result else None
         except psycopg.Error as e:
-            err_msg = str(e).lower()
-            if "cycle" in err_msg:
-                raise AuthzCycleError(str(e)) from e
-            if "cannot be empty" in err_msg or "exceeds maximum" in err_msg:
-                raise AuthzValidationError(str(e)) from e
-            raise
+            self._handle_error(e)
 
     def _write_scalar(self, sql: str, params: tuple):
         """Execute a write operation with actor context for audit logging.

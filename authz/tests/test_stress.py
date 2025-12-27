@@ -15,7 +15,7 @@ import os
 import pytest
 import time
 
-from sdk import AuthzClient
+from authz_sdk import AuthzClient
 
 
 class TestLargeGroups:

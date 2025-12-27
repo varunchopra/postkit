@@ -53,7 +53,7 @@ AS $$
         WHERE um.depth < authz._max_group_depth()
     )
     SELECT group_type, group_id, membership_relation FROM user_memberships;
-$$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Expand resource ancestors recursively
@@ -95,7 +95,7 @@ AS $$
         WHERE a.depth < authz._max_resource_depth()
     )
     SELECT ancestors.resource_type, ancestors.resource_id FROM ancestors;
-$$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Expand resource descendants recursively
@@ -137,4 +137,4 @@ AS $$
         WHERE d.depth < authz._max_resource_depth()
     )
     SELECT descendants.resource_type, descendants.resource_id FROM descendants;
-$$ LANGUAGE sql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

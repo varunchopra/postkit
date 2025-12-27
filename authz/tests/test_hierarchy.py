@@ -11,7 +11,7 @@ Tests for:
 """
 
 import pytest
-from sdk import AuthzCycleError
+from authz_sdk import AuthzError
 
 
 class TestHierarchyModification:
@@ -102,20 +102,20 @@ class TestHierarchyCycle:
 
     def test_direct_cycle_rejected(self, authz):
         """admin -> admin should be rejected."""
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzError, match="cycle"):
             authz.add_hierarchy_rule("doc", "admin", "admin")
 
     def test_indirect_cycle_rejected(self, authz):
         """admin -> write -> admin should be rejected."""
         authz.set_hierarchy("doc", "admin", "write")
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzError, match="cycle"):
             authz.add_hierarchy_rule("doc", "write", "admin")
 
     def test_branching_cycle_rejected(self, authz):
         """admin -> write, admin -> read, read -> admin should be rejected."""
         authz.add_hierarchy_rule("doc", "admin", "write")
         authz.add_hierarchy_rule("doc", "admin", "read")
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzError, match="cycle"):
             authz.add_hierarchy_rule("doc", "read", "admin")
 
 

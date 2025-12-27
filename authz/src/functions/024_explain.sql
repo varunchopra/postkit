@@ -36,6 +36,9 @@ BEGIN
     -- Use centralized default if not specified
     v_max_depth := COALESCE(p_max_depth, authz._max_group_depth());
 
+    -- Warn if namespace doesn't match RLS tenant context (debugging aid)
+    PERFORM authz._warn_namespace_mismatch(p_namespace);
+
     -- Depth limit to prevent runaway recursion on malformed data
     IF v_max_depth <= 0 THEN
         RAISE WARNING 'explain() reached maximum recursion depth for permission % on %:%', p_permission, p_resource_type, p_resource_id;
@@ -209,7 +212,7 @@ BEGIN
     END;
 $$
 LANGUAGE plpgsql
-STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- EXPLAIN TEXT - Human-readable version of explain
@@ -279,4 +282,4 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql
-STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

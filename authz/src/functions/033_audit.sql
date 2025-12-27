@@ -36,7 +36,7 @@ BEGIN
         set_config('authz.reason', COALESCE(p_reason, ''), TRUE);
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -64,7 +64,7 @@ BEGIN
     PERFORM set_config('authz.reason', '', TRUE);
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -89,8 +89,13 @@ DECLARE
     v_end_date date;
 BEGIN
     -- Validate inputs
+    IF p_year < 1970 OR p_year > 9999 THEN
+        RAISE EXCEPTION 'Year must be between 1970 and 9999, got %', p_year
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
     IF p_month < 1 OR p_month > 12 THEN
-        RAISE EXCEPTION 'Month must be between 1 and 12, got %', p_month;
+        RAISE EXCEPTION 'Month must be between 1 and 12, got %', p_month
+            USING ERRCODE = 'invalid_parameter_value';
     END IF;
     -- Build partition name
     v_partition_name := format('audit_events_y%sm%s', to_char(p_year, 'FM0000'), to_char(p_month, 'FM00'));
@@ -116,7 +121,7 @@ END IF;
     RETURN v_partition_name;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -151,7 +156,7 @@ BEGIN
     RETURN;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -221,7 +226,7 @@ BEGIN
     RETURN;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================

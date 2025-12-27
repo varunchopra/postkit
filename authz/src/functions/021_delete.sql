@@ -38,7 +38,7 @@ BEGIN
     RETURN v_deleted > 0;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -57,4 +57,4 @@ BEGIN
     RETURN authz.delete_tuple(p_resource_type, p_resource_id, p_relation,
         p_subject_type, p_subject_id, NULL, p_namespace);
 END;
-$$ LANGUAGE plpgsql SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authz, pg_temp;

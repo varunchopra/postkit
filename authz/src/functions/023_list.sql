@@ -13,7 +13,11 @@
 -- PERF NOTE: The CROSS JOIN LATERAL in accessible_resources fires a recursive
 -- CTE per granted resource. This is O(n) where n = number of accessible resources.
 -- Known scaling limit: ~1000 accessible resources before query time degrades.
--- For high-volume use cases, consider denormalizing or caching at the application layer.
+--
+-- MITIGATION OPTIONS for high-volume use cases:
+--   1. Use filter_authorized() with a pre-filtered candidate set instead
+--   2. Implement application-layer caching of list_resources results
+--   3. Partition resources by type and call separately with smaller p_limit
 CREATE OR REPLACE FUNCTION authz.list_resources (p_user_id text, p_resource_type text, p_permission text, p_namespace text DEFAULT 'default', p_limit int DEFAULT 100, p_cursor text DEFAULT NULL)
     RETURNS TABLE (
         resource_id text
@@ -95,7 +99,7 @@ ORDER BY
 LIMIT p_limit;
 $$
 LANGUAGE sql
-STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- LIST USERS
@@ -182,7 +186,7 @@ ORDER BY
 LIMIT p_limit;
 $$
 LANGUAGE sql
-STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- FILTER AUTHORIZED (batch check)
@@ -260,4 +264,4 @@ SELECT
             resource_id);
 $$
 LANGUAGE sql
-STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

@@ -49,7 +49,7 @@ BEGIN
             USING ERRCODE = 'invalid_parameter_value';
     END IF;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Validate an ID (resource_id, subject_id)
@@ -83,7 +83,7 @@ BEGIN
             USING ERRCODE = 'invalid_parameter_value';
     END IF;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Validate an array of IDs (for bulk operations)
@@ -115,7 +115,7 @@ BEGIN
             USING ERRCODE = 'invalid_parameter_value';
     END LOOP;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Warn if namespace doesn't match RLS tenant context
@@ -131,7 +131,7 @@ BEGIN
             p_namespace, v_tenant_id;
     END IF;
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Validate namespace
@@ -161,4 +161,4 @@ BEGIN
             USING ERRCODE = 'invalid_parameter_value';
     END IF;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

@@ -116,7 +116,7 @@ BEGIN
     RETURN v_tuple_id;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -136,7 +136,7 @@ BEGIN
     RETURN authz.write_tuple(p_resource_type, p_resource_id, p_relation,
         p_subject_type, p_subject_id, NULL, p_namespace, p_expires_at);
 END;
-$$ LANGUAGE plpgsql SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- BULK WRITE - Insert multiple tuples efficiently
@@ -196,5 +196,5 @@ ON CONFLICT (namespace,
     RETURN v_count;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;

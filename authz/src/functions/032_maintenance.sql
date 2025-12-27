@@ -37,7 +37,7 @@ BEGIN
 
     RETURN;
 END;
-$$ LANGUAGE plpgsql SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- STATISTICS
@@ -59,7 +59,7 @@ BEGIN
         (SELECT COUNT(DISTINCT subject_id) FROM authz.tuples WHERE namespace = p_namespace AND subject_type = 'user')::bigint,
         (SELECT COUNT(DISTINCT (resource_type, resource_id)) FROM authz.tuples WHERE namespace = p_namespace)::bigint;
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- BULK GRANT TO RESOURCES
@@ -118,5 +118,5 @@ BEGIN
     RETURN v_count;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;

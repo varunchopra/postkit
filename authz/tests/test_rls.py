@@ -7,7 +7,7 @@ separate role to verify RLS policies work correctly.
 import pytest
 import psycopg
 
-from sdk import AuthzClient
+from authz_sdk import AuthzClient
 
 
 class TestRowLevelSecurity:

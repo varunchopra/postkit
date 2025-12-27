@@ -32,7 +32,7 @@ BEGIN
     RETURN v_updated > 0;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -45,7 +45,7 @@ BEGIN
     RETURN authz.set_expiration (p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, NULL, p_namespace);
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -88,7 +88,7 @@ BEGIN
             RETURN v_new_expiration;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -126,8 +126,8 @@ BEGIN
         t.expires_at ASC;
 END;
 $$
-LANGUAGE plpgsql
-STABLE PARALLEL SAFE SET search_path = authz, pg_temp;
+LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER
+SET search_path = authz, pg_temp;
 
 -- =============================================================================
 -- CLEANUP EXPIRED
@@ -153,5 +153,5 @@ BEGIN
         v_tuples;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;

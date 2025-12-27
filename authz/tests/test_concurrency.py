@@ -12,7 +12,7 @@ import psycopg
 import threading
 import time
 
-from sdk import AuthzTestHelpers
+from authz_sdk import AuthzTestHelpers
 
 # Database connection from environment or default (matches Makefile)
 DATABASE_URL = os.environ.get(

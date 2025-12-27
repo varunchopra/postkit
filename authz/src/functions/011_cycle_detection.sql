@@ -46,7 +46,7 @@ BEGIN
         PERFORM pg_advisory_xact_lock(hashtext(v_key1));
     END IF;
 END;
-$$ LANGUAGE plpgsql SET search_path = authz, pg_temp;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Check if adding a membership would create a cycle
@@ -89,7 +89,7 @@ RETURNS boolean AS $$
         SELECT 1 FROM ancestors
         WHERE group_type = p_child_type AND group_id = p_child_id
     );
-$$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Find existing cycles in the group membership graph
@@ -145,7 +145,7 @@ RETURNS TABLE(cycle_path text[]) AS $$
     SELECT DISTINCT path AS cycle_path
     FROM paths
     WHERE is_cycle;
-$$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- =============================================================================
@@ -192,7 +192,7 @@ RETURNS boolean AS $$
         SELECT 1 FROM ancestors
         WHERE resource_type = p_child_type AND resource_id = p_child_id
     );
-$$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
 -- Find existing cycles in the resource hierarchy graph
@@ -247,4 +247,4 @@ RETURNS TABLE(cycle_path text[]) AS $$
     SELECT DISTINCT path AS cycle_path
     FROM paths
     WHERE is_cycle;
-$$ LANGUAGE sql STABLE SET search_path = authz, pg_temp;
+$$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = authz, pg_temp;

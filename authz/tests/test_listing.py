@@ -8,7 +8,7 @@ Tests for:
 """
 
 import pytest
-from sdk import AuthzClient
+from authz_sdk import AuthzClient
 
 
 class TestFilterAuthorized:

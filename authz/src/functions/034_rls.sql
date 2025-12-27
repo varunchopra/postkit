@@ -31,7 +31,7 @@ BEGIN
         set_config('authz.tenant_id', p_tenant_id, FALSE);
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- =============================================================================
@@ -54,5 +54,5 @@ BEGIN
     PERFORM set_config('authz.tenant_id', '', FALSE);
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;

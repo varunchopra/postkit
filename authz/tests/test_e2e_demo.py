@@ -19,7 +19,7 @@ The answer comes from postkit/authz, which knows about team memberships, permiss
 hierarchies, and direct grants.
 """
 
-from sdk import AuthzClient
+from authz_sdk import AuthzClient
 
 
 # =============================================================================

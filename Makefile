@@ -1,4 +1,4 @@
-.PHONY: setup build test dev release clean
+.PHONY: setup build test test-authz test-authn dev release clean
 
 PG_VERSION ?= 16
 PG_CONTAINER = postkit-test
@@ -24,14 +24,21 @@ build:
 	@mkdir -p dist
 	@./scripts/build.sh > dist/postkit.sql
 	@./scripts/build.sh authz > dist/authz.sql
-	@echo "$(GREEN) Built dist/postkit.sql and dist/authz.sql$(NC)"
+	@./scripts/build.sh authn > dist/authn.sql
+	@echo "$(GREEN) Built dist/postkit.sql, dist/authz.sql, dist/authn.sql$(NC)"
 
 test: build
 ifdef TEST
-	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v $(TEST)
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -q -v $(TEST)
 else
-	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v authz/tests/
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -q -v authz/tests/ authn/tests/
 endif
+
+test-authz: build
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -q -v authz/tests/
+
+test-authn: build
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -q -v authn/tests/
 
 dev: build test
 	@echo "$(GREEN) Build and tests passed$(NC)"

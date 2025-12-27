@@ -71,7 +71,7 @@ BEGIN
     RETURN v_id;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 CREATE OR REPLACE FUNCTION authz.remove_hierarchy (p_resource_type text, p_permission text, p_implies text, p_namespace text DEFAULT 'default')
@@ -95,7 +95,7 @@ BEGIN
     RETURN FOUND;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
 -- Clear all hierarchy rules for a resource type
@@ -117,5 +117,5 @@ BEGIN
     RETURN v_count;
 END;
 $$
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
