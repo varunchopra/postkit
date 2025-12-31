@@ -6,10 +6,8 @@ that the system works correctly under various operational conditions.
 """
 
 import os
-import subprocess
 
 import psycopg
-import pytest
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/postgres"
