@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from ipaddress import IPv4Address, IPv6Address
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, NoReturn, TypeVar
 from uuid import UUID
 
 import psycopg
@@ -116,7 +116,7 @@ class BaseClient(ABC):
         except psycopg.Error as e:
             self._handle_error(e)
 
-    def _handle_error(self, e: psycopg.Error) -> None:
+    def _handle_error(self, e: psycopg.Error) -> NoReturn:
         """Convert psycopg errors to SDK exceptions, preserving SQLSTATE.
 
         Uses specific exception subclasses for common database errors

@@ -5,7 +5,7 @@
 | Function | Description |
 |----------|-------------|
 | [`add_mfa`](sdk.md#add_mfa) | Add an MFA method for a user. |
-| [`cleanup_expired`](sdk.md#cleanup_expired) | Clean up expired sessions, tokens, and old login attempts. |
+| [`cleanup_expired`](sdk.md#cleanup_expired) | Clean up expired sessions, tokens, impersonation records, and old login attempts. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`clear_attempts`](sdk.md#clear_attempts) | Clear login attempts for an email. Returns count deleted. |
 | [`consume_token`](sdk.md#consume_token) | Consume a one-time token. |
@@ -20,6 +20,7 @@
 | [`end_impersonation`](sdk.md#end_impersonation) | End an impersonation session early. |
 | [`end_operator_impersonation`](sdk.md#end_operator_impersonation) | End an operator impersonation session early. |
 | [`extend_session`](sdk.md#extend_session) | Extend session expiration. |
+| [`get_api_key`](sdk.md#get_api_key) | Get an API key by ID if owned by user. |
 | [`get_audit_events`](sdk.md#get_audit_events) | Query audit events. |
 | [`get_credentials`](sdk.md#get_credentials) | Get credentials for login verification. |
 | [`get_impersonation_context`](sdk.md#get_impersonation_context) | Check if a session is an impersonation session. |
@@ -72,6 +73,7 @@
 | Function | Description |
 |----------|-------------|
 | [`authn.create_api_key`](sql.md#authncreate_api_key) | Create an API key for programmatic access |
+| [`authn.get_api_key`](sql.md#authnget_api_key) | Get a single API key by ID if owned by user (for ownership verification) |
 | [`authn.list_api_keys`](sql.md#authnlist_api_keys) | List API keys for a user (for management UI) |
 | [`authn.revoke_all_api_keys`](sql.md#authnrevoke_all_api_keys) | Revoke all API keys for a user |
 | [`authn.revoke_api_key`](sql.md#authnrevoke_api_key) | Revoke an API key |
@@ -98,7 +100,7 @@
 | [`authn.list_mfa`](sql.md#authnlist_mfa) | List user's MFA methods for "manage security" UI (no secrets) |
 | [`authn.record_mfa_use`](sql.md#authnrecord_mfa_use) | Record successful MFA verification (updates last_used_at) |
 | [`authn.remove_mfa`](sql.md#authnremove_mfa) | Remove an MFA method |
-| [`authn.cleanup_expired`](sql.md#authncleanup_expired) | Delete expired sessions, tokens, refresh tokens, API keys, and old login attempts (run via cron) |
+| [`authn.cleanup_expired`](sql.md#authncleanup_expired) | Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron) |
 | [`authn.get_stats`](sql.md#authnget_stats) | Get namespace statistics for monitoring dashboards |
 | [`authn.clear_tenant`](sql.md#authnclear_tenant) | Clear tenant context. Queries return no rows (fail-closed for safety). |
 | [`authn.set_tenant`](sql.md#authnset_tenant) | Set the tenant context for Row-Level Security |

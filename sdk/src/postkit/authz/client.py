@@ -411,6 +411,36 @@ class AuthzClient(BaseClient):
         )
         return [(row[0], row[1]) for row in rows]
 
+    def count_subjects(
+        self,
+        permission: str,
+        resource: Entity,
+        *,
+        subject_type: str | None = None,
+    ) -> int:
+        """
+        Count subjects who have a permission on a resource.
+
+        More efficient than len(list_subjects(...)) when you only need the count.
+
+        Args:
+            permission: The permission to check
+            resource: The resource as (type, id) tuple
+            subject_type: Filter to specific type (e.g., "user")
+
+        Returns:
+            Count of subjects with the permission
+
+        Example:
+            member_count = authz.count_subjects("member", ("team", "eng"))
+            user_count = authz.count_subjects("member", ("team", "eng"), subject_type="user")
+        """
+        resource_type, resource_id = resource
+        return self._fetch_val(
+            "SELECT authz.count_subjects(%s, %s, %s, %s, %s)",
+            (resource_type, resource_id, permission, self.namespace, subject_type),
+        )
+
     def list_resources(
         self,
         subject: Entity,
@@ -776,6 +806,7 @@ class AuthzClient(BaseClient):
         self,
         *,
         limit: int = 100,
+        before: str | None = None,
         event_type: str | None = None,
         actor_id: str | None = None,
         resource: Entity | None = None,
@@ -786,18 +817,22 @@ class AuthzClient(BaseClient):
 
         Args:
             limit: Maximum number of events to return (default 100)
+            before: Cursor for pagination (format: "event_time_iso,id")
+                Build from previous result: f"{event['event_time'].isoformat()},{event['id']}"
             event_type: Filter by event type (e.g., 'tuple_created')
             actor_id: Filter by actor ID
             resource: Filter by resource as (type, id) tuple
             subject: Filter by subject as (type, id) tuple
 
         Returns:
-            List of audit event dictionaries
+            List of audit event dictionaries (includes 'id' for cursor building)
 
         Example:
             events = authz.get_audit_events(actor_id="admin@acme.com", limit=50)
-            for event in events:
-                print(f"{event['event_type']}: {event['resource']}")
+            if events:
+                # Get next page using cursor from last event
+                cursor = f"{events[-1]['event_time'].isoformat()},{events[-1]['id']}"
+                more = authz.get_audit_events(actor_id="admin@acme.com", limit=50, before=cursor)
         """
         conditions = ["namespace = %s"]
         params: list = [self.namespace]
@@ -820,11 +855,16 @@ class AuthzClient(BaseClient):
             conditions.append("subject_id = %s")
             params.extend(subject)
 
+        if before is not None:
+            cursor_time, cursor_id = before.rsplit(",", 1)
+            conditions.append("(event_time, id) < (%s::timestamptz, %s::bigint)")
+            params.extend([cursor_time, cursor_id])
+
         params.append(limit)
 
         sql = f"""
             SELECT
-                event_id, event_type, event_time,
+                id, event_id, event_type, event_time,
                 actor_id, request_id, reason, on_behalf_of,
                 session_user_name, current_user_name, client_addr, application_name,
                 resource_type, resource_id, relation,
@@ -840,23 +880,24 @@ class AuthzClient(BaseClient):
 
         return [
             {
-                "event_id": str(row[0]),
-                "event_type": row[1],
-                "event_time": row[2],
-                "actor_id": row[3],
-                "request_id": row[4],
-                "reason": row[5],
-                "on_behalf_of": row[6],
-                "session_user": row[7],
-                "current_user": row[8],
-                "client_addr": str(row[9]) if row[9] else None,
-                "application_name": row[10],
-                "resource": (row[11], row[12]),
-                "relation": row[13],
-                "subject": (row[14], row[15]),
-                "subject_relation": row[16],
-                "tuple_id": row[17],
-                "expires_at": row[18],
+                "id": row[0],
+                "event_id": str(row[1]),
+                "event_type": row[2],
+                "event_time": row[3],
+                "actor_id": row[4],
+                "request_id": row[5],
+                "reason": row[6],
+                "on_behalf_of": row[7],
+                "session_user": row[8],
+                "current_user": row[9],
+                "client_addr": str(row[10]) if row[10] else None,
+                "application_name": row[11],
+                "resource": (row[12], row[13]),
+                "relation": row[14],
+                "subject": (row[15], row[16]),
+                "subject_relation": row[17],
+                "tuple_id": row[18],
+                "expires_at": row[19],
             }
             for row in rows
         ]

@@ -15,6 +15,7 @@
 | [`clear_expiration`](sdk.md#clear_expiration) | Remove expiration from a grant (make it permanent). |
 | [`clear_hierarchy`](sdk.md#clear_hierarchy) | Clear all hierarchy rules for a resource type in the client's namespace. |
 | [`clear_viewer`](sdk.md#clear_viewer) | Clear the viewer context. |
+| [`count_subjects`](sdk.md#count_subjects) | Count subjects who have a permission on a resource. |
 | [`explain`](sdk.md#explain) | Explain why a subject has a permission. |
 | [`extend_expiration`](sdk.md#extend_expiration) | Extend an existing expiration by a given interval. |
 | [`filter_authorized`](sdk.md#filter_authorized) | Batch-check which resources a subject can access. |
@@ -58,6 +59,7 @@
 | [`authz.add_hierarchy`](sql.md#authzadd_hierarchy) | Define that one permission implies another (e.g., admin implies write) |
 | [`authz.clear_hierarchy`](sql.md#authzclear_hierarchy) | Remove all hierarchy rules for a resource type (start fresh) |
 | [`authz.remove_hierarchy`](sql.md#authzremove_hierarchy) | Remove a permission implication rule |
+| [`authz.count_subjects`](sql.md#authzcount_subjects) | Count subjects who can access a resource (without fetching all) |
 | [`authz.filter_authorized`](sql.md#authzfilter_authorized) | Filter a list to only resources the subject can access (batch check) |
 | [`authz.list_resources`](sql.md#authzlist_resources) | List all resources a subject can access ("What can Alice read?") |
 | [`authz.list_subjects`](sql.md#authzlist_subjects) | List all subjects who can access a resource ("Who can read this doc?") |

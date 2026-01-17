@@ -7,7 +7,7 @@
 -- @param p_name Optional friendly name ("Production", "CI/CD")
 -- @param p_expires_in Optional expiration interval (NULL = never expires)
 -- @returns API key ID
--- @example SELECT authn.create_api_key(user_id, sha256(key), 'Production', '1 year');
+-- @example SELECT authn.create_api_key(user_id, 'a1b2c3...key_hash', 'Production', '1 year');
 CREATE OR REPLACE FUNCTION authn.create_api_key(
     p_user_id uuid,
     p_key_hash text,
@@ -51,8 +51,8 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @brief Validate an API key and get owner info (hot path)
 -- @param p_key_hash SHA-256 hash of the key being validated
 -- @returns user_id, key_id, name, expires_at if valid; empty if invalid/expired/revoked
--- @note Updates last_used_at on successful validation
--- @example SELECT * FROM authn.validate_api_key(sha256(key_from_header));
+-- @note Updates last_used_at only when stale (>1 hour) to reduce write amplification
+-- @example SELECT * FROM authn.validate_api_key('a1b2c3...key_hash');
 CREATE OR REPLACE FUNCTION authn.validate_api_key(
     p_key_hash text,
     p_namespace text DEFAULT 'default'
@@ -65,37 +65,41 @@ RETURNS TABLE(
 )
 AS $$
 DECLARE
-    v_key_id uuid;
+    v_result RECORD;
 BEGIN
     PERFORM authn._validate_hash(p_key_hash, 'key_hash', false);
     PERFORM authn._validate_namespace(p_namespace);
 
-    -- Find valid key and update last_used_at in one query
-    UPDATE authn.api_keys ak
-    SET last_used_at = now()
+    -- First, find the valid key (read-only, can use index efficiently)
+    SELECT
+        ak.id AS key_id,
+        ak.user_id,
+        ak.name,
+        ak.expires_at,
+        ak.last_used_at
+    INTO v_result
+    FROM authn.api_keys ak
+    JOIN authn.users u ON u.id = ak.user_id AND u.namespace = ak.namespace
     WHERE ak.key_hash = p_key_hash
       AND ak.namespace = p_namespace
       AND ak.revoked_at IS NULL
       AND (ak.expires_at IS NULL OR ak.expires_at > now())
-      AND EXISTS (
-          SELECT 1 FROM authn.users u
-          WHERE u.id = ak.user_id
-            AND u.namespace = ak.namespace
-            AND u.disabled_at IS NULL
-      )
-    RETURNING ak.id INTO v_key_id;
+      AND u.disabled_at IS NULL;
 
-    -- Return key info if found
-    IF v_key_id IS NOT NULL THEN
-        RETURN QUERY
-        SELECT
-            ak.user_id,
-            ak.id AS key_id,
-            ak.name,
-            ak.expires_at
-        FROM authn.api_keys ak
-        WHERE ak.id = v_key_id;
+    -- If not found, return empty
+    IF v_result.key_id IS NULL THEN
+        RETURN;
     END IF;
+
+    -- Only update last_used_at if stale (older than 1 hour) to reduce write amplification
+    -- This provides useful "last seen" data without generating a write on every API call
+    IF v_result.last_used_at IS NULL OR v_result.last_used_at < now() - interval '1 hour' THEN
+        UPDATE authn.api_keys
+        SET last_used_at = now()
+        WHERE id = v_result.key_id;
+    END IF;
+
+    RETURN QUERY SELECT v_result.user_id, v_result.key_id, v_result.name, v_result.expires_at;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 
@@ -208,5 +212,43 @@ BEGIN
       AND ak.revoked_at IS NULL
       AND (ak.expires_at IS NULL OR ak.expires_at > now())
     ORDER BY ak.created_at DESC;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
+
+-- @function authn.get_api_key
+-- @brief Get a single API key by ID if owned by user (for ownership verification)
+-- @param p_key_id The key ID to look up
+-- @param p_user_id The user who should own the key
+-- @returns Key metadata if found and owned by user; empty if not found/not owned/revoked/expired
+-- @example SELECT * FROM authn.get_api_key('key-uuid', 'user-uuid');
+CREATE OR REPLACE FUNCTION authn.get_api_key(
+    p_key_id uuid,
+    p_user_id uuid,
+    p_namespace text DEFAULT 'default'
+)
+RETURNS TABLE(
+    key_id uuid,
+    name text,
+    created_at timestamptz,
+    expires_at timestamptz,
+    last_used_at timestamptz
+)
+AS $$
+BEGIN
+    PERFORM authn._validate_namespace(p_namespace);
+
+    RETURN QUERY
+    SELECT
+        ak.id AS key_id,
+        ak.name,
+        ak.created_at,
+        ak.expires_at,
+        ak.last_used_at
+    FROM authn.api_keys ak
+    WHERE ak.id = p_key_id
+      AND ak.user_id = p_user_id
+      AND ak.namespace = p_namespace
+      AND ak.revoked_at IS NULL
+      AND (ak.expires_at IS NULL OR ak.expires_at > now());
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;

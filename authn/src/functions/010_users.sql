@@ -370,6 +370,15 @@ $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @param p_password_hash Optional password hash (NULL for SSO-only users)
 -- @param p_namespace Namespace to use
 -- @returns user_id, created (true if new user), disabled (true if user is disabled)
+--
+-- EDGE CASE: In an extremely rare race condition where:
+--   1. INSERT fails because user exists (ON CONFLICT DO NOTHING)
+--   2. Another transaction DELETEs that user before our SELECT
+--   3. Our SELECT returns NULL
+-- This function will return (NULL, false, false). The SDK raises AuthnError in this case.
+-- This scenario requires user deletion during concurrent creation, which is operationally
+-- very unusual. If this is a concern for your use case, wrap the call in retry logic.
+--
 -- @example -- SSO callback: get or create user
 -- @example SELECT * FROM authn.get_or_create_user('alice@example.com', NULL, 'default');
 CREATE OR REPLACE FUNCTION authn.get_or_create_user(

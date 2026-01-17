@@ -15,7 +15,14 @@
 -- - Tokens: created, consumed
 -- - MFA: added, removed, used
 -- - Security events: login_attempt_failed, lockout_triggered
--- - Impersonation: started, ended
+-- - Impersonation: started, ended (within same namespace)
+--
+-- NOTE: Operator impersonation events (cross-namespace) are stored separately in
+-- authn.operator_audit_events. This separation exists because:
+--   1. Different visibility requirements (tenants can query their data)
+--   2. Different indexing patterns (by operator namespace AND target namespace)
+--   3. No RLS - accessed via SECURITY DEFINER functions that filter appropriately
+--   4. Potentially different retention policies for compliance
 --
 -- NEVER LOGGED (security)
 -- =======================
@@ -83,6 +90,10 @@ CREATE TABLE authn.audit_events (
         'impersonation_started', 'impersonation_ended'
     ))
 ) PARTITION BY RANGE (event_time);
+
+-- Default partition catches events if the cron job creating monthly partitions fails.
+-- Monitor for rows here - if any appear, investigate partition creation.
+CREATE TABLE authn.audit_events_default PARTITION OF authn.audit_events DEFAULT;
 
 -- =============================================================================
 -- AUDIT INDEXES

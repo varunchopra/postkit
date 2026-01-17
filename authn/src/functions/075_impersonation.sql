@@ -16,7 +16,7 @@
 -- @param p_duration How long the impersonation lasts (default 1 hour, max 8 hours)
 -- @returns impersonation_id, impersonation_session_id, expires_at
 -- @note Impersonation chaining is prevented - you cannot start an impersonation from an impersonation session
--- @example SELECT * FROM authn.start_impersonation(admin_session, target_user, sha256(token), 'Support ticket #123');
+-- @example SELECT * FROM authn.start_impersonation(admin_session, target_user, 'a1b2c3...token_hash', 'Support ticket #123');
 CREATE OR REPLACE FUNCTION authn.start_impersonation(
     p_actor_session_id uuid,
     p_target_user_id uuid,

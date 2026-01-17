@@ -22,7 +22,7 @@ $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_temp;
 -- @param p_token_hash SHA-256 hash of the refresh token
 -- @param p_expires_in Token lifetime (default 30 days)
 -- @returns Table with refresh_token_id, family_id, expires_at
--- @example SELECT * FROM authn.create_refresh_token(session_id, sha256(token));
+-- @example SELECT * FROM authn.create_refresh_token(session_id, 'a1b2c3...token_hash');
 CREATE OR REPLACE FUNCTION authn.create_refresh_token(
     p_session_id uuid,
     p_token_hash text,
@@ -92,7 +92,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @param p_expires_in New token lifetime (default 30 days)
 -- @returns user_id, session_id, new_refresh_token_id, family_id, generation, expires_at
 --   Returns empty if token invalid, expired, or already used (reuse triggers family revocation)
--- @example SELECT * FROM authn.rotate_refresh_token(sha256(old), sha256(new));
+-- @example SELECT * FROM authn.rotate_refresh_token('old_token_hash', 'new_token_hash');
 CREATE OR REPLACE FUNCTION authn.rotate_refresh_token(
     p_old_token_hash text,
     p_new_token_hash text,
@@ -119,13 +119,25 @@ BEGIN
     PERFORM authn._validate_hash(p_new_token_hash, 'new_token_hash', false);
     PERFORM authn._validate_namespace(p_namespace);
 
-    -- Find the old token
+    -- Find and lock the old token to prevent concurrent rotation.
+    --
+    -- FOR UPDATE SKIP LOCKED: if another concurrent request is rotating this same
+    -- token, we return empty rather than blocking. This is intentional:
+    --   1. Prevents cascading delays under high concurrency
+    --   2. The concurrent request will complete and issue a new token
+    --   3. Caller receiving empty result should retry their auth flow
+    --
+    -- This race is rare in practice (requires two requests with same refresh token
+    -- arriving within milliseconds). When it happens, one succeeds and the other
+    -- gets an empty result - which the client treats like an expired token and
+    -- re-authenticates or retries with their session.
     SELECT * INTO v_old_token
     FROM authn.refresh_tokens rt
     WHERE rt.token_hash = p_old_token_hash
-      AND rt.namespace = p_namespace;
+      AND rt.namespace = p_namespace
+    FOR UPDATE SKIP LOCKED;
 
-    -- Token not found
+    -- Token not found (or locked by concurrent rotation)
     IF v_old_token.id IS NULL THEN
         RETURN;
     END IF;
@@ -238,7 +250,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @function authn.validate_refresh_token
 -- @brief Check if a refresh token is valid WITHOUT rotating (for inspection only)
 -- @returns user_id, session_id, family_id, generation, expires_at, is_current if valid
--- @example SELECT * FROM authn.validate_refresh_token(sha256(token));
+-- @example SELECT * FROM authn.validate_refresh_token('a1b2c3...token_hash');
 CREATE OR REPLACE FUNCTION authn.validate_refresh_token(
     p_token_hash text,
     p_namespace text DEFAULT 'default'

@@ -4,6 +4,23 @@
 -- @brief Get password hash for login verification (only function that returns hash)
 -- @returns user_id, password_hash, disabled_at. Verify hash in your app, check
 --   disabled_at, then call create_session if valid.
+--
+-- SECURITY NOTE: This function intentionally does NOT check lockout status.
+-- The recommended login flow is:
+--   1. Call is_locked_out(email) - reject if locked
+--   2. Call get_credentials(email) - get hash for verification
+--   3. Verify password hash in application code (argon2id)
+--   4. Call record_login_attempt(email, success, ip) - track attempt
+--   5. If success: call create_session() and return token
+--
+-- This separation of concerns allows flexibility:
+--   - Different lockout policies per user tier or namespace
+--   - Custom rate limiting at the application layer
+--   - A/B testing authentication flows
+-- The application MUST call is_locked_out() before get_credentials() to prevent
+-- credential stuffing attacks. Password hashes should use argon2id to make
+-- offline cracking impractical even if hashes are harvested.
+--
 -- @example SELECT * FROM authn.get_credentials('alice@example.com');
 CREATE OR REPLACE FUNCTION authn.get_credentials(
     p_email text,

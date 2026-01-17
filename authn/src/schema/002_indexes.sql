@@ -140,3 +140,30 @@ CREATE INDEX impersonation_sessions_target_idx
 CREATE INDEX impersonation_sessions_expired_idx
     ON authn.impersonation_sessions (namespace, expires_at)
     WHERE ended_at IS NULL;
+
+-- =============================================================================
+-- FK CASCADE DELETE INDEXES
+-- =============================================================================
+-- Non-partial indexes on FK columns to support efficient CASCADE deletes.
+-- When a user is deleted, PostgreSQL must find all child records - partial
+-- indexes (WHERE revoked_at IS NULL) don't cover revoked/expired records.
+
+-- Sessions: efficient cascade when user is deleted
+CREATE INDEX sessions_user_id_idx ON authn.sessions (user_id);
+
+-- Refresh tokens: efficient cascade when user or session is deleted
+CREATE INDEX refresh_tokens_user_id_idx ON authn.refresh_tokens (user_id);
+
+-- Tokens: efficient cascade when user is deleted
+CREATE INDEX tokens_user_id_idx ON authn.tokens (user_id);
+
+-- MFA secrets: efficient cascade when user is deleted
+CREATE INDEX mfa_secrets_user_id_idx ON authn.mfa_secrets (user_id);
+
+-- API keys: efficient cascade when user is deleted
+CREATE INDEX api_keys_user_id_idx ON authn.api_keys (user_id);
+
+-- Impersonation sessions: efficient cascade when user or session is deleted
+CREATE INDEX impersonation_sessions_actor_id_idx ON authn.impersonation_sessions (actor_id);
+CREATE INDEX impersonation_sessions_target_user_id_idx ON authn.impersonation_sessions (target_user_id);
+CREATE INDEX impersonation_sessions_original_session_id_idx ON authn.impersonation_sessions (original_session_id);

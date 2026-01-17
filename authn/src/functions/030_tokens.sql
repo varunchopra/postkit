@@ -5,8 +5,8 @@
 -- @param p_token_hash SHA-256 hash of the token (send raw token to user via email)
 -- @param p_token_type One of: 'password_reset', 'email_verify', 'magic_link'
 -- @returns Token ID
--- @example -- Send password reset email
--- @example SELECT authn.create_token(user_id, sha256(token), 'password_reset');
+-- @example -- Send password reset email (token_hash is pre-computed SHA-256 hex string)
+-- @example SELECT authn.create_token(user_id, 'a1b2c3...token_hash', 'password_reset');
 CREATE OR REPLACE FUNCTION authn.create_token(
     p_user_id uuid,
     p_token_hash text,
@@ -48,7 +48,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @function authn.consume_token
 -- @brief Use a one-time token (marks as used, can't be reused)
 -- @returns user_id, email if valid. Empty if expired, already used, or wrong type.
--- @example SELECT * FROM authn.consume_token(sha256(token_from_url), 'password_reset');
+-- @example SELECT * FROM authn.consume_token('a1b2c3...token_hash', 'password_reset');
 CREATE OR REPLACE FUNCTION authn.consume_token(
     p_token_hash text,
     p_token_type text,
@@ -100,7 +100,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @function authn.verify_email
 -- @brief Verify email address using token from email link
 -- @returns user_id, email if valid. Sets email_verified_at automatically.
--- @example SELECT * FROM authn.verify_email(sha256(token_from_url));
+-- @example SELECT * FROM authn.verify_email('a1b2c3...token_hash');
 CREATE OR REPLACE FUNCTION authn.verify_email(
     p_token_hash text,
     p_namespace text DEFAULT 'default'

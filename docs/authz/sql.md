@@ -374,6 +374,31 @@ SELECT authz.remove_hierarchy('repo', 'admin', 'write', 'default');
 
 ## Listing
 
+### authz.count_subjects
+
+```sql
+authz.count_subjects(p_resource_type: text, p_resource_id: text, p_permission: text, p_namespace: text, p_subject_type: text) -> int8
+```
+
+Count subjects who can access a resource (without fetching all)
+
+**Parameters:**
+- `p_resource_type`: Resource type (e.g., 'team')
+- `p_resource_id`: Resource ID
+- `p_permission`: Permission to check (e.g., 'member')
+- `p_subject_type`: Optional filter to specific subject type (e.g., 'user')
+
+**Returns:** Count of subjects with access
+
+**Example:**
+```sql
+SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
+```
+
+*Source: authz/src/functions/023_list.sql:204*
+
+---
+
 ### authz.filter_authorized
 
 ```sql
@@ -397,7 +422,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/023_list.sql:204*
+*Source: authz/src/functions/023_list.sql:230*
 
 ---
 

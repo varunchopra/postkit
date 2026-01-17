@@ -6,8 +6,8 @@
 --   hash it, store hash here, send raw token to client)
 -- @param p_expires_in Session duration (default 7 days)
 -- @returns Session ID
--- @example -- After verifying password
--- @example SELECT authn.create_session(user_id, sha256(token), '7 days', '1.2.3.4');
+-- @example -- After verifying password (token_hash is pre-computed SHA-256 hex string)
+-- @example SELECT authn.create_session(user_id, 'a1b2c3...', '7 days', '1.2.3.4');
 CREATE OR REPLACE FUNCTION authn.create_session(
     p_user_id uuid,
     p_token_hash text,
@@ -52,7 +52,33 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @returns user_id, email, session_id if valid. Empty if expired/revoked/disabled.
 --   Also returns impersonation context if this is an impersonation session.
 --   When impersonation is detected, automatically sets audit actor context.
--- @example SELECT * FROM authn.validate_session(sha256(token_from_cookie));
+--
+-- DESIGN NOTE: This function has a deliberate side effect for impersonation sessions.
+-- When an impersonation session is detected, it automatically calls set_actor() to configure
+-- the audit context. This is intentional for several reasons:
+--   1. Convenience: Applications don't need to know about impersonation internals
+--   2. Safety: Ensures all actions during impersonation are properly attributed in audit logs
+--   3. Transparency: The impersonation context is always returned so apps can display it
+-- The function is marked VOLATILE due to this side effect. The side effect only triggers
+-- on the rare impersonation path (typically <0.01% of calls). For pure validation without
+-- side effects, check is_impersonating in the result and manage actor context manually.
+--
+-- SECURITY NOTE: Token hash comparison uses PostgreSQL's = operator, which is not
+-- constant-time. Timing attacks are not practical here because:
+--   1. Attacker must guess the SHA-256 hash (2^256 space), not the original token
+--   2. Index lookup timing variance far exceeds string comparison variance
+--   3. Network jitter (~1-10ms) drowns out comparison timing (~nanoseconds)
+--   4. Even with perfect timing, reconstructing 256 bits via timing would require
+--      billions of precisely-timed queries
+-- Constant-time comparison would add overhead without meaningful security benefit.
+--
+-- TRANSACTION NOTE: The auto-set actor context uses transaction-local settings
+-- (set_config with is_local=true). In autocommit mode, this context is lost when the
+-- implicit transaction commits. Callers using autocommit should use the returned
+-- impersonation context to set actor state at the application layer if needed for
+-- subsequent operations within the same request.
+--
+-- @example SELECT * FROM authn.validate_session('a1b2c3...token_hash');
 CREATE OR REPLACE FUNCTION authn.validate_session(
     p_token_hash text,
     p_namespace text DEFAULT 'default'

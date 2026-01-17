@@ -5,6 +5,15 @@
 -- @param p_email The email to validate
 -- @returns Lowercase, trimmed email
 -- Raises exception on invalid format.
+--
+-- DESIGN NOTE: Email validation is intentionally minimal (something@something).
+-- This is a deliberate choice because:
+--   1. RFC 5321/5322 email syntax is extremely complex (quoted strings, comments, IP literals)
+--   2. Strict regex validation rejects valid addresses (e.g., user+tag@domain, unicode domains)
+--   3. The only true validation is sending an email and confirming receipt
+--   4. Most "invalid" emails that pass this check fail at SMTP delivery anyway
+-- If stricter validation is needed, implement it at the application layer where you can
+-- handle edge cases appropriately. This library focuses on storage and comparison.
 CREATE OR REPLACE FUNCTION authn._validate_email(p_email text)
 RETURNS text
 AS $$

@@ -22,10 +22,33 @@ Create an API key for programmatic access
 
 **Example:**
 ```sql
-SELECT authn.create_api_key(user_id, sha256(key), 'Production', '1 year');
+SELECT authn.create_api_key(user_id, 'a1b2c3...key_hash', 'Production', '1 year');
 ```
 
 *Source: authn/src/functions/025_api_keys.sql:1*
+
+---
+
+### authn.get_api_key
+
+```sql
+authn.get_api_key(p_key_id: uuid, p_user_id: uuid, p_namespace: text) -> table(key_id: uuid, name: text, created_at: timestamptz, expires_at: timestamptz, last_used_at: timestamptz)
+```
+
+Get a single API key by ID if owned by user (for ownership verification)
+
+**Parameters:**
+- `p_key_id`: The key ID to look up
+- `p_user_id`: The user who should own the key
+
+**Returns:** Key metadata if found and owned by user; empty if not found/not owned/revoked/expired
+
+**Example:**
+```sql
+SELECT * FROM authn.get_api_key('key-uuid', 'user-uuid');
+```
+
+*Source: authn/src/functions/025_api_keys.sql:216*
 
 ---
 
@@ -47,7 +70,7 @@ List API keys for a user (for management UI)
 SELECT * FROM authn.list_api_keys(user_id);
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:175*
+*Source: authn/src/functions/025_api_keys.sql:179*
 
 ---
 
@@ -69,7 +92,7 @@ Revoke all API keys for a user
 SELECT authn.revoke_all_api_keys(user_id); -- Security concern, revoke all
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:139*
+*Source: authn/src/functions/025_api_keys.sql:143*
 
 ---
 
@@ -91,7 +114,7 @@ Revoke an API key
 SELECT authn.revoke_api_key('key-uuid-here');
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:100*
+*Source: authn/src/functions/025_api_keys.sql:104*
 
 ---
 
@@ -110,7 +133,7 @@ Validate an API key and get owner info (hot path)
 
 **Example:**
 ```sql
-SELECT * FROM authn.validate_api_key(sha256(key_from_header));
+SELECT * FROM authn.validate_api_key('a1b2c3...key_hash');
 ```
 
 *Source: authn/src/functions/025_api_keys.sql:48*
@@ -234,7 +257,7 @@ authn.get_credentials(p_email: text, p_namespace: text) -> table(user_id: uuid, 
 
 Get password hash for login verification (only function that returns hash)
 
-**Returns:** user_id, password_hash, disabled_at. Verify hash in your app, check disabled_at, then call create_session if valid.
+**Returns:** user_id, password_hash, disabled_at. Verify hash in your app, check disabled_at, then call create_session if valid. SECURITY NOTE: This function intentionally does NOT check lockout status. The recommended login flow is: 1. Call is_locked_out(email) - reject if locked 2. Call get_credentials(email) - get hash for verification 3. Verify password hash in application code (argon2id) 4. Call record_login_attempt(email, success, ip) - track attempt 5. If success: call create_session() and return token This separation of concerns allows flexibility: - Different lockout policies per user tier or namespace - Custom rate limiting at the application layer - A/B testing authentication flows The application MUST call is_locked_out() before get_credentials() to prevent credential stuffing attacks. Password hashes should use argon2id to make offline cracking impractical even if hashes are harvested.
 
 **Example:**
 ```sql
@@ -261,7 +284,7 @@ Update user's password hash (after password change or reset)
 SELECT authn.update_password(user_id, '$argon2id$...');
 ```
 
-*Source: authn/src/functions/011_credentials.sql:34*
+*Source: authn/src/functions/011_credentials.sql:51*
 
 ---
 
@@ -377,7 +400,7 @@ Start impersonating a user (creates a session acting as target user)
 
 **Example:**
 ```sql
-SELECT * FROM authn.start_impersonation(admin_session, target_user, sha256(token), 'Support ticket #123');
+SELECT * FROM authn.start_impersonation(admin_session, target_user, 'a1b2c3...token_hash', 'Support ticket #123');
 ```
 
 *Source: authn/src/functions/075_impersonation.sql:1*
@@ -587,17 +610,22 @@ SELECT authn.remove_mfa(mfa_id);
 ### authn.cleanup_expired
 
 ```sql
-authn.cleanup_expired(p_namespace: text) -> table(sessions_deleted: int8, tokens_deleted: int8, refresh_tokens_deleted: int8, api_keys_deleted: int8, attempts_deleted: int8)
+authn.cleanup_expired(p_namespace: text, p_batch_size: int4) -> table(sessions_deleted: int8, tokens_deleted: int8, refresh_tokens_deleted: int8, api_keys_deleted: int8, impersonations_deleted: int8, operator_impersonations_deleted: int8, attempts_deleted: int8)
 ```
 
-Delete expired sessions, tokens, refresh tokens, API keys, and old login attempts (run via cron)
+Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron)
 
-**Returns:** sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, attempts_deleted
+**Parameters:**
+- `p_namespace`: Namespace to clean up
+- `p_batch_size`: Max rows to delete per table per iteration (default 10000, prevents long locks)
+
+**Returns:** sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, impersonations_deleted, operator_impersonations_deleted, attempts_deleted
 
 **Example:**
 ```sql
 -- Add to daily cron job
 SELECT * FROM authn.cleanup_expired('default');
+SELECT * FROM authn.cleanup_expired('default', 5000); -- smaller batches
 ```
 
 *Source: authn/src/functions/060_maintenance.sql:1*
@@ -619,7 +647,7 @@ Get namespace statistics for monitoring dashboards
 SELECT * FROM authn.get_stats('default');
 ```
 
-*Source: authn/src/functions/060_maintenance.sql:64*
+*Source: authn/src/functions/060_maintenance.sql:154*
 
 ---
 
@@ -855,7 +883,7 @@ Create a refresh token for a session (call after create_session)
 
 **Example:**
 ```sql
-SELECT * FROM authn.create_refresh_token(session_id, sha256(token));
+SELECT * FROM authn.create_refresh_token(session_id, 'a1b2c3...token_hash');
 ```
 
 *Source: authn/src/functions/025_refresh_tokens.sql:16*
@@ -877,7 +905,7 @@ List active refresh tokens for a user (for "manage devices" UI)
 SELECT * FROM authn.list_refresh_tokens(user_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:360*
+*Source: authn/src/functions/025_refresh_tokens.sql:372*
 
 ---
 
@@ -896,7 +924,7 @@ Revoke all refresh tokens for a user (password change, security concern)
 SELECT authn.revoke_all_refresh_tokens(user_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:324*
+*Source: authn/src/functions/025_refresh_tokens.sql:336*
 
 ---
 
@@ -918,7 +946,7 @@ Revoke all tokens in a family (for security response)
 SELECT authn.revoke_refresh_token_family(family_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:279*
+*Source: authn/src/functions/025_refresh_tokens.sql:291*
 
 ---
 
@@ -939,7 +967,7 @@ Rotate a refresh token: invalidate old, create new (secure by default)
 
 **Example:**
 ```sql
-SELECT * FROM authn.rotate_refresh_token(sha256(old), sha256(new));
+SELECT * FROM authn.rotate_refresh_token('old_token_hash', 'new_token_hash');
 ```
 
 *Source: authn/src/functions/025_refresh_tokens.sql:85*
@@ -958,10 +986,10 @@ Check if a refresh token is valid WITHOUT rotating (for inspection only)
 
 **Example:**
 ```sql
-SELECT * FROM authn.validate_refresh_token(sha256(token));
+SELECT * FROM authn.validate_refresh_token('a1b2c3...token_hash');
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:235*
+*Source: authn/src/functions/025_refresh_tokens.sql:247*
 
 ---
 
@@ -983,8 +1011,8 @@ Create a session after successful login
 
 **Example:**
 ```sql
--- After verifying password
-SELECT authn.create_session(user_id, sha256(token), '7 days', '1.2.3.4');
+-- After verifying password (token_hash is pre-computed SHA-256 hex string)
+SELECT authn.create_session(user_id, 'a1b2c3...', '7 days', '1.2.3.4');
 ```
 
 *Source: authn/src/functions/020_sessions.sql:1*
@@ -1006,7 +1034,7 @@ Extend session absolute timeout (for "remember me", not idle timeout)
 SELECT authn.extend_session(token_hash, '30 days'); -- "remember me"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:126*
+*Source: authn/src/functions/020_sessions.sql:152*
 
 ---
 
@@ -1025,7 +1053,7 @@ List active sessions for "manage devices" UI
 SELECT * FROM authn.list_sessions(user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:284*
+*Source: authn/src/functions/020_sessions.sql:310*
 
 ---
 
@@ -1044,7 +1072,7 @@ Log out all sessions for a user (password change, security concern)
 SELECT authn.revoke_all_sessions(user_id); -- "Log out everywhere"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:207*
+*Source: authn/src/functions/020_sessions.sql:233*
 
 ---
 
@@ -1067,7 +1095,7 @@ Log out all sessions except the current one ("sign out other devices")
 SELECT authn.revoke_other_sessions(user_id, current_session_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:242*
+*Source: authn/src/functions/020_sessions.sql:268*
 
 ---
 
@@ -1084,7 +1112,7 @@ Log out a specific session
 SELECT authn.revoke_session(token_hash); -- User clicks "log out"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:169*
+*Source: authn/src/functions/020_sessions.sql:195*
 
 ---
 
@@ -1107,7 +1135,7 @@ Revoke a specific session by ID (for "manage devices" UI)
 SELECT authn.revoke_session_by_id(session_id, user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:320*
+*Source: authn/src/functions/020_sessions.sql:346*
 
 ---
 
@@ -1119,11 +1147,11 @@ authn.validate_session(p_token_hash: text, p_namespace: text) -> table(user_id: 
 
 Check if session is valid and get user info (hot path, no logging)
 
-**Returns:** user_id, email, session_id if valid. Empty if expired/revoked/disabled. Also returns impersonation context if this is an impersonation session. When impersonation is detected, automatically sets audit actor context.
+**Returns:** user_id, email, session_id if valid. Empty if expired/revoked/disabled. Also returns impersonation context if this is an impersonation session. When impersonation is detected, automatically sets audit actor context. DESIGN NOTE: This function has a deliberate side effect for impersonation sessions. When an impersonation session is detected, it automatically calls set_actor() to configure the audit context. This is intentional for several reasons: 1. Convenience: Applications don't need to know about impersonation internals 2. Safety: Ensures all actions during impersonation are properly attributed in audit logs 3. Transparency: The impersonation context is always returned so apps can display it The function is marked VOLATILE due to this side effect. The side effect only triggers on the rare impersonation path (typically <0.01% of calls). For pure validation without side effects, check is_impersonating in the result and manage actor context manually. SECURITY NOTE: Token hash comparison uses PostgreSQL's = operator, which is not constant-time. Timing attacks are not practical here because: 1. Attacker must guess the SHA-256 hash (2^256 space), not the original token 2. Index lookup timing variance far exceeds string comparison variance 3. Network jitter (~1-10ms) drowns out comparison timing (~nanoseconds) 4. Even with perfect timing, reconstructing 256 bits via timing would require billions of precisely-timed queries Constant-time comparison would add overhead without meaningful security benefit. TRANSACTION NOTE: The auto-set actor context uses transaction-local settings (set_config with is_local=true). In autocommit mode, this context is lost when the implicit transaction commits. Callers using autocommit should use the returned impersonation context to set actor state at the application layer if needed for subsequent operations within the same request.
 
 **Example:**
 ```sql
-SELECT * FROM authn.validate_session(sha256(token_from_cookie));
+SELECT * FROM authn.validate_session('a1b2c3...token_hash');
 ```
 
 *Source: authn/src/functions/020_sessions.sql:48*
@@ -1144,7 +1172,7 @@ Use a one-time token (marks as used, can't be reused)
 
 **Example:**
 ```sql
-SELECT * FROM authn.consume_token(sha256(token_from_url), 'password_reset');
+SELECT * FROM authn.consume_token('a1b2c3...token_hash', 'password_reset');
 ```
 
 *Source: authn/src/functions/030_tokens.sql:46*
@@ -1167,8 +1195,8 @@ Create a one-time token for password reset, email verification, or magic link
 
 **Example:**
 ```sql
--- Send password reset email
-SELECT authn.create_token(user_id, sha256(token), 'password_reset');
+-- Send password reset email (token_hash is pre-computed SHA-256 hex string)
+SELECT authn.create_token(user_id, 'a1b2c3...token_hash', 'password_reset');
 ```
 
 *Source: authn/src/functions/030_tokens.sql:1*
@@ -1207,7 +1235,7 @@ Verify email address using token from email link
 
 **Example:**
 ```sql
-SELECT * FROM authn.verify_email(sha256(token_from_url));
+SELECT * FROM authn.verify_email('a1b2c3...token_hash');
 ```
 
 *Source: authn/src/functions/030_tokens.sql:98*
@@ -1306,7 +1334,7 @@ Atomically get existing user or create new one (for SSO flows)
 - `p_password_hash`: Optional password hash (NULL for SSO-only users)
 - `p_namespace`: Namespace to use
 
-**Returns:** user_id, created (true if new user), disabled (true if user is disabled)
+**Returns:** user_id, created (true if new user), disabled (true if user is disabled) EDGE CASE: In an extremely rare race condition where: 1. INSERT fails because user exists (ON CONFLICT DO NOTHING) 2. Another transaction DELETEs that user before our SELECT 3. Our SELECT returns NULL This function will return (NULL, false, false). The SDK raises AuthnError in this case. This scenario requires user deletion during concurrent creation, which is operationally very unusual. If this is a concern for your use case, wrap the call in retry logic.
 
 **Example:**
 ```sql

@@ -60,7 +60,7 @@ class AuthnClient(BaseClient):
 
     def _has_context(self) -> bool:
         """Check if any context field is set (includes authn-specific fields)."""
-        return super()._has_context() or self._ip_address or self._user_agent
+        return bool(super()._has_context() or self._ip_address or self._user_agent)
 
     def _apply_actor_context(self) -> None:
         """Apply actor context via authn.set_actor()."""
@@ -830,6 +830,23 @@ class AuthnClient(BaseClient):
             (user_id, self.namespace),
         )
 
+    def get_api_key(self, key_id: str, user_id: str) -> dict | None:
+        """Get an API key by ID if owned by user.
+
+        Use this for O(1) ownership verification instead of listing all keys.
+
+        Args:
+            key_id: The API key ID to look up
+            user_id: The user who should own the key
+
+        Returns:
+            Key metadata dict if found and owned by user, None otherwise
+        """
+        return self._fetch_one(
+            "SELECT * FROM authn.get_api_key(%s::uuid, %s::uuid, %s)",
+            (key_id, user_id, self.namespace),
+        )
+
     def create_token(
         self,
         user_id: str,
@@ -992,12 +1009,22 @@ class AuthnClient(BaseClient):
             write=True,
         )
 
-    def cleanup_expired(self) -> dict:
-        """Clean up expired sessions, tokens, and old login attempts."""
+    def cleanup_expired(self, batch_size: int = 10000) -> dict:
+        """Clean up expired sessions, tokens, impersonation records, and old login attempts.
+
+        Args:
+            batch_size: Max rows to delete per table per iteration (default 10000).
+                Smaller values reduce lock contention but require more iterations.
+
+        Returns:
+            Dict with counts: sessions_deleted, tokens_deleted, refresh_tokens_deleted,
+            api_keys_deleted, impersonations_deleted, operator_impersonations_deleted,
+            attempts_deleted
+        """
         return (
             self._fetch_one(
-                "SELECT * FROM authn.cleanup_expired(%s)",
-                (self.namespace,),
+                "SELECT * FROM authn.cleanup_expired(%s, %s)",
+                (self.namespace, batch_size),
                 write=True,
             )
             or {}

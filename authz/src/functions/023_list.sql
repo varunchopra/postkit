@@ -203,6 +203,32 @@ $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
+-- @function authz.count_subjects
+-- @brief Count subjects who can access a resource (without fetching all)
+-- @param p_resource_type Resource type (e.g., 'team')
+-- @param p_resource_id Resource ID
+-- @param p_permission Permission to check (e.g., 'member')
+-- @param p_subject_type Optional filter to specific subject type (e.g., 'user')
+-- @returns Count of subjects with access
+-- @example SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
+CREATE OR REPLACE FUNCTION authz.count_subjects(
+    p_resource_type text,
+    p_resource_id text,
+    p_permission text,
+    p_namespace text DEFAULT 'default',
+    p_subject_type text DEFAULT NULL
+)
+RETURNS bigint
+AS $$
+    SELECT COUNT(*)
+    FROM authz.list_subjects(
+        p_resource_type, p_resource_id, p_permission, p_namespace,
+        1000000, p_subject_type, NULL, NULL
+    );
+$$
+LANGUAGE sql
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
+
 -- @function authz.filter_authorized
 -- @brief Filter a list to only resources the subject can access (batch check)
 -- @param p_subject_type The subject type (e.g., 'user', 'api_key', 'service')

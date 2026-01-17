@@ -20,15 +20,16 @@ SELECT authn.create_user('alice@example.com', '$argon2id$...');
 SELECT * FROM authn.get_credentials('alice@example.com');
 -- -> user_id, password_hash, disabled_at
 
--- Create a session (you generate and hash the token)
-SELECT authn.create_session(user_id, sha256('random-token'), '24 hours'::interval);
+-- Create a session (you generate token, hash it, pass the hash)
+-- token_hash = hashlib.sha256(token.encode()).hexdigest() in Python
+SELECT authn.create_session(user_id, 'a1b2c3...hex-encoded-sha256-hash', '24 hours'::interval);
 
--- Validate session on each request
-SELECT * FROM authn.validate_session(sha256('random-token'));
+-- Validate session on each request (pass the same hash)
+SELECT * FROM authn.validate_session('a1b2c3...hex-encoded-sha256-hash');
 -- -> user_id, email, session_id (or empty if invalid)
 
 -- Logout
-SELECT authn.revoke_session(sha256('random-token'));
+SELECT authn.revoke_session('a1b2c3...hex-encoded-sha256-hash');
 ```
 
 ## Key Concept: Caller Provides Hashes

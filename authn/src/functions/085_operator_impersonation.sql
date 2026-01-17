@@ -34,7 +34,7 @@ BEGIN
         '30 minutes'::interval
     );
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_catalog;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_catalog, pg_temp;
 
 
 -- @function authn._operator_impersonation_max_duration
@@ -50,7 +50,7 @@ BEGIN
         '4 hours'::interval
     );
 END;
-$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_catalog;
+$$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_catalog, pg_temp;
 
 
 -- =============================================================================
@@ -125,7 +125,7 @@ BEGIN
         p_details
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = authn, pg_catalog;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, authn;
 
 
 -- =============================================================================
@@ -172,7 +172,7 @@ RETURNS TABLE(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 DECLARE
     v_operator_id uuid;
@@ -319,7 +319,7 @@ CREATE OR REPLACE FUNCTION authn.end_operator_impersonation(
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 DECLARE
     v_impersonation authn.operator_impersonation_sessions%ROWTYPE;
@@ -402,7 +402,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     RETURN QUERY
@@ -479,7 +479,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     PERFORM authn._validate_namespace(p_target_namespace);
@@ -537,7 +537,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     PERFORM authn._validate_namespace(p_operator_namespace);
@@ -591,7 +591,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     RETURN QUERY
@@ -654,7 +654,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = authn, pg_catalog
+SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     RETURN QUERY
