@@ -48,7 +48,7 @@ Get a single API key by ID if owned by user (for ownership verification)
 SELECT * FROM authn.get_api_key('key-uuid', 'user-uuid');
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:216*
+*Source: authn/src/functions/025_api_keys.sql:219*
 
 ---
 
@@ -70,7 +70,7 @@ List API keys for a user (for management UI)
 SELECT * FROM authn.list_api_keys(user_id);
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:179*
+*Source: authn/src/functions/025_api_keys.sql:182*
 
 ---
 
@@ -92,7 +92,7 @@ Revoke all API keys for a user
 SELECT authn.revoke_all_api_keys(user_id); -- Security concern, revoke all
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:143*
+*Source: authn/src/functions/025_api_keys.sql:146*
 
 ---
 
@@ -114,7 +114,7 @@ Revoke an API key
 SELECT authn.revoke_api_key('key-uuid-here');
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:104*
+*Source: authn/src/functions/025_api_keys.sql:107*
 
 ---
 
@@ -647,7 +647,7 @@ Get namespace statistics for monitoring dashboards
 SELECT * FROM authn.get_stats('default');
 ```
 
-*Source: authn/src/functions/060_maintenance.sql:154*
+*Source: authn/src/functions/060_maintenance.sql:205*
 
 ---
 
@@ -711,7 +711,7 @@ End an operator impersonation session early
 SELECT authn.end_operator_impersonation(impersonation_id);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:308*
+*Source: authn/src/functions/085_operator_impersonation.sql:324*
 
 ---
 
@@ -736,7 +736,7 @@ Query operator audit events
 SELECT * FROM authn.get_operator_audit_events(100, NULL, NULL, 'customer_ns');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:621*
+*Source: authn/src/functions/085_operator_impersonation.sql:637*
 
 ---
 
@@ -758,7 +758,7 @@ Get operator impersonation context for a session
 SELECT * FROM authn.get_operator_impersonation_context(session_id);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:376*
+*Source: authn/src/functions/085_operator_impersonation.sql:392*
 
 ---
 
@@ -780,7 +780,7 @@ List all active operator impersonations (platform admin view)
 SELECT * FROM authn.list_active_operator_impersonations(100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:566*
+*Source: authn/src/functions/085_operator_impersonation.sql:582*
 
 ---
 
@@ -804,7 +804,7 @@ List impersonations performed by an operator
 SELECT * FROM authn.list_operator_impersonations_by_operator(operator_id, 'platform');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:510*
+*Source: authn/src/functions/085_operator_impersonation.sql:526*
 
 ---
 
@@ -828,7 +828,7 @@ List operator impersonation history affecting a target namespace
 SELECT * FROM authn.list_operator_impersonations_for_target('customer_ns', 100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:450*
+*Source: authn/src/functions/085_operator_impersonation.sql:466*
 
 ---
 
@@ -860,7 +860,7 @@ operator_session_id, target_user_id, 'customer_ns', token_hash,
 );
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:128*
+*Source: authn/src/functions/085_operator_impersonation.sql:144*
 
 ---
 
@@ -1034,7 +1034,7 @@ Extend session absolute timeout (for "remember me", not idle timeout)
 SELECT authn.extend_session(token_hash, '30 days'); -- "remember me"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:152*
+*Source: authn/src/functions/020_sessions.sql:156*
 
 ---
 
@@ -1053,7 +1053,7 @@ List active sessions for "manage devices" UI
 SELECT * FROM authn.list_sessions(user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:310*
+*Source: authn/src/functions/020_sessions.sql:314*
 
 ---
 
@@ -1072,7 +1072,7 @@ Log out all sessions for a user (password change, security concern)
 SELECT authn.revoke_all_sessions(user_id); -- "Log out everywhere"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:233*
+*Source: authn/src/functions/020_sessions.sql:237*
 
 ---
 
@@ -1095,7 +1095,7 @@ Log out all sessions except the current one ("sign out other devices")
 SELECT authn.revoke_other_sessions(user_id, current_session_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:268*
+*Source: authn/src/functions/020_sessions.sql:272*
 
 ---
 
@@ -1112,7 +1112,7 @@ Log out a specific session
 SELECT authn.revoke_session(token_hash); -- User clicks "log out"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:195*
+*Source: authn/src/functions/020_sessions.sql:199*
 
 ---
 
@@ -1135,7 +1135,7 @@ Revoke a specific session by ID (for "manage devices" UI)
 SELECT authn.revoke_session_by_id(session_id, user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:346*
+*Source: authn/src/functions/020_sessions.sql:350*
 
 ---
 

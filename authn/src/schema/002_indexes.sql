@@ -60,6 +60,13 @@ CREATE INDEX refresh_tokens_session_idx ON authn.refresh_tokens (session_id)
 CREATE INDEX refresh_tokens_expired_idx ON authn.refresh_tokens (namespace, expires_at)
     WHERE revoked_at IS NULL;
 
+-- Cleanup - find revoked or replaced tokens for batch deletion
+-- This index supports cleanup_expired() which deletes tokens where replaced_by IS NOT NULL
+-- or revoked_at IS NOT NULL. Without this index, cleanup could sequential scan on large tables.
+-- The overhead is minimal since revocation/rotation are cold paths already doing writes.
+CREATE INDEX refresh_tokens_cleanup_idx ON authn.refresh_tokens (namespace)
+    WHERE replaced_by IS NOT NULL OR revoked_at IS NOT NULL;
+
 -- =============================================================================
 -- TOKENS INDEXES
 -- =============================================================================

@@ -16,16 +16,11 @@ from postkit.base import BaseClient, PostkitError
 __all__ = [
     "AuthnClient",
     "AuthnError",
-    "AuthnValidationError",
 ]
 
 
 class AuthnError(PostkitError):
     """Base exception for authn operations."""
-
-
-class AuthnValidationError(AuthnError):
-    """Raised when input validation fails."""
 
 
 class AuthnClient(BaseClient):
@@ -197,7 +192,17 @@ class AuthnClient(BaseClient):
             write=True,
         )
         if result is None:
-            raise AuthnError("Failed to get or create user")
+            # This can only happen in an extremely rare race condition:
+            # 1. INSERT fails because user exists (ON CONFLICT DO NOTHING)
+            # 2. Another transaction DELETEs that user before our SELECT
+            # 3. Our SELECT returns NULL
+            # This indicates a bug in the application - user deletion during
+            # concurrent registration should not occur.
+            raise AuthnError(
+                "Race condition: user was deleted between creation conflict and lookup. "
+                "This requires concurrent INSERT and DELETE on the same email, "
+                "which typically indicates an application bug."
+            )
         if result["disabled"]:
             raise AuthnError("User is disabled")
         return str(result["user_id"]), result["created"]

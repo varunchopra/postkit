@@ -15,6 +15,22 @@
 --   - Whether the caller is authorized as an "operator"
 --   - Business rules about which users can be impersonated
 -- The application MUST enforce these policies before calling these functions.
+--
+-- This separation is similar to how AWS IAM separates policy evaluation from
+-- resource APIs - the database provides secure cross-namespace capability,
+-- and the application layer decides who can use it.
+--
+-- SECURITY MODEL:
+-- 1. All functions use REVOKE ALL FROM PUBLIC - not callable by arbitrary DB users
+-- 2. The SDK/application must authenticate the operator before calling these functions
+-- 3. Cross-namespace access is intentional - operators need to access customer namespaces
+-- 4. Full audit trail is maintained in operator_audit_events table
+--
+-- SEARCH_PATH NOTE:
+-- These functions use `pg_catalog, authn` (not `authn, pg_temp`) because they are
+-- SECURITY DEFINER functions. Putting pg_catalog first ensures built-in functions
+-- like now() and jsonb_build_object() cannot be shadowed by user-defined functions,
+-- providing defense-in-depth for privileged operations.
 -- =============================================================================
 
 -- =============================================================================

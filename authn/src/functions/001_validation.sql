@@ -6,14 +6,16 @@
 -- @returns Lowercase, trimmed email
 -- Raises exception on invalid format.
 --
--- DESIGN NOTE: Email validation is intentionally minimal (something@something).
--- This is a deliberate choice because:
+-- DESIGN NOTE: Email validation is intentionally minimal (requires non-empty local
+-- part and domain: "something@something"). This is deliberate:
 --   1. RFC 5321/5322 email syntax is extremely complex (quoted strings, comments, IP literals)
 --   2. Strict regex validation rejects valid addresses (e.g., user+tag@domain, unicode domains)
 --   3. The only true validation is sending an email and confirming receipt
 --   4. Most "invalid" emails that pass this check fail at SMTP delivery anyway
--- If stricter validation is needed, implement it at the application layer where you can
--- handle edge cases appropriately. This library focuses on storage and comparison.
+--
+-- Applications requiring stricter validation should implement it at their layer using
+-- proper email validation libraries. See: https://docs.aws.amazon.com/ses/latest/dg/email-validation.html
+-- This library focuses on storage and comparison, not deliverability validation.
 CREATE OR REPLACE FUNCTION authn._validate_email(p_email text)
 RETURNS text
 AS $$
@@ -203,6 +205,18 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
 -- @function authn._warn_namespace_mismatch
 -- @brief Warns if namespace doesn't match RLS tenant context
 -- @param p_namespace The namespace being queried
+--
+-- SECURITY MODEL: Access control is enforced via explicit p_namespace parameters in
+-- all functions. RLS (authn.tenant_id) provides defense-in-depth but is not the
+-- primary control. This function raises a WARNING (not ERROR) to:
+--   1. Allow legitimate cross-namespace admin operations
+--   2. Alert developers to potential mistakes during development
+--   3. Avoid breaking functionality for valid use cases
+--
+-- For deployments requiring strict namespace isolation, consider:
+--   - Always setting authn.tenant_id before operations
+--   - Monitoring for these warnings in production logs
+--   - Using database roles without BYPASSRLS privilege
 CREATE OR REPLACE FUNCTION authn._warn_namespace_mismatch(p_namespace text)
 RETURNS void
 AS $$

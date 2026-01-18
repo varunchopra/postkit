@@ -93,10 +93,13 @@ BEGIN
 
     -- Only update last_used_at if stale (older than 1 hour) to reduce write amplification
     -- This provides useful "last seen" data without generating a write on every API call
+    -- Note: We include revoked_at IS NULL to avoid updating keys that were revoked between
+    -- our read and this update (defensive, since the read already filtered revoked keys)
     IF v_result.last_used_at IS NULL OR v_result.last_used_at < now() - interval '1 hour' THEN
         UPDATE authn.api_keys
         SET last_used_at = now()
-        WHERE id = v_result.key_id;
+        WHERE id = v_result.key_id
+          AND revoked_at IS NULL;
     END IF;
 
     RETURN QUERY SELECT v_result.user_id, v_result.key_id, v_result.name, v_result.expires_at;

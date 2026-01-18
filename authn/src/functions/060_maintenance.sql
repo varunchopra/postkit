@@ -32,6 +32,8 @@ DECLARE
     v_attempts_deleted bigint := 0;
     v_batch_deleted bigint;
     v_retention interval;
+    v_iteration int;
+    v_max_iterations int := 1000;  -- Safety limit to prevent infinite loops
 BEGIN
     PERFORM authn._validate_namespace(p_namespace);
 
@@ -45,7 +47,14 @@ BEGIN
     -- to the new token). Keeping replaced tokens is only useful for reuse detection,
     -- which is handled at rotation time. Cleaning them up prevents unbounded table growth
     -- in high-rotation scenarios. The new token in the chain remains valid.
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: refresh_tokens iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.refresh_tokens
         WHERE id IN (
             SELECT id FROM authn.refresh_tokens
@@ -60,7 +69,14 @@ BEGIN
     END LOOP;
 
     -- Delete ended or expired impersonation sessions (in batches)
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: impersonation_sessions iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.impersonation_sessions
         WHERE id IN (
             SELECT id FROM authn.impersonation_sessions
@@ -75,7 +91,14 @@ BEGIN
     END LOOP;
 
     -- Delete expired or revoked sessions (in batches)
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: sessions iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.sessions
         WHERE id IN (
             SELECT id FROM authn.sessions
@@ -90,7 +113,14 @@ BEGIN
     END LOOP;
 
     -- Delete expired or used tokens (in batches)
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: tokens iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.tokens
         WHERE id IN (
             SELECT id FROM authn.tokens
@@ -105,7 +135,14 @@ BEGIN
     END LOOP;
 
     -- Delete expired or revoked API keys (in batches)
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: api_keys iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.api_keys
         WHERE id IN (
             SELECT id FROM authn.api_keys
@@ -120,7 +157,14 @@ BEGIN
     END LOOP;
 
     -- Delete old login attempts (in batches)
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: login_attempts iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.login_attempts
         WHERE id IN (
             SELECT id FROM authn.login_attempts
@@ -136,7 +180,14 @@ BEGIN
 
     -- Delete ended or expired operator impersonation sessions (in batches)
     -- Note: These are cross-namespace, so we clean up ALL expired ones regardless of p_namespace
+    v_iteration := 0;
     LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: operator_impersonation_sessions iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
         DELETE FROM authn.operator_impersonation_sessions
         WHERE id IN (
             SELECT id FROM authn.operator_impersonation_sessions

@@ -202,5 +202,12 @@ $$ LANGUAGE plpgsql SET search_path = authn, pg_temp;
 -- =============================================================================
 -- INITIALIZE PARTITIONS
 -- =============================================================================
--- Create initial partitions (current month + 3 months ahead)
+-- Create initial partitions (current month + 3 months ahead).
+-- This runs during schema installation to ensure audit_events is usable immediately.
+--
+-- IDEMPOTENCY: Safe to run multiple times - create_audit_partition() checks for
+-- existing partitions and returns NULL if already present.
+--
+-- OPERATIONS: For ongoing partition management, schedule a cron job to run
+-- ensure_audit_partitions() monthly and drop_audit_partitions() for retention.
 SELECT authn.ensure_audit_partitions(3);
