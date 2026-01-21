@@ -48,7 +48,8 @@ BEGIN
 
     IF p_user_id IS NULL THEN
         RAISE EXCEPTION 'user_id is required for consumption'
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:meter:VAL_USER_ID_REQUIRED';
     END IF;
 
     v_event_time := COALESCE(p_event_time, now());

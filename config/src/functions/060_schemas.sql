@@ -12,17 +12,20 @@ AS $$
 BEGIN
     IF p_pattern IS NULL THEN
         RAISE EXCEPTION 'key_pattern cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:config:VAL_PATTERN_NULL';
     END IF;
 
     IF trim(p_pattern) = '' THEN
         RAISE EXCEPTION 'key_pattern cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:config:VAL_PATTERN_EMPTY';
     END IF;
 
     IF length(p_pattern) > 1024 THEN
         RAISE EXCEPTION 'key_pattern exceeds maximum length of 1024 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:config:VAL_PATTERN_TOO_LONG';
     END IF;
 
     -- Allow alphanumeric, underscores, hyphens, forward slashes, dots
@@ -30,12 +33,14 @@ BEGIN
     -- Unlike keys, trailing slash IS allowed (for prefix patterns)
     IF p_pattern !~ '^[a-zA-Z0-9][a-zA-Z0-9_/.-]*$' THEN
         RAISE EXCEPTION 'key_pattern must start with alphanumeric and contain only alphanumerics, underscores, hyphens, forward slashes, and dots (got: %)', p_pattern
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_PATTERN_FORMAT';
     END IF;
 
     IF p_pattern ~ '//' OR p_pattern ~ '^/' THEN
         RAISE EXCEPTION 'key_pattern cannot have double slashes or leading slashes (got: %)', p_pattern
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_PATTERN_SLASHES';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = config, pg_temp;
@@ -58,8 +63,9 @@ BEGIN
     PERFORM config._validate_key_pattern(p_key_pattern);
 
     IF p_schema IS NULL THEN
-        RAISE EXCEPTION 'schema cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Schema cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:config:VAL_SCHEMA_NULL';
     END IF;
 
     INSERT INTO config.schemas (key_pattern, schema, description, created_at, updated_at)

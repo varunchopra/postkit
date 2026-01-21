@@ -16,7 +16,8 @@ BEGIN
     -- Validate expiration is in the future (consistent with write_tuple)
     IF p_expires_at IS NOT NULL AND p_expires_at <= now() THEN
         RAISE EXCEPTION 'expires_at must be in the future'
-            USING ERRCODE = 'check_violation';
+            USING ERRCODE = 'check_violation',
+                  HINT = 'postkit:authz:VAL_EXPIRATION_FUTURE';
     END IF;
     UPDATE
         authz.tuples
@@ -76,11 +77,13 @@ BEGIN
         AND subject_id = p_subject_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Grant not found'
-            USING ERRCODE = 'no_data_found';
+            USING ERRCODE = 'no_data_found',
+                  HINT = 'postkit:authz:DATA_GRANT_NOT_FOUND';
         END IF;
         IF v_current_expiration IS NULL THEN
             RAISE EXCEPTION 'Grant has no expiration to extend'
-                USING ERRCODE = 'invalid_parameter_value';
+                USING ERRCODE = 'invalid_parameter_value',
+                      HINT = 'postkit:authz:BIZ_GRANT_NO_EXPIRATION';
             END IF;
             -- Extend from current expiration, or from now if already expired
             IF v_current_expiration < now() THEN

@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from postkit.authz import AuthzError
+from postkit.base import CheckViolationError
 
 
 class TestExpiringPermissions:
@@ -117,15 +119,14 @@ class TestExpiringPermissions:
         """Cannot grant with past expiration."""
         past = datetime.now(timezone.utc) - timedelta(hours=1)
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(CheckViolationError) as exc_info:
             authz.grant(
                 "read",
                 resource=("doc", "1"),
                 subject=("user", "alice"),
                 expires_at=past,
             )
-
-        assert "future" in str(exc.value).lower()
+        assert exc_info.value.error_code == "VAL_EXPIRATION_FUTURE"
 
     def test_update_expiration_via_grant(self, authz):
         """Can extend or shorten expiration by granting again."""
@@ -337,29 +338,27 @@ class TestSetExpiration:
 
     def test_extend_expiration_not_found(self, authz):
         """extend_expiration raises for non-existent grant."""
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(AuthzError) as exc_info:
             authz.extend_expiration(
                 "read",
                 resource=("doc", "1"),
                 subject=("user", "alice"),
                 extension=timedelta(days=30),
             )
-
-        assert "not found" in str(exc.value).lower()
+        assert exc_info.value.error_code == "DATA_GRANT_NOT_FOUND"
 
     def test_extend_expiration_no_expiration(self, authz):
         """extend_expiration raises if grant has no expiration."""
         authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(AuthzError) as exc_info:
             authz.extend_expiration(
                 "read",
                 resource=("doc", "1"),
                 subject=("user", "alice"),
                 extension=timedelta(days=30),
             )
-
-        assert "no expiration" in str(exc.value).lower()
+        assert exc_info.value.error_code == "BIZ_GRANT_NO_EXPIRATION"
 
 
 class TestExpirationWithBatchOperations:

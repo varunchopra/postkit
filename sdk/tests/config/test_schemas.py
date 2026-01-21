@@ -43,11 +43,19 @@ class TestSetSchema:
         assert schemas[0]["schema"]["required"] == ["enabled"]
 
     def test_validates_pattern_format(self, admin_config):
-        with pytest.raises(Exception):
+        # Leading slash fails format check (must start with alphanumeric)
+        with pytest.raises(ConfigValidationError) as exc_info:
             admin_config.set_schema("//invalid", {"type": "object"})
+        assert exc_info.value.error_code == "VAL_PATTERN_FORMAT"
 
-        with pytest.raises(Exception):
+        with pytest.raises(ConfigValidationError) as exc_info:
             admin_config.set_schema("/leading", {"type": "object"})
+        assert exc_info.value.error_code == "VAL_PATTERN_FORMAT"
+
+        # Double slash in middle fails slashes check
+        with pytest.raises(ConfigValidationError) as exc_info:
+            admin_config.set_schema("valid//double", {"type": "object"})
+        assert exc_info.value.error_code == "VAL_PATTERN_SLASHES"
 
 
 class TestGetSchema:

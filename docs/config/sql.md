@@ -47,7 +47,7 @@ Delete old audit partitions
 
 **Returns:** Names of dropped partitions
 
-*Source: config/src/functions/030_audit.sql:119*
+*Source: config/src/functions/030_audit.sql:123*
 
 ---
 
@@ -64,7 +64,7 @@ Create partitions for upcoming months
 
 **Returns:** Names of created partitions
 
-*Source: config/src/functions/030_audit.sql:86*
+*Source: config/src/functions/030_audit.sql:90*
 
 ---
 
@@ -165,7 +165,7 @@ Check if a config key exists (has an active version)
 IF config.exists('flags/new-checkout') THEN ...
 ```
 
-*Source: config/src/functions/010_entries.sql:454*
+*Source: config/src/functions/010_entries.sql:455*
 
 ---
 
@@ -235,7 +235,7 @@ SELECT config.get_path('prompts/bot', ARRAY['temperature']);
 SELECT config.get_path('flags/checkout', ARRAY['rollout']);
 ```
 
-*Source: config/src/functions/010_entries.sql:476*
+*Source: config/src/functions/010_entries.sql:477*
 
 ---
 
@@ -304,7 +304,7 @@ SELECT config.merge('prompts/bot', '{"temperature": 0.8}');
 SELECT config.merge('flags/checkout', '{"rollout": 0.75}');
 ```
 
-*Source: config/src/functions/010_entries.sql:506*
+*Source: config/src/functions/010_entries.sql:507*
 
 ---
 
@@ -347,7 +347,7 @@ SELECT * FROM config.search('{"enabled": true}');
 SELECT * FROM config.search('{"model": "claude-sonnet-4-20250514"}', 'prompts/');
 ```
 
-*Source: config/src/functions/010_entries.sql:546*
+*Source: config/src/functions/010_entries.sql:547*
 
 ---
 
@@ -419,7 +419,7 @@ Delete a schema by its key pattern
 
 **Returns:** true if deleted, false if not found
 
-*Source: config/src/functions/060_schemas.sql:148*
+*Source: config/src/functions/060_schemas.sql:154*
 
 ---
 
@@ -445,7 +445,7 @@ Matching precedence:
 3. No match = returns NULL (no validation required)
 ```
 
-*Source: config/src/functions/060_schemas.sql:105*
+*Source: config/src/functions/060_schemas.sql:111*
 
 ---
 
@@ -463,7 +463,7 @@ List all schemas, optionally filtered by prefix
 
 **Returns:** Table of schemas
 
-*Source: config/src/functions/060_schemas.sql:171*
+*Source: config/src/functions/060_schemas.sql:177*
 
 ---
 
@@ -504,7 +504,7 @@ Get namespace statistics
 SELECT * FROM config.get_stats();
 ```
 
-*Source: config/src/functions/020_maintenance.sql:37*
+*Source: config/src/functions/020_maintenance.sql:38*
 
 ---
 

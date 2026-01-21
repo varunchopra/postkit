@@ -58,11 +58,13 @@ BEGIN
     -- Validate inputs
     IF p_year < 1970 OR p_year > 9999 THEN
         RAISE EXCEPTION 'Year must be between 1970 and 9999, got %', p_year
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authz:VAL_YEAR_OUT_OF_RANGE';
     END IF;
     IF p_month < 1 OR p_month > 12 THEN
         RAISE EXCEPTION 'Month must be between 1 and 12, got %', p_month
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authz:VAL_MONTH_OUT_OF_RANGE';
     END IF;
     -- Build partition name
     v_partition_name := format('audit_events_y%sm%s', to_char(p_year, 'FM0000'), to_char(p_month, 'FM00'));

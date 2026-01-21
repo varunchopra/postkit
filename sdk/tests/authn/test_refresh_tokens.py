@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from postkit.authn import AuthnError
+from postkit.base import UniqueViolationError
 
 
 class TestCreateRefreshToken:
@@ -356,7 +357,7 @@ class TestRefreshTokenEdgeCases:
         session_id = authn.create_session(user_id, "session_hash")
         authn.create_refresh_token(session_id, "same_hash")
 
-        with pytest.raises(Exception):  # Unique constraint violation
+        with pytest.raises(UniqueViolationError):
             authn.create_refresh_token(session_id, "same_hash")
 
     def test_revoked_token_does_not_trigger_reuse_detection(self, authn):

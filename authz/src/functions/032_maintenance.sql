@@ -106,11 +106,13 @@ BEGIN
     -- Reject relations that require cycle detection (must use write_tuple instead)
     IF p_relation = 'member' AND p_subject_type != 'user' THEN
         RAISE EXCEPTION 'grant_to_resources_bulk cannot create group-to-group memberships; use write_tuple instead'
-            USING ERRCODE = 'feature_not_supported';
+            USING ERRCODE = 'feature_not_supported',
+                  HINT = 'postkit:authz:BIZ_BULK_GROUP_MEMBERSHIP';
     END IF;
     IF p_relation = 'parent' THEN
         RAISE EXCEPTION 'grant_to_resources_bulk cannot create parent relations; use write_tuple instead'
-            USING ERRCODE = 'feature_not_supported';
+            USING ERRCODE = 'feature_not_supported',
+                  HINT = 'postkit:authz:BIZ_BULK_PARENT_RELATION';
     END IF;
     INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id, subject_relation)
     SELECT

@@ -18,7 +18,8 @@ BEGIN
 
     IF p_keep_versions < 0 THEN
         RAISE EXCEPTION 'keep_versions must be non-negative'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_KEEP_VERSIONS_NEGATIVE';
     END IF;
 
     -- Rank only inactive versions to handle case where active isn't newest

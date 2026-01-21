@@ -53,7 +53,8 @@ BEGIN
     -- Check for direct self-cycle
     IF p_permission = p_implies THEN
         RAISE EXCEPTION 'Hierarchy cycle detected: % implies itself', p_permission
-            USING ERRCODE = 'PK001';
+            USING ERRCODE = 'PK001',
+                  HINT = 'postkit:authz:BIZ_CYCLE_SELF';
     END IF;
     -- Check for indirect cycle: would p_implies eventually lead back to p_permission?
     -- Must check both global and tenant namespaces since permission checks use both.
@@ -88,7 +89,8 @@ BEGIN
                 perm = p_permission) INTO v_has_cycle;
     IF v_has_cycle THEN
         RAISE EXCEPTION 'Hierarchy cycle detected: adding % -> % would create a cycle', p_permission, p_implies
-            USING ERRCODE = 'PK001';
+            USING ERRCODE = 'PK001',
+                  HINT = 'postkit:authz:BIZ_CYCLE_HIERARCHY';
     END IF;
     INSERT INTO authz.permission_hierarchy (namespace, resource_type, permission, implies)
         VALUES (p_namespace, p_resource_type, p_permission, p_implies)

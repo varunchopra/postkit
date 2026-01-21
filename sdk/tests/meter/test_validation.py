@@ -49,14 +49,16 @@ class TestFieldLimits:
     def test_rejects_overly_long_event_type(self, meter):
         """event_type has a length limit."""
         meter.allocate("user", "a" * 256, 100, "unit")  # at limit
-        with pytest.raises(MeterError, match="exceeds maximum"):
+        with pytest.raises(MeterError) as exc_info:
             meter.allocate("user", "a" * 257, 100, "unit")
+        assert exc_info.value.error_code == "VAL_EVENT_TYPE_TOO_LONG"
 
     def test_rejects_overly_long_unit(self, meter):
         """unit has a length limit."""
         meter.allocate("user", "event", 100, "a" * 64)  # at limit
-        with pytest.raises(MeterError, match="exceeds maximum"):
+        with pytest.raises(MeterError) as exc_info:
             meter.allocate("user", "event", 100, "a" * 65)
+        assert exc_info.value.error_code == "VAL_UNIT_TOO_LONG"
 
 
 class TestValidationErrorType:
@@ -64,23 +66,27 @@ class TestValidationErrorType:
 
     def test_null_validation_raises_meter_validation_error(self, make_meter):
         """Null validation raises MeterValidationError (SQLSTATE 22004)."""
-        with pytest.raises(MeterValidationError, match="cannot be null"):
+        with pytest.raises(MeterValidationError) as exc_info:
             make_meter(None)
+        assert exc_info.value.error_code == "VAL_NAMESPACE_NULL"
 
     def test_empty_validation_raises_meter_validation_error(self, make_meter):
         """Empty string validation raises MeterValidationError (SQLSTATE 22026)."""
-        with pytest.raises(MeterValidationError, match="cannot be empty"):
+        with pytest.raises(MeterValidationError) as exc_info:
             make_meter("")
+        assert exc_info.value.error_code == "VAL_NAMESPACE_EMPTY"
 
     def test_length_validation_raises_meter_validation_error(self, meter):
         """Length exceeded validation raises MeterValidationError (SQLSTATE 22001)."""
-        with pytest.raises(MeterValidationError, match="exceeds maximum"):
+        with pytest.raises(MeterValidationError) as exc_info:
             meter.allocate("user", "a" * 257, 100, "unit")  # event_type too long
+        assert exc_info.value.error_code == "VAL_EVENT_TYPE_TOO_LONG"
 
     def test_format_validation_raises_meter_validation_error(self, make_meter):
         """Format validation raises MeterValidationError (SQLSTATE 22023)."""
-        with pytest.raises(MeterValidationError, match="control characters"):
+        with pytest.raises(MeterValidationError) as exc_info:
             make_meter("has\ttab")
+        assert exc_info.value.error_code == "VAL_NAMESPACE_INVALID_CHARS"
 
     def test_meter_validation_error_is_meter_error(self):
         """MeterValidationError is a subclass of MeterError for backwards compatibility."""

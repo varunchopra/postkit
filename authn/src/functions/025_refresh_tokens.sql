@@ -54,7 +54,8 @@ BEGIN
 
     IF v_user_id IS NULL THEN
         RAISE EXCEPTION 'Session not found or invalid'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:SESSION_INVALID';
     END IF;
 
     -- Generate new family ID for this token chain

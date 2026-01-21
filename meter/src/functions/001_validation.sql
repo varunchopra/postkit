@@ -8,30 +8,35 @@ CREATE FUNCTION meter._validate_namespace(p_value text)
 RETURNS void AS $$
 BEGIN
     IF p_value IS NULL THEN
-        RAISE EXCEPTION 'namespace cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Namespace cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:meter:VAL_NAMESPACE_NULL';
     END IF;
 
     IF trim(p_value) = '' THEN
-        RAISE EXCEPTION 'namespace cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+        RAISE EXCEPTION 'Namespace cannot be empty'
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:meter:VAL_NAMESPACE_EMPTY';
     END IF;
 
     IF length(p_value) > 1024 THEN
-        RAISE EXCEPTION 'namespace exceeds maximum length of 1024 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+        RAISE EXCEPTION 'Namespace exceeds maximum length of 1024 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:meter:VAL_NAMESPACE_TOO_LONG';
     END IF;
 
     -- Reject control characters (0x00-0x1F, 0x7F)
     IF p_value ~ '[\x00-\x1F\x7F]' THEN
-        RAISE EXCEPTION 'namespace contains invalid control characters'
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Namespace contains invalid control characters'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_NAMESPACE_INVALID_CHARS';
     END IF;
 
     -- Reject leading/trailing whitespace (causes subtle matching bugs)
     IF p_value != trim(p_value) THEN
-        RAISE EXCEPTION 'namespace cannot have leading or trailing whitespace'
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Namespace cannot have leading or trailing whitespace'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_NAMESPACE_WHITESPACE';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = meter, pg_temp;
@@ -45,17 +50,20 @@ RETURNS void AS $$
 BEGIN
     IF p_value IS NULL THEN
         RAISE EXCEPTION 'event_type cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:meter:VAL_EVENT_TYPE_NULL';
     END IF;
 
     IF trim(p_value) = '' THEN
         RAISE EXCEPTION 'event_type cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:meter:VAL_EVENT_TYPE_EMPTY';
     END IF;
 
     IF length(p_value) > 256 THEN
         RAISE EXCEPTION 'event_type exceeds maximum length of 256 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:meter:VAL_EVENT_TYPE_TOO_LONG';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = meter, pg_temp;
@@ -68,18 +76,21 @@ CREATE FUNCTION meter._validate_unit(p_value text)
 RETURNS void AS $$
 BEGIN
     IF p_value IS NULL THEN
-        RAISE EXCEPTION 'unit cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Unit cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:meter:VAL_UNIT_NULL';
     END IF;
 
     IF trim(p_value) = '' THEN
-        RAISE EXCEPTION 'unit cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+        RAISE EXCEPTION 'Unit cannot be empty'
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:meter:VAL_UNIT_EMPTY';
     END IF;
 
     IF length(p_value) > 64 THEN
-        RAISE EXCEPTION 'unit exceeds maximum length of 64 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+        RAISE EXCEPTION 'Unit exceeds maximum length of 64 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:meter:VAL_UNIT_TOO_LONG';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = meter, pg_temp;
@@ -94,7 +105,8 @@ RETURNS void AS $$
 BEGIN
     IF p_value IS NULL OR p_value <= 0 THEN
         RAISE EXCEPTION '% must be positive', p_name
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_NOT_POSITIVE';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = meter, pg_temp;

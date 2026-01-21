@@ -6,7 +6,7 @@ separate role to verify RLS policies work correctly.
 
 import psycopg
 import pytest
-from postkit.authz import AuthzClient
+from postkit.authz import AuthzClient, AuthzError
 
 
 class TestRowLevelSecurity:
@@ -330,8 +330,6 @@ class TestRowLevelSecurity:
         The hierarchy_global_write_protection RESTRICTIVE policy blocks all
         writes to namespace='global', even if a tenant sets their context to 'global'.
         """
-        from postkit.authz import AuthzError
-
         cursor = rls_connection.cursor()
 
         # Create client targeting 'global' namespace

@@ -1,6 +1,10 @@
 """Tests for audit logging and actor context."""
 
+from datetime import datetime
+
+import psycopg
 import pytest
+from postkit.config import ConfigError
 
 
 class TestSetActor:
@@ -178,12 +182,13 @@ class TestAuditPartitions:
 
     def test_validates_month_bounds(self, config, test_helpers):
         """create_audit_partition() validates month range."""
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
+        ):
             test_helpers.cursor.execute(
                 "SELECT config.create_audit_partition(%s, %s)",
                 (2024, 13),
             )
-        assert "Month must be between 1 and 12" in str(exc_info.value)
 
     def test_drop_old_partitions(self, config, test_helpers):
         """drop_audit_partitions() drops old partitions."""
@@ -367,15 +372,11 @@ class TestAuditPagination:
 
     def test_invalid_cursor_raises_error(self, config):
         """Invalid cursor raises clear error."""
-        from postkit.config import ConfigError
-
         with pytest.raises(ConfigError, match="Invalid pagination cursor"):
             config.get_audit_events(before="garbage")
 
     def test_events_include_id_and_event_time(self, config):
         """Events include id and event_time fields for cursor building."""
-        from datetime import datetime
-
         config.set("cursor-fields/test", {"v": 1})
 
         events = config.get_audit_events(limit=1)

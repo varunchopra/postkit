@@ -167,7 +167,8 @@ BEGIN
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Account not found'
-            USING ERRCODE = 'no_data_found';
+            USING ERRCODE = 'no_data_found',
+                  HINT = 'postkit:meter:DATA_ACCOUNT_NOT_FOUND';
     END IF;
 
     -- Use provided allocation or account default
@@ -175,7 +176,8 @@ BEGIN
 
     IF v_allocation IS NULL OR v_allocation <= 0 THEN
         RAISE EXCEPTION 'No allocation amount specified'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_ALLOCATION_REQUIRED';
     END IF;
 
     v_new_balance := v_account.balance + v_allocation;

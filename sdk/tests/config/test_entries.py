@@ -1,6 +1,7 @@
 """Tests for config entries (set, get, activate, rollback, etc.)."""
 
 import pytest
+from postkit.config import ConfigValidationError
 
 
 class TestSet:
@@ -52,17 +53,15 @@ class TestSet:
 
     def test_validates_key_format(self, config):
         """Invalid key formats are rejected."""
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ConfigValidationError) as exc_info:
             config.set("/leading-slash", {"v": 1})
-        assert (
-            "cannot have" in str(exc_info.value).lower()
-            or "key" in str(exc_info.value).lower()
-        )
+        assert exc_info.value.error_code == "VAL_KEY_FORMAT"
 
     def test_validates_key_no_double_slash(self, config):
         """Double slashes are rejected."""
-        with pytest.raises(Exception):
+        with pytest.raises(ConfigValidationError) as exc_info:
             config.set("prompts//bot", {"v": 1})
+        assert exc_info.value.error_code == "VAL_KEY_SLASHES"
 
     def test_records_created_by(self, config, test_helpers):
         """created_by is populated from actor context."""
@@ -529,9 +528,9 @@ class TestDeleteVersion:
         config.set("prompts/bot", {"v": 1})
         config.set("prompts/bot", {"v": 2})
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ConfigValidationError) as exc_info:
             config.delete_version("prompts/bot", 2)
-        assert "active" in str(exc_info.value).lower()
+        assert exc_info.value.error_code == "BIZ_DELETE_ACTIVE_VERSION"
 
     def test_returns_false_for_missing_version(self, config):
         """delete_version() returns False for non-existent version."""
@@ -661,8 +660,6 @@ class TestSetDefault:
 
     def test_respects_schema_validation(self, config):
         """set_default validates against schema if exists."""
-        from postkit.config import ConfigValidationError
-
         # Register a schema
         config.set_schema(
             "defaults/",
@@ -722,8 +719,6 @@ class TestSqlValidationErrors:
 
     def test_invalid_key_raises_config_validation_error(self, config):
         """Invalid key format raises ConfigValidationError (not ConfigError)."""
-        from postkit.config import ConfigValidationError
-
         with pytest.raises(ConfigValidationError) as exc_info:
             config.set("/leading-slash", {"v": 1})
 
@@ -731,8 +726,6 @@ class TestSqlValidationErrors:
 
     def test_delete_active_version_raises_config_validation_error(self, config):
         """Cannot delete active version raises ConfigValidationError."""
-        from postkit.config import ConfigValidationError
-
         config.set("prompts/bot", {"v": 1})
         config.set("prompts/bot", {"v": 2})
 

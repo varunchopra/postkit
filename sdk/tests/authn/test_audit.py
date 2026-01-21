@@ -5,7 +5,7 @@ from datetime import datetime
 
 import psycopg
 import pytest
-from postkit.authn import AuthnClient
+from postkit.authn import AuthnClient, AuthnError
 
 from tests.conftest import DATABASE_URL
 
@@ -47,21 +47,23 @@ class TestCreateAuditPartition:
 
     def test_validates_month_lower_bound(self, test_helpers):
         """Month must be >= 1."""
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
+        ):
             test_helpers.cursor.execute(
                 "SELECT authn.create_audit_partition(%s, %s)",
                 (2024, 0),
             )
-        assert "Month must be between 1 and 12" in str(exc_info.value)
 
     def test_validates_month_upper_bound(self, test_helpers):
         """Month must be <= 12."""
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
+        ):
             test_helpers.cursor.execute(
                 "SELECT authn.create_audit_partition(%s, %s)",
                 (2024, 13),
             )
-        assert "Month must be between 1 and 12" in str(exc_info.value)
 
     def test_partition_name_format(self, test_helpers):
         """Partition names use zero-padded year and month."""
@@ -476,8 +478,6 @@ class TestAuditPagination:
 
     def test_invalid_cursor_raises_error(self, authn):
         """Invalid cursor raises clear error."""
-        from postkit.authn import AuthnError
-
         with pytest.raises(AuthnError, match="Invalid pagination cursor"):
             authn.get_audit_events(before="garbage")
 

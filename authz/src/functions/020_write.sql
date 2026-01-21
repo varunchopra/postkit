@@ -49,7 +49,8 @@ BEGIN
     -- Validate expiration is in the future
     IF p_expires_at IS NOT NULL AND p_expires_at <= now() THEN
         RAISE EXCEPTION 'expires_at must be in the future'
-            USING ERRCODE = 'check_violation';
+            USING ERRCODE = 'check_violation',
+                  HINT = 'postkit:authz:VAL_EXPIRATION_FUTURE';
     END IF;
 
     -- Check for cycles when adding group-to-group membership
@@ -57,7 +58,8 @@ BEGIN
         -- Fast path: self-reference (no locks needed)
         IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
             RAISE EXCEPTION 'A group cannot be a member of itself'
-                USING ERRCODE = 'PK001';
+                USING ERRCODE = 'PK001',
+                      HINT = 'postkit:authz:BIZ_SELF_MEMBERSHIP';
         END IF;
 
         -- Lock both endpoints to prevent concurrent cycle creation
@@ -70,7 +72,8 @@ BEGIN
         -- Transitive cycle check (now safe under dual lock)
         IF authz._would_create_cycle(p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
             RAISE EXCEPTION 'This would create a circular group membership'
-                USING ERRCODE = 'PK001';
+                USING ERRCODE = 'PK001',
+                      HINT = 'postkit:authz:BIZ_CYCLE_GROUP';
         END IF;
     END IF;
 
@@ -79,7 +82,8 @@ BEGIN
         -- Fast path: self-reference (no locks needed)
         IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
             RAISE EXCEPTION 'A resource cannot be its own parent'
-                USING ERRCODE = 'PK001';
+                USING ERRCODE = 'PK001',
+                      HINT = 'postkit:authz:BIZ_SELF_PARENT';
         END IF;
 
         -- Lock both endpoints to prevent concurrent cycle creation
@@ -92,7 +96,8 @@ BEGIN
         -- Transitive cycle check (now safe under dual lock)
         IF authz._would_create_resource_cycle(p_resource_type, p_resource_id, p_subject_type, p_subject_id, p_namespace) THEN
             RAISE EXCEPTION 'This would create a circular resource hierarchy'
-                USING ERRCODE = 'PK001';
+                USING ERRCODE = 'PK001',
+                      HINT = 'postkit:authz:BIZ_CYCLE_RESOURCE';
         END IF;
     END IF;
 
@@ -162,11 +167,13 @@ BEGIN
     -- Reject relations that require cycle detection (must use write_tuple instead)
     IF p_relation = 'member' AND p_subject_type != 'user' THEN
         RAISE EXCEPTION 'write_tuples_bulk cannot create group-to-group memberships; use write_tuple instead'
-            USING ERRCODE = 'feature_not_supported';
+            USING ERRCODE = 'feature_not_supported',
+                  HINT = 'postkit:authz:BIZ_BULK_GROUP_MEMBERSHIP';
     END IF;
     IF p_relation = 'parent' THEN
         RAISE EXCEPTION 'write_tuples_bulk cannot create parent relations; use write_tuple instead'
-            USING ERRCODE = 'feature_not_supported';
+            USING ERRCODE = 'feature_not_supported',
+                  HINT = 'postkit:authz:BIZ_BULK_PARENT_RELATION';
     END IF;
     -- Validate subject_ids array (consistent with write_tuple behavior)
     PERFORM authz._validate_id_array(p_subject_ids, 'subject_ids');

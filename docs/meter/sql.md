@@ -45,7 +45,7 @@ Drop partitions older than retention period
 SELECT * FROM meter.drop_old_partitions(12);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:73*
+*Source: meter/src/functions/040_maintenance.sql:75*
 
 ---
 
@@ -67,7 +67,7 @@ Create partitions for upcoming months
 SELECT * FROM meter.ensure_partitions(6);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:42*
+*Source: meter/src/functions/040_maintenance.sql:44*
 
 ---
 
@@ -89,7 +89,7 @@ Get namespace statistics
 SELECT * FROM meter.get_stats();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:196*
+*Source: meter/src/functions/040_maintenance.sql:200*
 
 ---
 
@@ -111,7 +111,7 @@ Verify account invariants: balance vs ledger sum, reserved vs active reservation
 SELECT * FROM meter.reconcile();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:119*
+*Source: meter/src/functions/040_maintenance.sql:123*
 
 ---
 
@@ -269,7 +269,7 @@ Mark expired reservations as 'expired' and release their holds. Distinct from 'r
 SELECT meter.release_expired_reservations();
 ```
 
-*Source: meter/src/functions/030_periods.sql:206*
+*Source: meter/src/functions/030_periods.sql:208*
 
 ---
 
@@ -539,7 +539,7 @@ SELECT * FROM meter.commit('res_abc123', 2347);
 SELECT consumed - reserved_amount AS overage FROM meter.commit('res_abc123', 500);
 ```
 
-*Source: meter/src/functions/012_reserve.sql:130*
+*Source: meter/src/functions/012_reserve.sql:132*
 
 ---
 
@@ -593,7 +593,7 @@ Release a reservation without consuming. Does not affect balance or create ledge
 SELECT meter.release('res_abc123');
 ```
 
-*Source: meter/src/functions/012_reserve.sql:232*
+*Source: meter/src/functions/012_reserve.sql:235*
 
 ---
 

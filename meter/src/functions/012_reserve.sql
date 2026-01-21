@@ -47,12 +47,14 @@ BEGIN
 
     IF p_user_id IS NULL THEN
         RAISE EXCEPTION 'user_id is required for reservations'
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:meter:VAL_USER_ID_REQUIRED';
     END IF;
 
     IF p_ttl_seconds < 1 OR p_ttl_seconds > 86400 THEN
         RAISE EXCEPTION 'ttl_seconds must be between 1 and 86400'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_TTL_OUT_OF_RANGE';
     END IF;
 
     v_expires_at := now() + (p_ttl_seconds || ' seconds')::interval;
@@ -165,7 +167,8 @@ BEGIN
 
     IF p_actual_amount < 0 THEN
         RAISE EXCEPTION 'actual_amount cannot be negative'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_AMOUNT_NEGATIVE';
     END IF;
 
     -- Find and lock active reservation

@@ -434,7 +434,8 @@ BEGIN
 
     IF v_is_active = true THEN
         RAISE EXCEPTION 'Cannot delete active version. Activate a different version first.'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:BIZ_DELETE_ACTIVE_VERSION';
     END IF;
 
     DELETE FROM config.entries

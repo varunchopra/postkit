@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 import pytest
+from postkit.authz import AuthzError
 
 
 class TestAuditCapture:
@@ -404,10 +405,10 @@ class TestPartitionManagement:
 
     def test_invalid_month_rejected(self, authz):
         """Invalid month values are rejected."""
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
+        ):
             authz.cursor.execute("SELECT authz.create_audit_partition(2030, 13)")
-
-        assert "Month must be between 1 and 12" in str(exc_info.value)
 
     def test_drop_old_partitions(self, authz):
         """drop_audit_partitions removes old partitions correctly."""
@@ -730,7 +731,5 @@ class TestAuditPagination:
 
     def test_invalid_cursor_raises_error(self, authz):
         """Invalid cursor raises clear error."""
-        from postkit.authz import AuthzError
-
         with pytest.raises(AuthzError, match="Invalid pagination cursor"):
             authz.get_audit_events(before="garbage")

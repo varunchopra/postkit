@@ -27,8 +27,9 @@ class TestBoundaryConditions:
     def test_identifier_over_max_length_rejected(self, authz):
         """Identifiers over 1024 chars are rejected."""
         too_long = "a" * 1025
-        with pytest.raises(AuthzError, match="exceeds maximum length"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("doc", too_long), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_ID_TOO_LONG"
 
     def test_single_char_identifiers(self, authz):
         """Single character identifiers work."""
@@ -70,9 +71,8 @@ class TestBoundaryConditions:
 
     def test_null_bytes_rejected_by_driver(self, authz):
         """Null bytes are rejected (by psycopg at protocol level, not our validation)."""
-        # Note: psycopg rejects null bytes before SQL execution, so we get AuthnError
-        # (the generic SDK error) rather than AuthzError
-        with pytest.raises(Exception):  # Could be psycopg or SDK error
+        # psycopg rejects null bytes before SQL execution, SDK wraps as AuthzError
+        with pytest.raises(AuthzError, match="NUL"):
             authz.grant(
                 "read", resource=("doc", "bad\x00id"), subject=("user", "alice")
             )
@@ -83,31 +83,34 @@ class TestBulkValidation:
 
     def test_bulk_grant_rejects_empty_subject_id(self, authz):
         """bulk_grant rejects arrays with empty strings."""
-        with pytest.raises(AuthzError, match=r"subject_ids\[2\] is empty"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.bulk_grant(
                 "read",
                 resource=("doc", "1"),
                 subjects=[("user", "alice"), ("user", ""), ("user", "bob")],
             )
+        assert exc_info.value.error_code == "VAL_ARRAY_ELEMENT_INVALID"
 
     def test_bulk_grant_rejects_whitespace_only(self, authz):
         """bulk_grant rejects arrays with whitespace-only strings."""
-        with pytest.raises(AuthzError, match=r"subject_ids\[2\] is empty"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.bulk_grant(
                 "read",
                 resource=("doc", "1"),
                 subjects=[("user", "alice"), ("user", "   "), ("user", "bob")],
             )
+        assert exc_info.value.error_code == "VAL_ARRAY_ELEMENT_INVALID"
 
     def test_bulk_grant_rejects_too_long(self, authz):
         """bulk_grant rejects arrays with overly long strings."""
         too_long = "a" * 1025
-        with pytest.raises(AuthzError, match=r"subject_ids\[2\] exceeds 1024"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.bulk_grant(
                 "read",
                 resource=("doc", "1"),
                 subjects=[("user", "alice"), ("user", too_long)],
             )
+        assert exc_info.value.error_code == "VAL_ARRAY_ELEMENT_INVALID"
 
     def test_bulk_grant_valid_array_succeeds(self, authz):
         """bulk_grant works with valid arrays."""
@@ -123,23 +126,25 @@ class TestBulkValidation:
 
     def test_bulk_grant_resources_rejects_group_membership(self, authz):
         """bulk_grant_resources rejects group-to-group memberships (cycle risk)."""
-        with pytest.raises(AuthzError, match="cannot create group-to-group"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.bulk_grant_resources(
                 "member",
                 resource_type="team",
                 resource_ids=["eng", "sales"],
                 subject=("team", "platform"),
             )
+        assert exc_info.value.error_code == "BIZ_BULK_GROUP_MEMBERSHIP"
 
     def test_bulk_grant_resources_rejects_parent_relation(self, authz):
         """bulk_grant_resources rejects parent relations (cycle risk)."""
-        with pytest.raises(AuthzError, match="cannot create parent"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.bulk_grant_resources(
                 "parent",
                 resource_type="folder",
                 resource_ids=["docs", "images"],
                 subject=("folder", "root"),
             )
+        assert exc_info.value.error_code == "BIZ_BULK_PARENT_RELATION"
 
     def test_bulk_grant_resources_allows_user_member(self, authz):
         """bulk_grant_resources allows member relation for users (no cycle risk)."""
@@ -205,30 +210,35 @@ class TestSDKValidation:
     """Input validation - SDK raises exceptions for invalid inputs."""
 
     def test_invalid_resource_type_raises(self, authz):
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("INVALID", "1"), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_invalid_permission_raises(self, authz):
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("READ", resource=("doc", "1"), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_invalid_subject_type_raises(self, authz):
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("doc", "1"), subject=("USER", "alice"))
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_invalid_subject_relation_raises(self, authz):
         """grant rejects invalid subject_relation (must be lowercase identifier)."""
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant(
                 "read",
                 resource=("doc", "1"),
                 subject=("team", "eng"),
                 subject_relation="ADMIN",
             )
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_empty_resource_id_raises(self, authz):
-        with pytest.raises(AuthzError, match="cannot be empty"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("doc", ""), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_ID_EMPTY"
 
     def test_flexible_resource_ids_allowed(self, authz):
         # IDs can have slashes, @, uppercase - they're flexible
@@ -285,38 +295,44 @@ class TestDeleteValidation:
 
     def test_delete_rejects_invalid_resource_type(self, authz):
         """delete rejects invalid resource_type."""
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.revoke("read", resource=("INVALID", "1"), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_delete_rejects_invalid_relation(self, authz):
         """delete rejects invalid relation."""
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.revoke("READ", resource=("doc", "1"), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_delete_rejects_invalid_subject_type(self, authz):
         """delete rejects invalid subject_type."""
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.revoke("read", resource=("doc", "1"), subject=("USER", "alice"))
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_delete_rejects_empty_resource_id(self, authz):
         """delete rejects empty resource_id."""
-        with pytest.raises(AuthzError, match="cannot be empty"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.revoke("read", resource=("doc", ""), subject=("user", "alice"))
+        assert exc_info.value.error_code == "VAL_ID_EMPTY"
 
     def test_delete_rejects_empty_subject_id(self, authz):
         """delete rejects empty subject_id."""
-        with pytest.raises(AuthzError, match="cannot be empty"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.revoke("read", resource=("doc", "1"), subject=("user", ""))
+        assert exc_info.value.error_code == "VAL_ID_EMPTY"
 
     def test_delete_rejects_invalid_subject_relation(self, authz):
         """revoke rejects invalid subject_relation."""
-        with pytest.raises(AuthzError, match="must start with lowercase"):
+        with pytest.raises(AuthzError) as exc_info:
             authz.revoke(
                 "read",
                 resource=("doc", "1"),
                 subject=("team", "eng"),
                 subject_relation="ADMIN",
             )
+        assert exc_info.value.error_code == "VAL_IDENTIFIER_FORMAT"
 
     def test_delete_valid_input_succeeds(self, authz):
         """delete with valid input succeeds (even if tuple doesn't exist)."""
@@ -370,23 +386,27 @@ class TestValidationErrorType:
 
     def test_null_validation_raises_authz_validation_error(self, make_authz):
         """Null validation raises AuthzValidationError (SQLSTATE 22004)."""
-        with pytest.raises(AuthzValidationError, match="cannot be null"):
+        with pytest.raises(AuthzValidationError) as exc_info:
             make_authz(None)
+        assert exc_info.value.error_code == "VAL_NAMESPACE_NULL"
 
     def test_empty_validation_raises_authz_validation_error(self, make_authz):
         """Empty string validation raises AuthzValidationError (SQLSTATE 22026)."""
-        with pytest.raises(AuthzValidationError, match="cannot be empty"):
+        with pytest.raises(AuthzValidationError) as exc_info:
             make_authz("")
+        assert exc_info.value.error_code == "VAL_NAMESPACE_EMPTY"
 
     def test_length_validation_raises_authz_validation_error(self, make_authz):
         """Length exceeded validation raises AuthzValidationError (SQLSTATE 22001)."""
-        with pytest.raises(AuthzValidationError, match="exceeds maximum"):
+        with pytest.raises(AuthzValidationError) as exc_info:
             make_authz("a" * 1025)
+        assert exc_info.value.error_code == "VAL_NAMESPACE_TOO_LONG"
 
     def test_format_validation_raises_authz_validation_error(self, make_authz):
         """Format validation raises AuthzValidationError (SQLSTATE 22023)."""
-        with pytest.raises(AuthzValidationError, match="control characters"):
+        with pytest.raises(AuthzValidationError) as exc_info:
             make_authz("has\ttab")
+        assert exc_info.value.error_code == "VAL_NAMESPACE_INVALID_CHARS"
 
     def test_authz_validation_error_is_authz_error(self):
         """AuthzValidationError is a subclass of AuthzError for backwards compatibility."""

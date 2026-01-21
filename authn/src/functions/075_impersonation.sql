@@ -46,8 +46,9 @@ BEGIN
 
     -- Validate reason is not empty
     IF p_reason IS NULL OR trim(p_reason) = '' THEN
-        RAISE EXCEPTION 'reason cannot be null or empty'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Reason cannot be null or empty'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_REASON_REQUIRED';
     END IF;
 
     -- Validate actor session exists and is valid
@@ -62,7 +63,8 @@ BEGIN
 
     IF v_actor_id IS NULL THEN
         RAISE EXCEPTION 'Actor session not found or invalid'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:SESSION_ACTOR_INVALID';
     END IF;
 
     -- Validate target user exists and is not disabled
@@ -74,13 +76,15 @@ BEGIN
 
     IF v_target_email IS NULL THEN
         RAISE EXCEPTION 'Target user not found or disabled'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:SESSION_TARGET_INVALID';
     END IF;
 
     -- Prevent self-impersonation
     IF v_actor_id = p_target_user_id THEN
         RAISE EXCEPTION 'Cannot impersonate yourself'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:BIZ_IMPERSONATE_SELF';
     END IF;
 
     -- Prevent impersonation chaining (cannot start impersonation from any impersonation session)
@@ -96,7 +100,8 @@ BEGIN
           AND ois.ended_at IS NULL
     ) THEN
         RAISE EXCEPTION 'Cannot start impersonation from an impersonation session'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:BIZ_IMPERSONATE_CHAIN';
     END IF;
 
     -- Calculate duration (enforce max)
@@ -105,12 +110,14 @@ BEGIN
 
     IF v_duration > v_max_duration THEN
         RAISE EXCEPTION 'Impersonation duration % exceeds maximum allowed %', v_duration, v_max_duration
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:LIMIT_DURATION_EXCEEDED';
     END IF;
 
     IF v_duration <= interval '0 seconds' THEN
         RAISE EXCEPTION 'Impersonation duration must be positive'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_DURATION_POSITIVE';
     END IF;
 
     v_expires_at := now() + v_duration;

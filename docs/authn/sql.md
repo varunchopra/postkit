@@ -155,7 +155,7 @@ Clear actor context
 SELECT authn.clear_actor();
 ```
 
-*Source: authn/src/functions/070_audit.sql:40*
+*Source: authn/src/functions/070_audit.sql:41*
 
 ---
 
@@ -174,7 +174,7 @@ Create a monthly partition for audit events
 SELECT authn.create_audit_partition(2024, 1); -- January 2024
 ```
 
-*Source: authn/src/functions/070_audit.sql:56*
+*Source: authn/src/functions/070_audit.sql:57*
 
 ---
 
@@ -196,7 +196,7 @@ Delete old audit partitions (default: keep 7 years for compliance)
 SELECT * FROM authn.drop_audit_partitions(84);
 ```
 
-*Source: authn/src/functions/070_audit.sql:145*
+*Source: authn/src/functions/070_audit.sql:148*
 
 ---
 
@@ -218,7 +218,7 @@ Create partitions for upcoming months (run monthly via cron)
 SELECT * FROM authn.ensure_audit_partitions(3);
 ```
 
-*Source: authn/src/functions/070_audit.sql:112*
+*Source: authn/src/functions/070_audit.sql:115*
 
 ---
 
@@ -308,7 +308,7 @@ End an impersonation session early (revokes the impersonation session)
 SELECT authn.end_impersonation(impersonation_id);
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:154*
+*Source: authn/src/functions/075_impersonation.sql:161*
 
 ---
 
@@ -330,7 +330,7 @@ Get impersonation context for a session (is this an impersonated session?)
 SELECT * FROM authn.get_impersonation_context(session_id);
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:223*
+*Source: authn/src/functions/075_impersonation.sql:230*
 
 ---
 
@@ -352,7 +352,7 @@ List all active impersonations in a namespace (admin dashboard)
 SELECT * FROM authn.list_active_impersonations('production');
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:285*
+*Source: authn/src/functions/075_impersonation.sql:292*
 
 ---
 
@@ -377,7 +377,7 @@ List impersonation history for audit (includes ended impersonations)
 SELECT * FROM authn.list_impersonation_history('production', 100);
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:335*
+*Source: authn/src/functions/075_impersonation.sql:342*
 
 ---
 
@@ -711,7 +711,7 @@ End an operator impersonation session early
 SELECT authn.end_operator_impersonation(impersonation_id);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:324*
+*Source: authn/src/functions/085_operator_impersonation.sql:331*
 
 ---
 
@@ -736,7 +736,7 @@ Query operator audit events
 SELECT * FROM authn.get_operator_audit_events(100, NULL, NULL, 'customer_ns');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:637*
+*Source: authn/src/functions/085_operator_impersonation.sql:644*
 
 ---
 
@@ -758,7 +758,7 @@ Get operator impersonation context for a session
 SELECT * FROM authn.get_operator_impersonation_context(session_id);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:392*
+*Source: authn/src/functions/085_operator_impersonation.sql:399*
 
 ---
 
@@ -780,7 +780,7 @@ List all active operator impersonations (platform admin view)
 SELECT * FROM authn.list_active_operator_impersonations(100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:582*
+*Source: authn/src/functions/085_operator_impersonation.sql:589*
 
 ---
 
@@ -804,7 +804,7 @@ List impersonations performed by an operator
 SELECT * FROM authn.list_operator_impersonations_by_operator(operator_id, 'platform');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:526*
+*Source: authn/src/functions/085_operator_impersonation.sql:533*
 
 ---
 
@@ -828,7 +828,7 @@ List operator impersonation history affecting a target namespace
 SELECT * FROM authn.list_operator_impersonations_for_target('customer_ns', 100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:466*
+*Source: authn/src/functions/085_operator_impersonation.sql:473*
 
 ---
 
@@ -905,7 +905,7 @@ List active refresh tokens for a user (for "manage devices" UI)
 SELECT * FROM authn.list_refresh_tokens(user_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:372*
+*Source: authn/src/functions/025_refresh_tokens.sql:373*
 
 ---
 
@@ -924,7 +924,7 @@ Revoke all refresh tokens for a user (password change, security concern)
 SELECT authn.revoke_all_refresh_tokens(user_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:336*
+*Source: authn/src/functions/025_refresh_tokens.sql:337*
 
 ---
 
@@ -946,7 +946,7 @@ Revoke all tokens in a family (for security response)
 SELECT authn.revoke_refresh_token_family(family_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:291*
+*Source: authn/src/functions/025_refresh_tokens.sql:292*
 
 ---
 
@@ -970,7 +970,7 @@ Rotate a refresh token: invalidate old, create new (secure by default)
 SELECT * FROM authn.rotate_refresh_token('old_token_hash', 'new_token_hash');
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:85*
+*Source: authn/src/functions/025_refresh_tokens.sql:86*
 
 ---
 
@@ -989,7 +989,7 @@ Check if a refresh token is valid WITHOUT rotating (for inspection only)
 SELECT * FROM authn.validate_refresh_token('a1b2c3...token_hash');
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:247*
+*Source: authn/src/functions/025_refresh_tokens.sql:248*
 
 ---
 

@@ -2,6 +2,7 @@
 
 import pytest
 from postkit.authn import AuthnError
+from postkit.base import UniqueViolationError
 
 
 class TestCreateUser:
@@ -34,7 +35,7 @@ class TestCreateUser:
 
     def test_rejects_duplicate_email_in_namespace(self, authn):
         authn.create_user("alice@example.com", "hash1")
-        with pytest.raises(Exception):  # unique constraint violation
+        with pytest.raises(UniqueViolationError):
             authn.create_user("alice@example.com", "hash2")
 
     def test_allows_same_email_different_namespace(self, make_authn):

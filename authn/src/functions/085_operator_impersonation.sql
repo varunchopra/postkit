@@ -207,8 +207,9 @@ BEGIN
 
     -- Validate reason is not empty
     IF p_reason IS NULL OR trim(p_reason) = '' THEN
-        RAISE EXCEPTION 'reason cannot be null or empty'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Reason cannot be null or empty'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_REASON_REQUIRED';
     END IF;
 
     -- MECHANISM: Validate operator has real, valid session (any namespace)
@@ -224,7 +225,8 @@ BEGIN
 
     IF v_operator_id IS NULL THEN
         RAISE EXCEPTION 'Operator session not found or invalid'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:SESSION_OPERATOR_INVALID';
     END IF;
 
     -- MECHANISM: Validate target user exists in target namespace and is not disabled
@@ -236,13 +238,15 @@ BEGIN
 
     IF v_target_user_email IS NULL THEN
         RAISE EXCEPTION 'Target user not found or disabled'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:SESSION_TARGET_INVALID';
     END IF;
 
     -- Prevent operator from impersonating themselves
     IF v_operator_id = p_target_user_id AND v_operator_namespace = p_target_namespace THEN
         RAISE EXCEPTION 'Cannot impersonate yourself'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:BIZ_IMPERSONATE_SELF';
     END IF;
 
     -- Prevent chaining (cannot use any impersonation session to start another)
@@ -257,7 +261,8 @@ BEGIN
           AND is_.ended_at IS NULL
     ) THEN
         RAISE EXCEPTION 'Cannot start operator impersonation from an impersonation session'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:BIZ_IMPERSONATE_CHAIN';
     END IF;
 
     -- Calculate duration (enforce max)
@@ -266,12 +271,14 @@ BEGIN
 
     IF v_duration > v_max_duration THEN
         RAISE EXCEPTION 'Impersonation duration % exceeds maximum allowed %', v_duration, v_max_duration
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:LIMIT_DURATION_EXCEEDED';
     END IF;
 
     IF v_duration <= interval '0 seconds' THEN
         RAISE EXCEPTION 'Impersonation duration must be positive'
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_DURATION_POSITIVE';
     END IF;
 
     v_expires_at := now() + v_duration;

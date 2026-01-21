@@ -26,7 +26,8 @@ BEGIN
             PERFORM p_ip_address::inet;
         EXCEPTION WHEN invalid_text_representation THEN
             RAISE EXCEPTION 'ip_address must be valid (got: %)', p_ip_address
-                USING ERRCODE = 'invalid_parameter_value';
+                USING ERRCODE = 'invalid_parameter_value',
+                      HINT = 'postkit:authn:VAL_IP_ADDRESS_INVALID';
         END;
     END IF;
 
@@ -73,11 +74,13 @@ BEGIN
     -- Validate inputs
     IF p_year < 1970 OR p_year > 9999 THEN
         RAISE EXCEPTION 'Year must be between 1970 and 9999, got %', p_year
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_YEAR_OUT_OF_RANGE';
     END IF;
     IF p_month < 1 OR p_month > 12 THEN
         RAISE EXCEPTION 'Month must be between 1 and 12, got %', p_month
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_MONTH_OUT_OF_RANGE';
     END IF;
 
     -- Build partition name

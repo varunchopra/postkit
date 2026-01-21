@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from postkit.authn import AuthnValidationError
 
 
 class TestStartImpersonation:
@@ -42,27 +43,28 @@ class TestStartImpersonation:
         target_id = authn.create_user("target@example.com", "hash2")
         admin_session = authn.create_session(admin_id, "admin_token")
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session, target_id, "", token_hash="imp_token1"
             )
+        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session, target_id, "   ", token_hash="imp_token2"
             )
+        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
 
     def test_prevents_self_impersonation(self, authn):
         """Cannot impersonate yourself."""
         user_id = authn.create_user("user@example.com", "hash")
         session_id = authn.create_session(user_id, "token")
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 session_id, user_id, "Testing self", token_hash="imp_token"
             )
-
-        assert "yourself" in str(exc_info.value).lower()
+        assert exc_info.value.error_code == "BIZ_IMPERSONATE_SELF"
 
     def test_prevents_impersonation_chaining(self, authn):
         """Cannot start impersonation from a regular impersonation session."""
@@ -78,13 +80,14 @@ class TestStartImpersonation:
 
         # Try to use the impersonation session to impersonate user C
         # This should be rejected - no chaining allowed
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 str(imp["impersonation_session_id"]),
                 user_c_id,
                 "Chained impersonation",
                 token_hash="imp_token_c",
             )
+        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
 
     def test_prevents_cross_type_chaining_operator_to_regular(self, make_authn):
         """Cannot start regular impersonation from an operator impersonation session.
@@ -113,23 +116,25 @@ class TestStartImpersonation:
 
         # Try to use the operator impersonation session for REGULAR impersonation
         # This should be prevented - no cross-type chaining allowed
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             customer.start_impersonation(
                 str(imp["impersonation_session_id"]),
                 user_c_id,
                 "Cross-type chained impersonation",
                 token_hash="imp_token_c",
             )
+        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
 
     def test_rejects_invalid_actor_session(self, authn):
         """Cannot start impersonation with invalid session."""
         target_id = authn.create_user("target@example.com", "hash")
         fake_session = "00000000-0000-0000-0000-000000000000"
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 fake_session, target_id, "Invalid session", token_hash="imp_token"
             )
+        assert exc_info.value.error_code == "SESSION_ACTOR_INVALID"
 
     def test_rejects_disabled_target_user(self, authn):
         """Cannot impersonate a disabled user."""
@@ -139,10 +144,11 @@ class TestStartImpersonation:
 
         authn.disable_user(target_id)
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session, target_id, "Disabled user", token_hash="imp_token"
             )
+        assert exc_info.value.error_code == "SESSION_TARGET_INVALID"
 
     def test_custom_duration(self, authn):
         """Can specify custom duration within limits."""
@@ -169,7 +175,7 @@ class TestStartImpersonation:
         target_id = authn.create_user("target@example.com", "hash2")
         admin_session = authn.create_session(admin_id, "admin_token")
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session,
                 target_id,
@@ -177,9 +183,7 @@ class TestStartImpersonation:
                 token_hash="imp_token",
                 duration=timedelta(days=1),
             )
-
-        err_msg = str(exc_info.value).lower()
-        assert "exceed" in err_msg or "maximum" in err_msg
+        assert exc_info.value.error_code == "LIMIT_DURATION_EXCEEDED"
 
     def test_rejects_zero_duration(self, authn):
         """Cannot use zero duration."""
@@ -187,7 +191,7 @@ class TestStartImpersonation:
         target_id = authn.create_user("target@example.com", "hash2")
         admin_session = authn.create_session(admin_id, "admin_token")
 
-        with pytest.raises(Exception, match="positive"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session,
                 target_id,
@@ -195,6 +199,7 @@ class TestStartImpersonation:
                 token_hash="imp_token",
                 duration=timedelta(0),
             )
+        assert exc_info.value.error_code == "VAL_DURATION_POSITIVE"
 
     def test_rejects_negative_duration(self, authn):
         """Cannot use negative duration."""
@@ -202,7 +207,7 @@ class TestStartImpersonation:
         target_id = authn.create_user("target@example.com", "hash2")
         admin_session = authn.create_session(admin_id, "admin_token")
 
-        with pytest.raises(Exception, match="positive"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session,
                 target_id,
@@ -210,6 +215,7 @@ class TestStartImpersonation:
                 token_hash="imp_token",
                 duration=timedelta(minutes=-30),
             )
+        assert exc_info.value.error_code == "VAL_DURATION_POSITIVE"
 
     def test_rejects_revoked_actor_session(self, authn):
         """Cannot start impersonation with a revoked session."""
@@ -219,10 +225,11 @@ class TestStartImpersonation:
 
         authn.revoke_session("admin_token")
 
-        with pytest.raises(Exception, match="Actor session"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session, target_id, "Revoked session", token_hash="imp_token"
             )
+        assert exc_info.value.error_code == "SESSION_ACTOR_INVALID"
 
     def test_rejects_disabled_actor_user(self, authn):
         """Cannot start impersonation if actor user is disabled."""
@@ -232,10 +239,11 @@ class TestStartImpersonation:
 
         authn.disable_user(admin_id)
 
-        with pytest.raises(Exception, match="Actor session"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session, target_id, "Disabled actor", token_hash="imp_token"
             )
+        assert exc_info.value.error_code == "SESSION_ACTOR_INVALID"
 
     def test_creates_audit_event(self, authn):
         """Impersonation start is logged to audit."""

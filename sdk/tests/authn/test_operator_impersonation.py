@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from postkit.authn import AuthnValidationError
 
 
 class TestStartOperatorImpersonation:
@@ -67,7 +68,7 @@ class TestStartOperatorImpersonation:
 
         target_id = customer.create_user("user@customer.com", "hash2")
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=operator_session,
                 target_user_id=target_id,
@@ -75,8 +76,9 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token1",
                 reason="",
             )
+        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=operator_session,
                 target_user_id=target_id,
@@ -84,6 +86,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token2",
                 reason="   ",
             )
+        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
 
     def test_prevents_self_impersonation_cross_namespace(self, make_authn):
         """Cannot impersonate yourself even across namespaces."""
@@ -93,7 +96,7 @@ class TestStartOperatorImpersonation:
         user_id = ns1.create_user("user@example.com", "hash")
         session_id = ns1.create_session(user_id, "token")
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(AuthnValidationError) as exc_info:
             ns1.start_operator_impersonation(
                 operator_session_id=session_id,
                 target_user_id=user_id,
@@ -101,8 +104,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token",
                 reason="Testing self",
             )
-
-        assert "yourself" in str(exc_info.value).lower()
+        assert exc_info.value.error_code == "BIZ_IMPERSONATE_SELF"
 
     def test_prevents_impersonation_chaining(self, make_authn):
         """Cannot start operator impersonation from an operator impersonation session."""
@@ -126,7 +128,7 @@ class TestStartOperatorImpersonation:
         )
 
         # Try to use the impersonation session to impersonate user C
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=str(imp["impersonation_session_id"]),
                 target_user_id=user_c_id,
@@ -134,6 +136,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token_c",
                 reason="Chained impersonation",
             )
+        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
 
     def test_prevents_cross_type_chaining_regular_to_operator(self, make_authn):
         """Cannot start operator impersonation from a regular impersonation session.
@@ -158,7 +161,7 @@ class TestStartOperatorImpersonation:
 
         # Try to use the regular impersonation session for operator impersonation
         # This should be prevented - no cross-type chaining allowed
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=str(imp["impersonation_session_id"]),
                 target_user_id=target_id,
@@ -166,6 +169,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token_c",
                 reason="Cross-type chained impersonation",
             )
+        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
 
     def test_rejects_invalid_operator_session(self, make_authn):
         """Cannot start operator impersonation with invalid session."""
@@ -173,7 +177,7 @@ class TestStartOperatorImpersonation:
         target_id = customer.create_user("target@customer.com", "hash")
         fake_session = "00000000-0000-0000-0000-000000000000"
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             customer.start_operator_impersonation(
                 operator_session_id=fake_session,
                 target_user_id=target_id,
@@ -181,6 +185,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token",
                 reason="Invalid session",
             )
+        assert exc_info.value.error_code == "SESSION_OPERATOR_INVALID"
 
     def test_rejects_disabled_target_user(self, make_authn):
         """Cannot impersonate a disabled user."""
@@ -193,7 +198,7 @@ class TestStartOperatorImpersonation:
         target_id = customer.create_user("target@customer.com", "hash2")
         customer.disable_user(target_id)
 
-        with pytest.raises(Exception):
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=operator_session,
                 target_user_id=target_id,
@@ -201,6 +206,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token",
                 reason="Disabled user",
             )
+        assert exc_info.value.error_code == "SESSION_TARGET_INVALID"
 
     def test_custom_duration(self, make_authn):
         """Can specify custom duration within limits."""
@@ -236,7 +242,7 @@ class TestStartOperatorImpersonation:
 
         target_id = customer.create_user("target@customer.com", "hash2")
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=operator_session,
                 target_user_id=target_id,
@@ -245,9 +251,7 @@ class TestStartOperatorImpersonation:
                 reason="Too long",
                 duration=timedelta(hours=5),
             )
-
-        err_msg = str(exc_info.value).lower()
-        assert "exceed" in err_msg or "maximum" in err_msg
+        assert exc_info.value.error_code == "LIMIT_DURATION_EXCEEDED"
 
     def test_rejects_zero_duration(self, make_authn):
         """Cannot use zero duration."""
@@ -259,7 +263,7 @@ class TestStartOperatorImpersonation:
 
         target_id = customer.create_user("target@customer.com", "hash2")
 
-        with pytest.raises(Exception, match="positive"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
                 operator_session_id=operator_session,
                 target_user_id=target_id,
@@ -268,6 +272,7 @@ class TestStartOperatorImpersonation:
                 reason="Zero duration",
                 duration=timedelta(0),
             )
+        assert exc_info.value.error_code == "VAL_DURATION_POSITIVE"
 
     def test_stores_ticket_reference(self, make_authn):
         """Ticket reference is stored in impersonation record."""

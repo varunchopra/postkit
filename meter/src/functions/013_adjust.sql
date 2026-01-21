@@ -37,8 +37,9 @@ BEGIN
     PERFORM meter._validate_unit(p_unit);
 
     IF p_amount = 0 THEN
-        RAISE EXCEPTION 'adjustment amount cannot be zero'
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Adjustment amount cannot be zero'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_ADJUSTMENT_ZERO';
     END IF;
 
     -- Check idempotency (with advisory lock to prevent race conditions)

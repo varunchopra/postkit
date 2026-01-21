@@ -29,9 +29,30 @@ _SQLSTATE_EXCEPTIONS: dict[
 class PostkitError(Exception):
     """Base exception for postkit operations."""
 
-    def __init__(self, message: str, sqlstate: str | None = None):
+    def __init__(
+        self, message: str, sqlstate: str | None = None, hint: str | None = None
+    ):
         super().__init__(message)
         self.sqlstate = sqlstate
+        self.hint = hint
+
+    @property
+    def error_module(self) -> str | None:
+        """Extract module from hint (e.g., 'authn' from 'postkit:authn:...')."""
+        if self.hint and self.hint.startswith("postkit:"):
+            parts = self.hint.split(":")
+            if len(parts) >= 2:
+                return parts[1]
+        return None
+
+    @property
+    def error_code(self) -> str | None:
+        """Extract error code from hint (e.g., 'BIZ_IMPERSONATE_SELF')."""
+        if self.hint and self.hint.startswith("postkit:"):
+            parts = self.hint.split(":")
+            if len(parts) == 3:
+                return parts[2]
+        return None
 
 
 class UniqueViolationError(PostkitError):
@@ -126,7 +147,7 @@ class BaseClient(ABC):
             self._handle_error(e)
 
     def _handle_error(self, e: psycopg.Error) -> NoReturn:
-        """Convert psycopg errors to SDK exceptions, preserving SQLSTATE.
+        """Convert psycopg errors to SDK exceptions, preserving SQLSTATE and HINT.
 
         Uses specific exception subclasses for common database errors
         (unique violation, foreign key violation, etc.) to enable
@@ -136,13 +157,14 @@ class BaseClient(ABC):
         """
         sqlstate = getattr(e, "sqlstate", None)
         message = str(e)
+        hint = e.diag.message_hint if hasattr(e, "diag") and e.diag else None
 
         # Check module-specific mapping first, then global, then fallback to _error_class
         exc_class = self._module_sqlstate_map.get(
             sqlstate, _SQLSTATE_EXCEPTIONS.get(sqlstate, self._error_class)
         )
 
-        raise exc_class(message, sqlstate) from e
+        raise exc_class(message, sqlstate, hint) from e
 
     def _normalize_value(self, value: Any) -> Any:
         """Normalize database values to Python types."""

@@ -1,5 +1,6 @@
 """Tests for input validation functions."""
 
+import psycopg
 import pytest
 from postkit.authn import AuthnError, AuthnValidationError
 
@@ -232,12 +233,13 @@ class TestIpAddressValidation:
 
     def test_rejects_invalid_ip(self, test_helpers):
         """Invalid IP address should be rejected."""
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            psycopg.errors.InvalidParameterValue, match="ip_address must be valid"
+        ):
             test_helpers.cursor.execute(
                 "SELECT authn.set_actor(%s, %s, %s, %s)",
                 ("user-1", None, "not-an-ip", None),
             )
-        assert "ip_address must be valid" in str(exc_info.value)
 
 
 class TestValidationErrorType:
@@ -245,23 +247,27 @@ class TestValidationErrorType:
 
     def test_null_validation_raises_authn_validation_error(self, make_authn):
         """Null validation raises AuthnValidationError (SQLSTATE 22004)."""
-        with pytest.raises(AuthnValidationError, match="cannot be null"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             make_authn(None)
+        assert exc_info.value.error_code == "VAL_NAMESPACE_NULL"
 
     def test_empty_validation_raises_authn_validation_error(self, make_authn):
         """Empty string validation raises AuthnValidationError (SQLSTATE 22026)."""
-        with pytest.raises(AuthnValidationError, match="cannot be empty"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             make_authn("")
+        assert exc_info.value.error_code == "VAL_NAMESPACE_EMPTY"
 
     def test_length_validation_raises_authn_validation_error(self, make_authn):
         """Length exceeded validation raises AuthnValidationError (SQLSTATE 22001)."""
-        with pytest.raises(AuthnValidationError, match="exceeds maximum"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             make_authn("a" * 1025)
+        assert exc_info.value.error_code == "VAL_NAMESPACE_TOO_LONG"
 
     def test_format_validation_raises_authn_validation_error(self, make_authn):
         """Format validation raises AuthnValidationError (SQLSTATE 22023)."""
-        with pytest.raises(AuthnValidationError, match="control characters"):
+        with pytest.raises(AuthnValidationError) as exc_info:
             make_authn("has\ttab")
+        assert exc_info.value.error_code == "VAL_NAMESPACE_INVALID_CHARS"
 
     def test_authn_validation_error_is_authn_error(self):
         """AuthnValidationError is a subclass of AuthnError for backwards compatibility."""

@@ -23,32 +23,37 @@ DECLARE
     v_normalized text;
 BEGIN
     IF p_email IS NULL THEN
-        RAISE EXCEPTION 'email cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Email cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_EMAIL_NULL';
     END IF;
 
     v_normalized := lower(trim(p_email));
 
     IF v_normalized = '' THEN
-        RAISE EXCEPTION 'email cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+        RAISE EXCEPTION 'Email cannot be empty'
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:authn:VAL_EMAIL_EMPTY';
     END IF;
 
     IF length(v_normalized) > 1024 THEN
-        RAISE EXCEPTION 'email exceeds maximum length of 1024 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+        RAISE EXCEPTION 'Email exceeds maximum length of 1024 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:authn:VAL_EMAIL_TOO_LONG';
     END IF;
 
     -- Reject control characters
     IF v_normalized ~ '[\x00-\x1F\x7F]' THEN
-        RAISE EXCEPTION 'email contains invalid control characters'
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Email contains invalid control characters'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_EMAIL_INVALID_CHARS';
     END IF;
 
     -- Basic email format: something@something (no spaces)
     IF v_normalized !~ '^[^\s@]+@[^\s@]+$' THEN
-        RAISE EXCEPTION 'email format is invalid (got: %)', v_normalized
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Email format is invalid (got: %)', v_normalized
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_EMAIL_INVALID_FORMAT';
     END IF;
 
     RETURN v_normalized;
@@ -74,24 +79,28 @@ BEGIN
             RETURN;
         ELSE
             RAISE EXCEPTION '% cannot be null', p_field_name
-                USING ERRCODE = 'null_value_not_allowed';
+                USING ERRCODE = 'null_value_not_allowed',
+                      HINT = 'postkit:authn:VAL_HASH_NULL';
         END IF;
     END IF;
 
     IF trim(p_hash) = '' THEN
         RAISE EXCEPTION '% cannot be empty', p_field_name
-            USING ERRCODE = 'string_data_length_mismatch';
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:authn:VAL_HASH_EMPTY';
     END IF;
 
     IF length(p_hash) > 1024 THEN
         RAISE EXCEPTION '% exceeds maximum length of 1024 characters', p_field_name
-            USING ERRCODE = 'string_data_right_truncation';
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:authn:VAL_HASH_TOO_LONG';
     END IF;
 
     -- Reject control characters
     IF p_hash ~ '[\x00-\x1F\x7F]' THEN
         RAISE EXCEPTION '% contains invalid control characters', p_field_name
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_HASH_INVALID_CHARS';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
@@ -107,12 +116,14 @@ AS $$
 BEGIN
     IF p_type IS NULL THEN
         RAISE EXCEPTION 'token_type cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_TOKEN_TYPE_NULL';
     END IF;
 
     IF p_type NOT IN ('password_reset', 'email_verify', 'magic_link') THEN
         RAISE EXCEPTION 'token_type must be password_reset, email_verify, or magic_link (got: %)', p_type
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_TOKEN_TYPE_INVALID';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
@@ -128,12 +139,14 @@ AS $$
 BEGIN
     IF p_type IS NULL THEN
         RAISE EXCEPTION 'mfa_type cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_MFA_TYPE_NULL';
     END IF;
 
     IF p_type NOT IN ('totp', 'webauthn', 'recovery_codes') THEN
         RAISE EXCEPTION 'mfa_type must be totp, webauthn, or recovery_codes (got: %)', p_type
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_MFA_TYPE_INVALID';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
@@ -151,14 +164,16 @@ AS $$
 BEGIN
     IF p_value IS NULL THEN
         RAISE EXCEPTION '% cannot be null', p_field_name
-            USING ERRCODE = 'null_value_not_allowed';
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_UUID_NULL';
     END IF;
 
     BEGIN
         RETURN p_value::uuid;
     EXCEPTION WHEN invalid_text_representation THEN
         RAISE EXCEPTION '% must be a valid UUID (got: %)', p_field_name, p_value
-            USING ERRCODE = 'invalid_parameter_value';
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_UUID_INVALID';
     END;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
@@ -173,30 +188,35 @@ RETURNS void
 AS $$
 BEGIN
     IF p_value IS NULL THEN
-        RAISE EXCEPTION 'namespace cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Namespace cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_NAMESPACE_NULL';
     END IF;
 
     IF trim(p_value) = '' THEN
-        RAISE EXCEPTION 'namespace cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+        RAISE EXCEPTION 'Namespace cannot be empty'
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:authn:VAL_NAMESPACE_EMPTY';
     END IF;
 
     IF length(p_value) > 1024 THEN
-        RAISE EXCEPTION 'namespace exceeds maximum length of 1024 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+        RAISE EXCEPTION 'Namespace exceeds maximum length of 1024 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:authn:VAL_NAMESPACE_TOO_LONG';
     END IF;
 
     -- Reject control characters (0x00-0x1F, 0x7F)
     IF p_value ~ '[\x00-\x1F\x7F]' THEN
-        RAISE EXCEPTION 'namespace contains invalid control characters'
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Namespace contains invalid control characters'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_NAMESPACE_INVALID_CHARS';
     END IF;
 
     -- Reject leading/trailing whitespace (causes subtle matching bugs)
     IF p_value != trim(p_value) THEN
-        RAISE EXCEPTION 'namespace cannot have leading or trailing whitespace'
-            USING ERRCODE = 'invalid_parameter_value';
+        RAISE EXCEPTION 'Namespace cannot have leading or trailing whitespace'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_NAMESPACE_WHITESPACE';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
@@ -241,19 +261,22 @@ RETURNS void
 AS $$
 BEGIN
     IF p_secret IS NULL THEN
-        RAISE EXCEPTION 'secret cannot be null'
-            USING ERRCODE = 'null_value_not_allowed';
+        RAISE EXCEPTION 'Secret cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:authn:VAL_SECRET_NULL';
     END IF;
 
     IF trim(p_secret) = '' THEN
-        RAISE EXCEPTION 'secret cannot be empty'
-            USING ERRCODE = 'string_data_length_mismatch';
+        RAISE EXCEPTION 'Secret cannot be empty'
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:authn:VAL_SECRET_EMPTY';
     END IF;
 
     -- Secrets can be longer (recovery codes as JSON, WebAuthn credential data)
     IF length(p_secret) > 65536 THEN
-        RAISE EXCEPTION 'secret exceeds maximum length of 65536 characters'
-            USING ERRCODE = 'string_data_right_truncation';
+        RAISE EXCEPTION 'Secret exceeds maximum length of 65536 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:authn:VAL_SECRET_TOO_LONG';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;

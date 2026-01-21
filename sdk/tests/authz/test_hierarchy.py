@@ -10,6 +10,8 @@ Tests for:
 - Explain functionality
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from postkit.authz import AuthzCycleError
 
@@ -102,21 +104,24 @@ class TestHierarchyCycle:
 
     def test_direct_cycle_rejected(self, authz):
         """admin -> admin should be rejected."""
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzCycleError) as exc_info:
             authz.add_hierarchy_rule("doc", "admin", "admin")
+        assert exc_info.value.error_code == "BIZ_CYCLE_SELF"
 
     def test_indirect_cycle_rejected(self, authz):
         """admin -> write -> admin should be rejected."""
         authz.set_hierarchy("doc", "admin", "write")
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzCycleError) as exc_info:
             authz.add_hierarchy_rule("doc", "write", "admin")
+        assert exc_info.value.error_code == "BIZ_CYCLE_HIERARCHY"
 
     def test_branching_cycle_rejected(self, authz):
         """admin -> write, admin -> read, read -> admin should be rejected."""
         authz.add_hierarchy_rule("doc", "admin", "write")
         authz.add_hierarchy_rule("doc", "admin", "read")
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzCycleError) as exc_info:
             authz.add_hierarchy_rule("doc", "read", "admin")
+        assert exc_info.value.error_code == "BIZ_CYCLE_HIERARCHY"
 
     def test_cross_namespace_cycle_rejected(self, make_authz):
         """Cycle via global hierarchy should be rejected.
@@ -128,8 +133,9 @@ class TestHierarchyCycle:
         global_authz.set_hierarchy("doc", "admin", "write", "read")
 
         tenant = make_authz("cycle_test_tenant")
-        with pytest.raises(AuthzCycleError, match="cycle"):
+        with pytest.raises(AuthzCycleError) as exc_info:
             tenant.add_hierarchy_rule("doc", "read", "admin")
+        assert exc_info.value.error_code == "BIZ_CYCLE_HIERARCHY"
 
 
 class TestHierarchyEdgeCases:
@@ -314,8 +320,6 @@ class TestExternalResources:
         # Cleanup handled by cleanup_global_hierarchies fixture
 
     def test_filters_expired(self, make_authz, db_connection):
-        from datetime import datetime, timedelta, timezone
-
         cursor = db_connection.cursor()
 
         # Insert expired tuple directly (bypass SDK validation)

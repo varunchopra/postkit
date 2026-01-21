@@ -17,7 +17,9 @@ DECLARE
     v_end date;
 BEGIN
     IF p_month < 1 OR p_month > 12 THEN
-        RAISE EXCEPTION 'Month must be between 1 and 12';
+        RAISE EXCEPTION 'Month must be between 1 and 12'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_MONTH_OUT_OF_RANGE';
     END IF;
 
     v_name := format('ledger_y%sm%s', to_char(p_year, 'FM0000'), to_char(p_month, 'FM00'));
@@ -88,7 +90,9 @@ DECLARE
     v_partition_end date;
 BEGIN
     IF p_older_than_months < 1 THEN
-        RAISE EXCEPTION 'older_than_months must be at least 1';
+        RAISE EXCEPTION 'older_than_months must be at least 1'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_MONTHS_MIN';
     END IF;
 
     v_cutoff := date_trunc('month', now())::date - (p_older_than_months || ' months')::interval;

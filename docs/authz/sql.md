@@ -59,7 +59,7 @@ Delete old audit partitions (default: keep 7 years for compliance)
 SELECT * FROM authz.drop_audit_partitions(84);
 ```
 
-*Source: authz/src/functions/033_audit.sql:121*
+*Source: authz/src/functions/033_audit.sql:123*
 
 ---
 
@@ -82,7 +82,7 @@ Create partitions for upcoming months (run monthly via cron)
 SELECT * FROM authz.ensure_audit_partitions(3);
 ```
 
-*Source: authz/src/functions/033_audit.sql:92*
+*Source: authz/src/functions/033_audit.sql:94*
 
 ---
 
@@ -217,7 +217,7 @@ Delete expired grants to reclaim storage (optional, run via cron)
 SELECT * FROM authz.cleanup_expired('default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:138*
+*Source: authz/src/functions/031_expiration.sql:141*
 
 ---
 
@@ -234,7 +234,7 @@ Make a grant permanent (remove expiration)
 SELECT authz.clear_expiration('repo', 'api', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:37*
+*Source: authz/src/functions/031_expiration.sql:38*
 
 ---
 
@@ -258,7 +258,7 @@ SELECT authz.extend_expiration('repo', 'api', 'read', 'user', 'alice',
 interval '30 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:50*
+*Source: authz/src/functions/031_expiration.sql:51*
 
 ---
 
@@ -281,7 +281,7 @@ Find grants that will expire soon (for renewal reminders)
 SELECT * FROM authz.list_expiring(interval '7 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:97*
+*Source: authz/src/functions/031_expiration.sql:100*
 
 ---
 
@@ -351,7 +351,7 @@ Remove all hierarchy rules for a resource type (start fresh)
 SELECT authz.clear_hierarchy('repo', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:131*
+*Source: authz/src/functions/030_hierarchy.sql:133*
 
 ---
 
@@ -368,7 +368,7 @@ Remove a permission implication rule
 SELECT authz.remove_hierarchy('repo', 'admin', 'write', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:104*
+*Source: authz/src/functions/030_hierarchy.sql:106*
 
 ---
 
@@ -771,7 +771,7 @@ Simpler write_tuple when you don't need subject_relation
 SELECT authz.write('doc', 'spec', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:111*
+*Source: authz/src/functions/020_write.sql:116*
 
 ---
 
@@ -824,6 +824,6 @@ SELECT authz.write_tuples_bulk('project', 'atlas', 'read', 'user',
 ARRAY['alice', 'bob', 'charlie'], 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:130*
+*Source: authz/src/functions/020_write.sql:135*
 
 ---

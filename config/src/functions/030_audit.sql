@@ -55,10 +55,14 @@ DECLARE
     v_end_date date;
 BEGIN
     IF p_year < 1970 OR p_year > 9999 THEN
-        RAISE EXCEPTION 'Year must be between 1970 and 9999';
+        RAISE EXCEPTION 'Year must be between 1970 and 9999'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_YEAR_OUT_OF_RANGE';
     END IF;
     IF p_month < 1 OR p_month > 12 THEN
-        RAISE EXCEPTION 'Month must be between 1 and 12';
+        RAISE EXCEPTION 'Month must be between 1 and 12'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_MONTH_OUT_OF_RANGE';
     END IF;
 
     v_partition_name := format('audit_events_y%sm%s',
