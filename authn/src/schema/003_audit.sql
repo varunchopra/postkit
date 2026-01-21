@@ -122,5 +122,11 @@ ALTER TABLE authn.audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.audit_events FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY audit_tenant_isolation ON authn.audit_events
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );

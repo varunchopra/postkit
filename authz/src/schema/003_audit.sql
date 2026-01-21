@@ -94,11 +94,23 @@ WHERE
 -- Index for event_id lookups
 CREATE INDEX audit_events_event_id_idx ON authz.audit_events (event_id);
 
+-- DEFAULT partition: Safety net for audit events when proper partition doesn't exist
+-- This prevents tuple operations from failing if ensure_audit_partitions() wasn't run.
+-- IMPORTANT: Monitor this partition - rows here indicate a partitioning problem.
+-- Query: SELECT COUNT(*) FROM authz.audit_events_default; (should always be 0)
+CREATE TABLE authz.audit_events_default PARTITION OF authz.audit_events DEFAULT;
+
 -- Row-Level Security for tenant isolation
 ALTER TABLE authz.audit_events ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE authz.audit_events FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY audit_tenant_isolation ON authz.audit_events
-    USING (namespace = current_setting('authz.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authz.tenant_id', TRUE));
+    USING (
+        current_setting('authz.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authz.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authz.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authz.tenant_id', TRUE)
+    );

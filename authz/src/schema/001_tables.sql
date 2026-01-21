@@ -86,9 +86,17 @@ ALTER TABLE authz.permission_hierarchy ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE authz.permission_hierarchy FORCE ROW LEVEL SECURITY;
 
+-- Note: current_setting(..., TRUE) returns '' when not set.
+-- We explicitly check for non-empty to fail-closed when tenant context is missing.
 CREATE POLICY tuples_tenant_isolation ON authz.tuples
-    USING (namespace = current_setting('authz.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authz.tenant_id', TRUE));
+    USING (
+        current_setting('authz.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authz.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authz.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authz.tenant_id', TRUE)
+    );
 
 -- Cross-namespace visibility: Subjects can see grants where they are the subject.
 -- This enables "Shared with me" functionality across organizations.
@@ -115,8 +123,14 @@ CREATE INDEX IF NOT EXISTS idx_tuples_subject
     ON authz.tuples(subject_id, subject_type);
 
 CREATE POLICY hierarchy_tenant_isolation ON authz.permission_hierarchy
-    USING (namespace = current_setting('authz.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authz.tenant_id', TRUE));
+    USING (
+        current_setting('authz.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authz.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authz.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authz.tenant_id', TRUE)
+    );
 
 -- Global hierarchies: readable by all tenants (Zanzibar-style schema separation)
 -- This allows any tenant to read the global permission schema while maintaining
@@ -125,3 +139,14 @@ CREATE POLICY hierarchy_tenant_isolation ON authz.permission_hierarchy
 CREATE POLICY hierarchy_global_read ON authz.permission_hierarchy
     FOR SELECT
     USING (namespace = 'global');
+
+-- SECURITY: Block tenant writes to 'global' namespace
+-- The global namespace is reserved for app-wide permission hierarchies defined by
+-- the application developer (via migrations or admin tools). Tenants must not be
+-- able to modify global hierarchies, even if they set authz.tenant_id = 'global'.
+-- This policy explicitly denies all write operations to the global namespace.
+CREATE POLICY hierarchy_global_write_protection ON authz.permission_hierarchy
+    AS RESTRICTIVE
+    FOR ALL
+    USING (TRUE)
+    WITH CHECK (namespace != 'global');

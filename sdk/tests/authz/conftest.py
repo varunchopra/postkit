@@ -119,3 +119,17 @@ def make_authz(db_connection):
     for ns in created:
         _cleanup(cursor, ns)
     cursor.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_global_hierarchies(db_connection):
+    """Clean up global hierarchies before and after each test.
+
+    Since hierarchies are global (Zanzibar-style), tests that modify
+    hierarchies need explicit cleanup to avoid affecting other tests.
+    """
+    with db_connection.cursor() as cur:
+        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
+    yield
+    with db_connection.cursor() as cur:
+        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")

@@ -13,6 +13,10 @@ class MeterError(PostkitError):
     """Exception for meter operations."""
 
 
+class MeterValidationError(MeterError):
+    """Raised when input validation fails."""
+
+
 class MeterClient(BaseClient):
     """Client for Postkit meter module.
 
@@ -39,6 +43,12 @@ class MeterClient(BaseClient):
 
     _schema = "meter"
     _error_class = MeterError
+    _module_sqlstate_map = {
+        "22023": MeterValidationError,  # invalid_parameter_value
+        "22004": MeterValidationError,  # null_value_not_allowed
+        "22001": MeterValidationError,  # string_data_right_truncation
+        "22026": MeterValidationError,  # string_data_length_mismatch
+    }
 
     def __init__(self, cursor, namespace: str):
         """Initialize the meter client.
@@ -332,14 +342,6 @@ class MeterClient(BaseClient):
             # Display remaining quota in UI
             balance = meter.get_balance(user_id, "api_request", "requests")
             print(f"API calls remaining: {balance['available']}")
-
-        Note:
-            For uncertain consumption (streaming), use reserve() and commit()
-            instead of checking balance and then consuming.
-
-        See Also:
-            reserve: Hold quota for uncertain operations
-            get_user_balances: Get all balances for a user across all event types
         """
         return self._fetch_one(
             "SELECT balance, reserved, available FROM meter.get_balance(%s, %s, %s, %s, %s)",

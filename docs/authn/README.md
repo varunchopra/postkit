@@ -21,7 +21,7 @@
 | [`end_operator_impersonation`](sdk.md#end_operator_impersonation) | End an operator impersonation session early. |
 | [`extend_session`](sdk.md#extend_session) | Extend session expiration. |
 | [`get_api_key`](sdk.md#get_api_key) | Get an API key by ID if owned by user. |
-| [`get_audit_events`](sdk.md#get_audit_events) | Query audit events. |
+| [`get_audit_events`](sdk.md#get_audit_events) | Query audit events with optional filters. |
 | [`get_credentials`](sdk.md#get_credentials) | Get credentials for login verification. |
 | [`get_impersonation_context`](sdk.md#get_impersonation_context) | Check if a session is an impersonation session. |
 | [`get_mfa`](sdk.md#get_mfa) | Get MFA secrets for verification. Returns secrets! |

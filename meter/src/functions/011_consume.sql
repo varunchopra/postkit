@@ -13,6 +13,11 @@
 -- @param p_metadata Optional JSON metadata
 -- @param p_namespace Tenant namespace
 -- @returns success flag, new balance, available balance, entry_id
+--
+-- PERFORMANCE: Hot path - called for every usage event. Uses advisory lock on
+-- idempotency key for safe retries without read-before-write races. Account
+-- upsert uses ON CONFLICT for single round-trip insert-or-update.
+--
 -- @example SELECT * FROM meter.consume('alice', 'llm_call', 1500, 'tokens', 'claude-sonnet');
 CREATE FUNCTION meter.consume(
     p_user_id text,

@@ -52,29 +52,28 @@ BEGIN
         authz._validate_identifier (p_implies, 'implies');
     -- Check for direct self-cycle
     IF p_permission = p_implies THEN
-        RAISE EXCEPTION 'Hierarchy cycle detected: % implies itself', p_permission;
+        RAISE EXCEPTION 'Hierarchy cycle detected: % implies itself', p_permission
+            USING ERRCODE = 'PK001';
     END IF;
     -- Check for indirect cycle: would p_implies eventually lead back to p_permission?
-    -- Includes depth limit to prevent runaway recursion if cycles exist in data.
+    -- Must check both global and tenant namespaces since permission checks use both.
     WITH RECURSIVE hierarchy_chain AS (
-        -- Start with what p_implies currently implies
         SELECT
             implies AS perm,
             1 AS depth
         FROM
             authz.permission_hierarchy
         WHERE
-            namespace = p_namespace
+            namespace IN ('global', p_namespace)
             AND resource_type = p_resource_type
             AND permission = p_implies
         UNION
-        -- Follow the chain
         SELECT
             h.implies,
             hc.depth + 1
         FROM
             hierarchy_chain hc
-            JOIN authz.permission_hierarchy h ON h.namespace = p_namespace
+            JOIN authz.permission_hierarchy h ON h.namespace IN ('global', p_namespace)
                 AND h.resource_type = p_resource_type
                 AND h.permission = hc.perm
         WHERE hc.depth < authz._max_group_depth()
@@ -88,7 +87,8 @@ BEGIN
             WHERE
                 perm = p_permission) INTO v_has_cycle;
     IF v_has_cycle THEN
-        RAISE EXCEPTION 'Hierarchy cycle detected: adding % -> % would create a cycle', p_permission, p_implies;
+        RAISE EXCEPTION 'Hierarchy cycle detected: adding % -> % would create a cycle', p_permission, p_implies
+            USING ERRCODE = 'PK001';
     END IF;
     INSERT INTO authz.permission_hierarchy (namespace, resource_type, permission, implies)
         VALUES (p_namespace, p_resource_type, p_permission, p_implies)

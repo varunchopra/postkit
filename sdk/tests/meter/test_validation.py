@@ -1,7 +1,7 @@
 """Namespace validation tests for meter module."""
 
 import pytest
-from postkit.meter import MeterError
+from postkit.meter import MeterError, MeterValidationError
 
 
 class TestNamespaceValidation:
@@ -57,3 +57,31 @@ class TestFieldLimits:
         meter.allocate("user", "event", 100, "a" * 64)  # at limit
         with pytest.raises(MeterError, match="exceeds maximum"):
             meter.allocate("user", "event", 100, "a" * 65)
+
+
+class TestValidationErrorType:
+    """Validation errors raise MeterValidationError for precise error handling."""
+
+    def test_null_validation_raises_meter_validation_error(self, make_meter):
+        """Null validation raises MeterValidationError (SQLSTATE 22004)."""
+        with pytest.raises(MeterValidationError, match="cannot be null"):
+            make_meter(None)
+
+    def test_empty_validation_raises_meter_validation_error(self, make_meter):
+        """Empty string validation raises MeterValidationError (SQLSTATE 22026)."""
+        with pytest.raises(MeterValidationError, match="cannot be empty"):
+            make_meter("")
+
+    def test_length_validation_raises_meter_validation_error(self, meter):
+        """Length exceeded validation raises MeterValidationError (SQLSTATE 22001)."""
+        with pytest.raises(MeterValidationError, match="exceeds maximum"):
+            meter.allocate("user", "a" * 257, 100, "unit")  # event_type too long
+
+    def test_format_validation_raises_meter_validation_error(self, make_meter):
+        """Format validation raises MeterValidationError (SQLSTATE 22023)."""
+        with pytest.raises(MeterValidationError, match="control characters"):
+            make_meter("has\ttab")
+
+    def test_meter_validation_error_is_meter_error(self):
+        """MeterValidationError is a subclass of MeterError for backwards compatibility."""
+        assert issubclass(MeterValidationError, MeterError)

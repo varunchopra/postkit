@@ -108,7 +108,7 @@ Activate a specific version (for rollback or promotion)
 SELECT config.activate('prompts/support-bot', 2);
 ```
 
-*Source: config/src/functions/010_entries.sql:179*
+*Source: config/src/functions/010_entries.sql:184*
 
 ---
 
@@ -127,7 +127,7 @@ Delete all versions of a config entry
 SELECT config.delete('prompts/deprecated-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:360*
+*Source: config/src/functions/010_entries.sql:365*
 
 ---
 
@@ -146,7 +146,7 @@ Delete a specific version (cannot delete active version)
 SELECT config.delete_version('prompts/support-bot', 1);
 ```
 
-*Source: config/src/functions/010_entries.sql:399*
+*Source: config/src/functions/010_entries.sql:404*
 
 ---
 
@@ -165,7 +165,7 @@ Check if a config key exists (has an active version)
 IF config.exists('flags/new-checkout') THEN ...
 ```
 
-*Source: config/src/functions/010_entries.sql:449*
+*Source: config/src/functions/010_entries.sql:454*
 
 ---
 
@@ -181,7 +181,7 @@ Get a config entry (active version or specific version)
 - `p_key`: The config key
 - `p_version`: Optional specific version (default: active version)
 
-**Returns:** value, version, created_at
+**Returns:** value, version, created_at PERFORMANCE: Hot path - called for every config read. Uses unique partial index entries_single_active_idx on (namespace, key) WHERE is_active for O(1) lookup. For high-throughput scenarios, consider application-layer caching.
 
 **Example:**
 ```sql
@@ -211,7 +211,7 @@ Get multiple config entries in one query
 SELECT * FROM config.get_batch(ARRAY['prompts/bot-a', 'prompts/bot-b', 'flags/checkout']);
 ```
 
-*Source: config/src/functions/010_entries.sql:149*
+*Source: config/src/functions/010_entries.sql:154*
 
 ---
 
@@ -235,7 +235,7 @@ SELECT config.get_path('prompts/bot', ARRAY['temperature']);
 SELECT config.get_path('flags/checkout', ARRAY['rollout']);
 ```
 
-*Source: config/src/functions/010_entries.sql:471*
+*Source: config/src/functions/010_entries.sql:476*
 
 ---
 
@@ -254,7 +254,7 @@ Get version history for a key
 SELECT * FROM config.history('prompts/support-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:324*
+*Source: config/src/functions/010_entries.sql:329*
 
 ---
 
@@ -280,7 +280,7 @@ SELECT * FROM config.list('prompts/');
 SELECT * FROM config.list('flags/');
 ```
 
-*Source: config/src/functions/010_entries.sql:281*
+*Source: config/src/functions/010_entries.sql:286*
 
 ---
 
@@ -304,7 +304,7 @@ SELECT config.merge('prompts/bot', '{"temperature": 0.8}');
 SELECT config.merge('flags/checkout', '{"rollout": 0.75}');
 ```
 
-*Source: config/src/functions/010_entries.sql:501*
+*Source: config/src/functions/010_entries.sql:506*
 
 ---
 
@@ -323,7 +323,7 @@ Activate the previous version
 SELECT config.rollback('prompts/support-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:236*
+*Source: config/src/functions/010_entries.sql:241*
 
 ---
 
@@ -347,7 +347,7 @@ SELECT * FROM config.search('{"enabled": true}');
 SELECT * FROM config.search('{"model": "claude-sonnet-4-20250514"}', 'prompts/');
 ```
 
-*Source: config/src/functions/010_entries.sql:541*
+*Source: config/src/functions/010_entries.sql:546*
 
 ---
 

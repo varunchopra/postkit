@@ -180,62 +180,112 @@ CREATE TABLE authn.impersonation_sessions (
 -- ROW-LEVEL SECURITY
 -- =============================================================================
 -- Tenant isolation using session variable authn.tenant_id
+-- Note: current_setting(..., TRUE) returns '' when not set.
+-- We explicitly check for non-empty to fail-closed when tenant context is missing.
 
 ALTER TABLE authn.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.users FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY users_tenant_isolation ON authn.users
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.sessions FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY sessions_tenant_isolation ON authn.sessions
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.refresh_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.refresh_tokens FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY refresh_tokens_tenant_isolation ON authn.refresh_tokens
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.tokens FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tokens_tenant_isolation ON authn.tokens
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.mfa_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.mfa_secrets FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY mfa_secrets_tenant_isolation ON authn.mfa_secrets
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.login_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.login_attempts FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY login_attempts_tenant_isolation ON authn.login_attempts
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.api_keys FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY api_keys_tenant_isolation ON authn.api_keys
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 ALTER TABLE authn.impersonation_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.impersonation_sessions FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY impersonation_sessions_tenant_isolation ON authn.impersonation_sessions
-    USING (namespace = current_setting('authn.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('authn.tenant_id', TRUE));
+    USING (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('authn.tenant_id', TRUE) != ''
+        AND namespace = current_setting('authn.tenant_id', TRUE)
+    );
 
 -- =============================================================================
 -- TRIGGERS

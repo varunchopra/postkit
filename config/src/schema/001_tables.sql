@@ -42,16 +42,31 @@ CREATE TABLE config.version_counters (
 -- =============================================================================
 -- ROW-LEVEL SECURITY
 -- =============================================================================
+-- Note: current_setting(..., TRUE) returns '' when not set.
+-- We explicitly check for non-empty to fail-closed when tenant context is missing.
+
 ALTER TABLE config.entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE config.entries FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY entries_tenant_isolation ON config.entries
-    USING (namespace = current_setting('config.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('config.tenant_id', TRUE));
+    USING (
+        current_setting('config.tenant_id', TRUE) != ''
+        AND namespace = current_setting('config.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('config.tenant_id', TRUE) != ''
+        AND namespace = current_setting('config.tenant_id', TRUE)
+    );
 
 ALTER TABLE config.version_counters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE config.version_counters FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY version_counters_tenant_isolation ON config.version_counters
-    USING (namespace = current_setting('config.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('config.tenant_id', TRUE));
+    USING (
+        current_setting('config.tenant_id', TRUE) != ''
+        AND namespace = current_setting('config.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('config.tenant_id', TRUE) != ''
+        AND namespace = current_setting('config.tenant_id', TRUE)
+    );

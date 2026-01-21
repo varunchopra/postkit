@@ -323,3 +323,41 @@ class TestRowLevelSecurity:
         db_connection.execute(
             "DELETE FROM authz.audit_events WHERE namespace = 'org-a'"
         )
+
+    def test_cannot_write_to_global_hierarchy(self, rls_connection):
+        """Non-superusers cannot write to global permission_hierarchy.
+
+        The hierarchy_global_write_protection RESTRICTIVE policy blocks all
+        writes to namespace='global', even if a tenant sets their context to 'global'.
+        """
+        from postkit.authz import AuthzError
+
+        cursor = rls_connection.cursor()
+
+        # Create client targeting 'global' namespace
+        global_authz = AuthzClient(cursor, "global")
+
+        # Should be blocked by hierarchy_global_write_protection policy
+        with pytest.raises(AuthzError, match="hierarchy_global_write_protection"):
+            global_authz.add_hierarchy_rule("doc", "admin", "read")
+
+    def test_audit_events_fail_closed(self, rls_connection, db_connection):
+        """Audit events are not visible when tenant context is not set (fail-closed)."""
+        # Create audit event via superuser
+        superuser_cursor = db_connection.cursor()
+        tenant_a = AuthzClient(superuser_cursor, "tenant-a")
+        tenant_a.grant(
+            "read", resource=("doc", "audit-fail-closed"), subject=("user", "alice")
+        )
+
+        # Non-superuser with cleared tenant context should see nothing
+        cursor = rls_connection.cursor()
+        cursor.execute("SELECT authz.clear_tenant()")
+        cursor.execute("SELECT * FROM authz.audit_events")
+        assert cursor.fetchall() == []
+
+        # Cleanup
+        db_connection.execute(
+            "DELETE FROM authz.audit_events WHERE namespace = 'tenant-a'"
+        )
+        db_connection.execute("DELETE FROM authz.tuples WHERE namespace = 'tenant-a'")

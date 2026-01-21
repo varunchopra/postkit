@@ -44,6 +44,55 @@ def _dedent_block(text: str) -> str:
     return dedented.strip()
 
 
+def _extract_params_from_args(args_text: str) -> dict[str, str]:
+    """Extract parameters from Args section using indentation-aware parsing.
+
+    Stops at any line with less indentation than the first parameter,
+    which indicates a new section (Returns:, Example:, etc.).
+    """
+    params: dict[str, str] = {}
+    current_param: str | None = None
+    current_desc_lines: list[str] = []
+    base_indent: int | None = None  # Indentation of parameter names
+
+    for line in args_text.split("\n"):
+        if not line.strip():
+            continue  # Skip blank lines within args
+
+        indent = len(line) - len(line.lstrip())
+        stripped = line.lstrip()
+
+        # First non-blank line establishes base indentation
+        if base_indent is None:
+            base_indent = indent
+
+        # Line at less indentation = new section, stop processing
+        if indent < base_indent:
+            break
+
+        # Check if this is a parameter line (word: description)
+        param_match = re.match(r"^(\w+):\s*(.*)$", stripped)
+
+        if indent == base_indent and param_match:
+            # Save previous param
+            if current_param:
+                params[current_param] = " ".join(current_desc_lines).strip()
+
+            current_param = param_match.group(1)
+            desc_start = param_match.group(2).strip()
+            current_desc_lines = [desc_start] if desc_start else []
+        elif current_param and indent > base_indent:
+            # Continuation line (more indented)
+            current_desc_lines.append(stripped)
+        # Lines at base_indent without param pattern are ignored
+
+    # Save last param
+    if current_param:
+        params[current_param] = " ".join(current_desc_lines).strip()
+
+    return params
+
+
 def _parse_docstring(docstring: str | None) -> ParsedDocstring:
     """Parse a Google-style docstring."""
     if not docstring:
@@ -68,21 +117,10 @@ def _parse_docstring(docstring: str | None) -> ParsedDocstring:
     # Find sections
     text = "\n".join(lines)
 
-    # Args section - stop at Returns/Example/Raises
-    args_match = re.search(
-        r"Args:\s*\n((?:\s+\S.*\n?)*)(?=\s*(?:Returns|Examples?|Raises):|\Z)", text
-    )
+    # Args section - capture everything after, helper handles boundaries via indentation
+    args_match = re.search(r"Args:\s*\n(.*)", text, re.DOTALL)
     if args_match:
-        args_text = args_match.group(1)
-        for param_match in re.finditer(
-            r"^\s+(\w+):\s*(.+?)(?=\n\s+\w+:|\Z)", args_text, re.MULTILINE | re.DOTALL
-        ):
-            name = param_match.group(1)
-            # Skip if this looks like a section header
-            if name in ("Returns", "Example", "Examples", "Raises"):
-                continue
-            desc = re.sub(r"\s+", " ", param_match.group(2)).strip()
-            result.params[name] = desc
+        result.params = _extract_params_from_args(args_match.group(1))
 
     # Returns section - capture until next section header or end
     returns_match = re.search(

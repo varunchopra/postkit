@@ -84,3 +84,14 @@ SELECT config.cleanup_old_versions(10);
 ```
 
 See [docs/config/](../docs/config/) for full API reference.
+
+## Connection Pooling
+
+When using connection pools (e.g., PgBouncer, application-level pools), clear context before returning connections:
+
+```python
+# After request completes, before returning connection to pool
+config.clear_actor()  # Clear audit actor context
+```
+
+Tenant context (`config.tenant_id`) is set per-request via `ConfigClient(cursor, namespace=...)`, so it's automatically overwritten on next use.

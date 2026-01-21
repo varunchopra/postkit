@@ -8,6 +8,11 @@
 -- @param p_resource Optional resource identifier
 -- @param p_namespace Tenant namespace
 -- @returns balance, reserved, available (balance - reserved)
+--
+-- PERFORMANCE: Hot path - called for balance checks and UI displays. Single index
+-- lookup on accounts PK (namespace, user_id, event_type, resource, unit).
+-- IS NOT DISTINCT FROM handles NULL user_id for namespace-level accounts.
+--
 -- @example SELECT * FROM meter.get_balance('alice', 'llm_call', 'tokens', 'claude-sonnet');
 CREATE FUNCTION meter.get_balance(
     p_user_id text,

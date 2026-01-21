@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import json
 from abc import ABC, abstractmethod
+from datetime import datetime
 from decimal import Decimal
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any, Callable, NoReturn, TypeVar
@@ -72,10 +75,16 @@ class BaseClient(ABC):
     - _schema: The PostgreSQL schema name ("authn", "authz", "config", "meter")
     - _error_class: The exception class to raise on errors
     - _apply_actor_context(): How to apply actor context via SQL
+
+    Subclasses may optionally define:
+    - _module_sqlstate_map: Dict of SQLSTATE -> exception class for module-specific errors
     """
 
     _schema: str  # Must be a valid SQL identifier
     _error_class: type[PostkitError] = PostkitError
+    _module_sqlstate_map: dict[
+        str, type[PostkitError]
+    ] = {}  # Module-specific overrides
 
     def __init__(self, cursor: psycopg.Cursor[tuple[Any, ...]], namespace: str) -> None:
         """Initialize the client.
@@ -122,12 +131,16 @@ class BaseClient(ABC):
         Uses specific exception subclasses for common database errors
         (unique violation, foreign key violation, etc.) to enable
         precise error handling by callers.
+
+        Checks module-specific mappings first, then falls back to global mappings.
         """
         sqlstate = getattr(e, "sqlstate", None)
         message = str(e)
 
-        # Use specific exception class if we have one for this SQLSTATE
-        exc_class = _SQLSTATE_EXCEPTIONS.get(sqlstate, self._error_class)
+        # Check module-specific mapping first, then global, then fallback to _error_class
+        exc_class = self._module_sqlstate_map.get(
+            sqlstate, _SQLSTATE_EXCEPTIONS.get(sqlstate, self._error_class)
+        )
 
         raise exc_class(message, sqlstate) from e
 
@@ -332,11 +345,40 @@ class BaseClient(ABC):
         self._on_behalf_of = None
         self._reason = None
 
+    @staticmethod
+    def _encode_cursor(event_time: datetime, event_id: int) -> str:
+        """Encode pagination cursor as opaque string.
+
+        Uses base64-encoded JSON for flexibility and future-proofing.
+        Callers should never construct or parse cursors directly.
+        """
+        data = {"t": event_time.isoformat(), "i": event_id}
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
+
+    def _decode_cursor(self, cursor: str) -> tuple[str, int]:
+        """Decode pagination cursor.
+
+        Args:
+            cursor: Opaque cursor string from a previous response
+
+        Returns:
+            Tuple of (iso_timestamp, event_id)
+
+        Raises:
+            Module-specific error if cursor is invalid
+        """
+        try:
+            data = json.loads(base64.urlsafe_b64decode(cursor))
+            return data["t"], data["i"]
+        except (ValueError, KeyError, json.JSONDecodeError):
+            raise self._error_class("Invalid pagination cursor") from None
+
     def _get_audit_events(
         self,
         limit: int = 100,
         event_type: str | None = None,
         filters: dict[str, Any] | None = None,
+        before: str | None = None,
     ) -> list[dict[str, Any]]:
         """Internal helper for audit event queries.
 
@@ -347,9 +389,11 @@ class BaseClient(ABC):
             limit: Maximum number of events to return
             event_type: Filter by event type
             filters: Pre-validated column:value pairs (keys MUST be safe identifiers)
+            before: Opaque cursor from a previous response's event['cursor']
 
         Returns:
-            List of audit event dictionaries
+            List of audit event dictionaries. Each event includes a 'cursor' field
+            that can be passed to 'before' for pagination.
         """
         conditions = ["namespace = %s"]
         params: list[Any] = [self.namespace]
@@ -367,6 +411,11 @@ class BaseClient(ABC):
                     conditions.append(f"{col} = %s")
                     params.append(val)
 
+        if before is not None:
+            cursor_time, cursor_id = self._decode_cursor(before)
+            conditions.append("(event_time, id) < (%s::timestamptz, %s::bigint)")
+            params.extend([cursor_time, cursor_id])
+
         params.append(limit)
 
         sql = f"""
@@ -377,7 +426,13 @@ class BaseClient(ABC):
             LIMIT %s
         """
 
-        return self._fetch_all(sql, tuple(params))
+        events = self._fetch_all(sql, tuple(params))
+
+        # Add opaque cursor to each event for pagination
+        for event in events:
+            event["cursor"] = self._encode_cursor(event["event_time"], event["id"])
+
+        return events
 
     def get_audit_events(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         """Query audit events. Subclasses must override with explicit parameters."""

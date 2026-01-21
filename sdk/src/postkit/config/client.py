@@ -16,12 +16,9 @@ class ConfigError(PostkitError):
 
 
 class ConfigValidationError(ConfigError):
-    """Raised when config value doesn't match schema."""
+    """Raised when validation fails (schema or SQL-level)."""
 
-    def __init__(self, key: str, errors: list[str]):
-        self.key = key
-        self.errors = errors
-        super().__init__(f"Validation failed for '{key}': {errors}")
+    pass
 
 
 class SchemaViolationError(ConfigError):
@@ -72,6 +69,12 @@ class ConfigClient(BaseClient):
 
     _schema = "config"
     _error_class = ConfigError
+    _module_sqlstate_map = {
+        "22023": ConfigValidationError,  # invalid_parameter_value
+        "22004": ConfigValidationError,  # null_value_not_allowed
+        "22001": ConfigValidationError,  # string_data_right_truncation
+        "22026": ConfigValidationError,  # string_data_length_mismatch
+    }
 
     def __init__(self, cursor, namespace: str):
         """Initialize the config client.
@@ -107,16 +110,14 @@ class ConfigClient(BaseClient):
 
         Raises:
             ConfigValidationError: If value doesn't match the schema for this key
-
-        See Also:
-            set_default: Set only if key doesn't exist (for seeding)
-            merge: Merge changes into existing config
         """
         schema = self.get_schema(key)
         if schema is not None:
             result = self._validate_value(value, schema)
             if not result.valid:
-                raise ConfigValidationError(key, result.errors)
+                raise ConfigValidationError(
+                    f"Validation failed for '{key}': {result.errors}"
+                )
 
         return self._fetch_val(
             "SELECT config.set(%s, %s::jsonb, %s)",
@@ -146,7 +147,9 @@ class ConfigClient(BaseClient):
         if schema is not None:
             result = self._validate_value(value, schema)
             if not result.valid:
-                raise ConfigValidationError(key, result.errors)
+                raise ConfigValidationError(
+                    f"Validation failed for '{key}': {result.errors}"
+                )
 
         row = self._fetch_one(
             "SELECT * FROM config.set_default(%s, %s::jsonb, %s)",
@@ -249,7 +252,9 @@ class ConfigClient(BaseClient):
             merged = {**current, **changes}
             result = self._validate_value(merged, schema)
             if not result.valid:
-                raise ConfigValidationError(key, result.errors)
+                raise ConfigValidationError(
+                    f"Validation failed for '{key}': {result.errors}"
+                )
 
         return self._fetch_val(
             "SELECT config.merge(%s, %s::jsonb, %s)",
@@ -421,23 +426,31 @@ class ConfigClient(BaseClient):
         limit: int = 100,
         event_type: str | None = None,
         key: str | None = None,
+        before: str | None = None,
     ) -> list[dict]:
-        """Query audit events.
+        """Query audit events with optional filters.
 
         Args:
             limit: Maximum number of events to return (default 100)
             event_type: Filter by event type (e.g., 'entry_created', 'entry_deleted')
             key: Filter by config key
+            before: Opaque cursor from a previous response's event['cursor']
 
         Returns:
-            List of audit event dictionaries
+            List of audit event dictionaries. Each event includes a 'cursor' field
+            that can be passed to 'before' for pagination.
+
+        Example:
+            events = config.get_audit_events(limit=50)
+            if events:
+                more = config.get_audit_events(limit=50, before=events[-1]["cursor"])
         """
         filters: dict[str, Any] = {}
         if key is not None:
             filters["key"] = key
 
         return self._get_audit_events(
-            limit=limit, event_type=event_type, filters=filters
+            limit=limit, event_type=event_type, filters=filters, before=before
         )
 
     # Schema management

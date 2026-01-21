@@ -500,7 +500,7 @@ Get namespace statistics for monitoring dashboards
 SELECT * FROM authz.get_stats('default');
 ```
 
-*Source: authz/src/functions/032_maintenance.sql:37*
+*Source: authz/src/functions/032_maintenance.sql:51*
 
 ---
 
@@ -524,7 +524,7 @@ SELECT authz.grant_to_resources_bulk('doc', ARRAY['doc1', 'doc2', ...],
 'read', 'user', 'alice', NULL, 'default');
 ```
 
-*Source: authz/src/functions/032_maintenance.sql:60*
+*Source: authz/src/functions/032_maintenance.sql:74*
 
 ---
 
@@ -534,7 +534,7 @@ SELECT authz.grant_to_resources_bulk('doc', ARRAY['doc1', 'doc2', ...],
 authz.verify_integrity(p_namespace: text) -> table(resource_type: text, resource_id: text, status: text, details: text)
 ```
 
-Check for data corruption (circular memberships, broken hierarchies)
+Check for data corruption (circular memberships, broken hierarchies, partition issues)
 
 **Returns:** Rows describing any issues found, empty if healthy
 
@@ -606,7 +606,7 @@ Check if a subject has a permission on a resource
 - `p_resource_type`: The type of resource (e.g., 'repo', 'doc')
 - `p_resource_id`: The resource identifier
 
-**Returns:** True if the subject has the permission
+**Returns:** True if the subject has the permission PERFORMANCE: This function performs graph traversal on every call (subject groups, resource ancestors, permission hierarchy). Recursion depth is bounded at 50. For high-throughput scenarios, consider application-layer caching of results.
 
 **Example:**
 ```sql
@@ -640,7 +640,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/022_check.sql:143*
+*Source: authz/src/functions/022_check.sql:148*
 
 ---
 
@@ -666,7 +666,7 @@ Check if a subject has any of the specified permissions
 SELECT authz.check_any('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/022_check.sql:114*
+*Source: authz/src/functions/022_check.sql:119*
 
 ---
 

@@ -324,7 +324,7 @@ Get full account details
 SELECT * FROM meter.get_account('alice', 'llm_call', 'tokens');
 ```
 
-*Source: meter/src/functions/020_query.sql:37*
+*Source: meter/src/functions/020_query.sql:42*
 
 ---
 
@@ -343,7 +343,7 @@ Get current balance for an account
 - `p_resource`: Optional resource identifier
 - `p_namespace`: Tenant namespace
 
-**Returns:** balance, reserved, available (balance - reserved)
+**Returns:** balance, reserved, available (balance - reserved) PERFORMANCE: Hot path - called for balance checks and UI displays. Single index lookup on accounts PK (namespace, user_id, event_type, resource, unit). IS NOT DISTINCT FROM handles NULL user_id for namespace-level accounts.
 
 **Example:**
 ```sql
@@ -379,7 +379,7 @@ Get ledger entries for an account
 SELECT * FROM meter.get_ledger('alice', 'llm_call', 'tokens', p_limit := 50);
 ```
 
-*Source: meter/src/functions/020_query.sql:100*
+*Source: meter/src/functions/020_query.sql:105*
 
 ---
 
@@ -403,7 +403,7 @@ Get org-level usage totals across all users
 SELECT * FROM meter.get_namespace_usage('2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:202*
+*Source: meter/src/functions/020_query.sql:207*
 
 ---
 
@@ -428,7 +428,7 @@ Get aggregated usage (consumption only) for a user
 SELECT * FROM meter.get_usage('alice', '2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:159*
+*Source: meter/src/functions/020_query.sql:164*
 
 ---
 
@@ -451,7 +451,7 @@ Get all balances for a user across all event types and resources
 SELECT * FROM meter.get_user_balances('alice');
 ```
 
-*Source: meter/src/functions/020_query.sql:63*
+*Source: meter/src/functions/020_query.sql:68*
 
 ---
 
@@ -563,7 +563,7 @@ Record consumption (debit from account)
 - `p_metadata`: Optional JSON metadata
 - `p_namespace`: Tenant namespace
 
-**Returns:** success flag, new balance, available balance, entry_id
+**Returns:** success flag, new balance, available balance, entry_id PERFORMANCE: Hot path - called for every usage event. Uses advisory lock on idempotency key for safe retries without read-before-write races. Account upsert uses ON CONFLICT for single round-trip insert-or-update.
 
 **Example:**
 ```sql

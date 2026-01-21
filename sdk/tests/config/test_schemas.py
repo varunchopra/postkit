@@ -160,9 +160,8 @@ class TestValidationOnSet:
         with pytest.raises(ConfigValidationError) as exc_info:
             admin_config.set("flags/checkout", {"enabled": "yes"})
 
-        assert exc_info.value.key == "flags/checkout"
-        assert len(exc_info.value.errors) > 0
-        assert "boolean" in exc_info.value.errors[0].lower()
+        assert "flags/checkout" in str(exc_info.value)
+        assert "boolean" in str(exc_info.value).lower()
 
     def test_missing_required_raises(self, admin_config):
         admin_config.set_schema(

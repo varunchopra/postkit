@@ -100,12 +100,12 @@ class TestManyResources:
 class TestDeepHierarchy:
     """Test performance with deep permission hierarchies."""
 
-    def test_hierarchy_depth_100(self, authz):
-        """Hierarchy chain of 100 levels should work correctly."""
-        depth = 100
+    def test_hierarchy_depth_50(self, authz):
+        """Hierarchy chain at max depth (50) should work correctly."""
+        depth = 50  # Max depth, same as group/resource limits
         levels = [f"level-{i}" for i in range(depth)]
 
-        # Create hierarchy chain: level-0 -> level-1 -> ... -> level-99
+        # Create hierarchy chain: level-0 -> level-1 -> ... -> level-49
         for i in range(depth - 1):
             authz.add_hierarchy_rule("doc", levels[i], levels[i + 1])
 
@@ -168,10 +168,8 @@ class TestEdgeCases:
     """Test edge cases at scale."""
 
     def test_max_hierarchy_depth(self, authz):
-        """Verify deep hierarchy depth works correctly."""
-        # With lazy evaluation using recursive CTEs, we need to stay
-        # within PostgreSQL's max recursion depth (default: 100)
-        depth = 50  # Safe margin below 100
+        """Verify max hierarchy depth (50) works correctly."""
+        depth = 50  # Matches _max_group_depth and _max_resource_depth
 
         levels = [f"perm-{i}" for i in range(depth)]
         for i in range(depth - 1):
@@ -179,7 +177,6 @@ class TestEdgeCases:
 
         authz.grant(levels[0], resource=("doc", "1"), subject=("user", "alice"))
 
-        # Should complete without hitting iteration limit
         assert authz.check(("user", "alice"), levels[depth - 1], ("doc", "1"))
 
     def test_many_permissions_same_resource(self, authz):

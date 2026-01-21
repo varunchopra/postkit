@@ -64,20 +64,20 @@ AS $$
     ),
 
     -- Phase 4: Expand via permission hierarchy
-    -- Check BOTH global namespace (shared app-wide rules) AND tenant namespace (org overrides).
-    -- This allows app developers to define defaults while letting customers customize
-    -- permission models for their specific org structure.
-    all_permissions AS (
-        SELECT perm FROM granted_permissions
+    -- Checks both global and tenant namespace hierarchies.
+    -- Depth limited to 50 (same as group/resource limits).
+    all_permissions(perm, depth) AS (
+        SELECT perm, 1 FROM granted_permissions
 
         UNION
 
-        SELECT h.implies
+        SELECT h.implies, ap.depth + 1
         FROM all_permissions ap
         JOIN authz.permission_hierarchy h
           ON h.resource_type = p_resource_type
           AND h.permission = ap.perm
           AND h.namespace IN ('global', p_namespace)
+        WHERE ap.depth < 50
     )
 
     SELECT perm AS permission FROM all_permissions;
@@ -92,6 +92,11 @@ $$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, p
 -- @param p_resource_type The type of resource (e.g., 'repo', 'doc')
 -- @param p_resource_id The resource identifier
 -- @returns True if the subject has the permission
+--
+-- PERFORMANCE: This function performs graph traversal on every call (subject groups,
+-- resource ancestors, permission hierarchy). Recursion depth is bounded at 50.
+-- For high-throughput scenarios, consider application-layer caching of results.
+--
 -- @example SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 -- @example SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
 CREATE OR REPLACE FUNCTION authz.check(

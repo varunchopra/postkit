@@ -122,3 +122,71 @@ def test_empty_docstring():
 
     result = _parse_docstring("")
     assert result.brief == ""
+
+
+def test_example_with_if_else():
+    """Regression test: Python keywords in Example shouldn't become params."""
+    doc = """
+    Get current balance.
+
+    Args:
+        user_id: User ID
+        event_type: Event type
+
+    Returns:
+        Dict with balance info
+
+    Example:
+        balance = meter.get_balance(user_id, "llm_call", "tokens")
+        if balance["available"] >= needed:
+            proceed()
+        else:
+            raise QuotaExceeded()
+    """
+    result = _parse_docstring(doc)
+    assert result.params == {
+        "user_id": "User ID",
+        "event_type": "Event type",
+    }
+    assert "if" not in result.params
+    assert "else" not in result.params
+
+
+def test_example_with_for_loop():
+    """Regression test: for keyword in Example shouldn't become param."""
+    doc = """
+    List items.
+
+    Args:
+        resource: The resource tuple
+
+    Returns:
+        List of grants
+
+    Example:
+        grants = authz.list_grants(("api_key", key_id))
+        for grant in grants:
+            print(grant['relation'])
+    """
+    result = _parse_docstring(doc)
+    assert result.params == {"resource": "The resource tuple"}
+    assert "for" not in result.params
+
+
+def test_multiline_param_description():
+    """Multi-line param descriptions should be preserved."""
+    doc = """
+    Do something.
+
+    Args:
+        param: This is a long description
+            that continues on the next line
+            and even a third line
+        other: Another param
+    """
+    result = _parse_docstring(doc)
+    assert (
+        result.params["param"]
+        == "This is a long description that continues on the next line and even a third line"
+    )
+    assert result.params["other"] == "Another param"

@@ -110,6 +110,11 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = config, pg_temp;
 -- @param p_key The config key
 -- @param p_version Optional specific version (default: active version)
 -- @returns value, version, created_at
+--
+-- PERFORMANCE: Hot path - called for every config read. Uses unique partial index
+-- entries_single_active_idx on (namespace, key) WHERE is_active for O(1) lookup.
+-- For high-throughput scenarios, consider application-layer caching.
+--
 -- @example SELECT * FROM config.get('prompts/support-bot');
 -- @example SELECT * FROM config.get('prompts/support-bot', 3);
 CREATE OR REPLACE FUNCTION config.get(

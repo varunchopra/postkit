@@ -181,21 +181,41 @@ CREATE TABLE meter.reservations (
 -- =============================================================================
 -- ROW-LEVEL SECURITY
 -- =============================================================================
+-- Note: current_setting(..., TRUE) returns '' when not set.
+-- We explicitly check for non-empty to fail-closed when tenant context is missing.
 
 ALTER TABLE meter.accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meter.accounts FORCE ROW LEVEL SECURITY;
 CREATE POLICY accounts_tenant_isolation ON meter.accounts
-    USING (namespace = current_setting('meter.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('meter.tenant_id', TRUE));
+    USING (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    );
 
 ALTER TABLE meter.ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meter.ledger FORCE ROW LEVEL SECURITY;
 CREATE POLICY ledger_tenant_isolation ON meter.ledger
-    USING (namespace = current_setting('meter.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('meter.tenant_id', TRUE));
+    USING (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    );
 
 ALTER TABLE meter.reservations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meter.reservations FORCE ROW LEVEL SECURITY;
 CREATE POLICY reservations_tenant_isolation ON meter.reservations
-    USING (namespace = current_setting('meter.tenant_id', TRUE))
-    WITH CHECK (namespace = current_setting('meter.tenant_id', TRUE));
+    USING (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    );

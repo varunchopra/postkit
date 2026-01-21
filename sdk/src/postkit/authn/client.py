@@ -16,11 +16,16 @@ from postkit.base import BaseClient, PostkitError
 __all__ = [
     "AuthnClient",
     "AuthnError",
+    "AuthnValidationError",
 ]
 
 
 class AuthnError(PostkitError):
     """Base exception for authn operations."""
+
+
+class AuthnValidationError(AuthnError):
+    """Raised when input validation fails."""
 
 
 class AuthnClient(BaseClient):
@@ -46,6 +51,12 @@ class AuthnClient(BaseClient):
 
     _schema = "authn"
     _error_class = AuthnError
+    _module_sqlstate_map = {
+        "22023": AuthnValidationError,  # invalid_parameter_value
+        "22004": AuthnValidationError,  # null_value_not_allowed
+        "22001": AuthnValidationError,  # string_data_right_truncation
+        "22026": AuthnValidationError,  # string_data_length_mismatch
+    }
 
     def __init__(self, cursor, namespace: str):
         super().__init__(cursor, namespace)
@@ -303,11 +314,12 @@ class AuthnClient(BaseClient):
     def revoke_session_by_id(self, session_id: str, user_id: str) -> bool:
         """Revoke a session by ID (for manage devices UI).
 
-        **Parameters:**
-        - `session_id`: Session ID to revoke
-        - `user_id`: User ID (for ownership verification)
+        Args:
+            session_id: Session ID to revoke
+            user_id: User ID (for ownership verification)
 
-        **Returns:** True if revoked, False if not found or not owned by user
+        Returns:
+            True if revoked, False if not found or not owned by user
         """
         return self._fetch_val(
             "SELECT authn.revoke_session_by_id(%s::uuid, %s::uuid, %s)",
@@ -1089,17 +1101,25 @@ class AuthnClient(BaseClient):
         event_type: str | None = None,
         resource_type: str | None = None,
         resource_id: str | None = None,
+        before: str | None = None,
     ) -> list[dict]:
-        """Query audit events.
+        """Query audit events with optional filters.
 
         Args:
             limit: Maximum number of events to return (default 100)
             event_type: Filter by event type (e.g., 'user_created', 'session_revoked')
             resource_type: Filter by resource type (e.g., 'user', 'session')
             resource_id: Filter by resource ID
+            before: Opaque cursor from a previous response's event['cursor']
 
         Returns:
-            List of audit event dictionaries
+            List of audit event dictionaries. Each event includes a 'cursor' field
+            that can be passed to 'before' for pagination.
+
+        Example:
+            events = authn.get_audit_events(limit=50)
+            if events:
+                more = authn.get_audit_events(limit=50, before=events[-1]["cursor"])
         """
         filters: dict[str, Any] = {}
         if resource_type is not None:
@@ -1108,5 +1128,5 @@ class AuthnClient(BaseClient):
             filters["resource_id"] = resource_id
 
         return self._get_audit_events(
-            limit=limit, event_type=event_type, filters=filters
+            limit=limit, event_type=event_type, filters=filters, before=before
         )

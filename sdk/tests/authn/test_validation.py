@@ -1,7 +1,7 @@
 """Tests for input validation functions."""
 
 import pytest
-from postkit.authn import AuthnError
+from postkit.authn import AuthnError, AuthnValidationError
 
 
 class TestEmailValidation:
@@ -238,3 +238,31 @@ class TestIpAddressValidation:
                 ("user-1", None, "not-an-ip", None),
             )
         assert "ip_address must be valid" in str(exc_info.value)
+
+
+class TestValidationErrorType:
+    """Validation errors raise AuthnValidationError for precise error handling."""
+
+    def test_null_validation_raises_authn_validation_error(self, make_authn):
+        """Null validation raises AuthnValidationError (SQLSTATE 22004)."""
+        with pytest.raises(AuthnValidationError, match="cannot be null"):
+            make_authn(None)
+
+    def test_empty_validation_raises_authn_validation_error(self, make_authn):
+        """Empty string validation raises AuthnValidationError (SQLSTATE 22026)."""
+        with pytest.raises(AuthnValidationError, match="cannot be empty"):
+            make_authn("")
+
+    def test_length_validation_raises_authn_validation_error(self, make_authn):
+        """Length exceeded validation raises AuthnValidationError (SQLSTATE 22001)."""
+        with pytest.raises(AuthnValidationError, match="exceeds maximum"):
+            make_authn("a" * 1025)
+
+    def test_format_validation_raises_authn_validation_error(self, make_authn):
+        """Format validation raises AuthnValidationError (SQLSTATE 22023)."""
+        with pytest.raises(AuthnValidationError, match="control characters"):
+            make_authn("has\ttab")
+
+    def test_authn_validation_error_is_authn_error(self):
+        """AuthnValidationError is a subclass of AuthnError for backwards compatibility."""
+        assert issubclass(AuthnValidationError, AuthnError)

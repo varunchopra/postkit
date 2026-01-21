@@ -11,25 +11,7 @@ Tests for:
 """
 
 import pytest
-from postkit.authz import AuthzError
-
-
-@pytest.fixture(autouse=True)
-def cleanup_global_hierarchies(db_connection):
-    """Clean up global hierarchies before and after each test.
-
-    Since hierarchies are global (Zanzibar-style), tests that modify
-    hierarchies need explicit cleanup to avoid affecting other tests.
-    """
-    # Clean before test (in case a previous test left state)
-    with db_connection.cursor() as cur:
-        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
-
-    yield
-
-    # Clean after test
-    with db_connection.cursor() as cur:
-        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
+from postkit.authz import AuthzCycleError
 
 
 class TestHierarchyModification:
@@ -120,21 +102,34 @@ class TestHierarchyCycle:
 
     def test_direct_cycle_rejected(self, authz):
         """admin -> admin should be rejected."""
-        with pytest.raises(AuthzError, match="cycle"):
+        with pytest.raises(AuthzCycleError, match="cycle"):
             authz.add_hierarchy_rule("doc", "admin", "admin")
 
     def test_indirect_cycle_rejected(self, authz):
         """admin -> write -> admin should be rejected."""
         authz.set_hierarchy("doc", "admin", "write")
-        with pytest.raises(AuthzError, match="cycle"):
+        with pytest.raises(AuthzCycleError, match="cycle"):
             authz.add_hierarchy_rule("doc", "write", "admin")
 
     def test_branching_cycle_rejected(self, authz):
         """admin -> write, admin -> read, read -> admin should be rejected."""
         authz.add_hierarchy_rule("doc", "admin", "write")
         authz.add_hierarchy_rule("doc", "admin", "read")
-        with pytest.raises(AuthzError, match="cycle"):
+        with pytest.raises(AuthzCycleError, match="cycle"):
             authz.add_hierarchy_rule("doc", "read", "admin")
+
+    def test_cross_namespace_cycle_rejected(self, make_authz):
+        """Cycle via global hierarchy should be rejected.
+
+        If global has admin -> write -> read, a tenant adding read -> admin
+        should be rejected because it creates a cross-namespace cycle.
+        """
+        global_authz = make_authz("global")
+        global_authz.set_hierarchy("doc", "admin", "write", "read")
+
+        tenant = make_authz("cycle_test_tenant")
+        with pytest.raises(AuthzCycleError, match="cycle"):
+            tenant.add_hierarchy_rule("doc", "read", "admin")
 
 
 class TestHierarchyEdgeCases:

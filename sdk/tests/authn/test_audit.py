@@ -415,3 +415,80 @@ class TestClearActor:
         assert test_helpers.cursor.fetchone()[0] == ""
 
         test_helpers.cursor.execute("ROLLBACK")
+
+
+class TestAuditPagination:
+    """Tests for audit event cursor-based pagination."""
+
+    def test_pagination_returns_correct_pages(self, authn):
+        """before cursor returns events before the specified event."""
+        # Create multiple audit events by creating users
+        for i in range(5):
+            authn.create_user(f"page-test-{i}@example.com", f"hash{i}")
+
+        # Get first page (most recent first)
+        events = authn.get_audit_events(limit=2)
+        assert len(events) == 2
+
+        # Use opaque cursor from last event
+        assert "cursor" in events[-1], "Events should include opaque cursor field"
+
+        # Get second page using opaque cursor
+        events2 = authn.get_audit_events(limit=2, before=events[-1]["cursor"])
+        assert len(events2) == 2
+
+        # Pages should not overlap
+        first_ids = {e["id"] for e in events}
+        second_ids = {e["id"] for e in events2}
+        assert first_ids.isdisjoint(second_ids)
+
+    def test_pagination_with_event_type_filter(self, authn):
+        """Pagination works correctly with event_type filter."""
+        # Create some users (generates user_created events)
+        for i in range(3):
+            authn.create_user(f"filter-page-{i}@example.com", f"hash{i}")
+
+        # Get filtered events with pagination
+        first_page = authn.get_audit_events(event_type="user_created", limit=2)
+
+        if len(first_page) == 2:
+            # Use opaque cursor
+            second_page = authn.get_audit_events(
+                event_type="user_created", limit=2, before=first_page[-1]["cursor"]
+            )
+
+            # Pages should not overlap
+            first_ids = {e["id"] for e in first_page}
+            second_ids = {e["id"] for e in second_page}
+            assert first_ids.isdisjoint(second_ids)
+
+    def test_events_include_cursor_field(self, authn):
+        """Events include opaque cursor field for pagination."""
+        authn.create_user("cursor-test@example.com", "hash")
+
+        events = authn.get_audit_events(limit=1)
+
+        assert len(events) >= 1
+        assert "cursor" in events[0]
+        # Cursor should be a non-empty string (opaque)
+        assert isinstance(events[0]["cursor"], str)
+        assert len(events[0]["cursor"]) > 0
+
+    def test_invalid_cursor_raises_error(self, authn):
+        """Invalid cursor raises clear error."""
+        from postkit.authn import AuthnError
+
+        with pytest.raises(AuthnError, match="Invalid pagination cursor"):
+            authn.get_audit_events(before="garbage")
+
+    def test_events_include_id_and_event_time(self, authn):
+        """Events include id and event_time fields for cursor building."""
+        authn.create_user("id-test@example.com", "hash")
+
+        events = authn.get_audit_events(limit=1)
+
+        assert len(events) >= 1
+        assert "id" in events[0]
+        assert "event_time" in events[0]
+        assert isinstance(events[0]["id"], int)
+        assert isinstance(events[0]["event_time"], datetime)

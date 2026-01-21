@@ -12,7 +12,7 @@
 | [`delete_version`](sdk.md#delete_version) | Delete a specific version (cannot delete active version). |
 | [`exists`](sdk.md#exists) | Check if a config key exists. |
 | [`get`](sdk.md#get) | Get config entry. |
-| [`get_audit_events`](sdk.md#get_audit_events) | Query audit events. |
+| [`get_audit_events`](sdk.md#get_audit_events) | Query audit events with optional filters. |
 | [`get_batch`](sdk.md#get_batch) | Get multiple config entries in one query. |
 | [`get_path`](sdk.md#get_path) | Get a specific path within a config value. |
 | [`get_schema`](sdk.md#get_schema) | Get the JSON Schema that applies to a config key. |

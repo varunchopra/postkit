@@ -1,5 +1,15 @@
 -- @group Internal
 
+-- @function authz._hash64
+-- @brief Generate a 64-bit hash from a text key using md5
+-- @param p_key Text to hash
+-- @returns bigint hash value
+-- Uses first 16 hex chars of md5 (64 bits) for better collision resistance than hashtext (32 bits).
+CREATE OR REPLACE FUNCTION authz._hash64(p_key text)
+RETURNS bigint AS $$
+    SELECT ('x' || substr(md5(p_key), 1, 16))::bit(64)::bigint;
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE SECURITY INVOKER;
+
 -- @function authz._acquire_dual_lock
 -- @brief Acquires advisory locks on both endpoints of an edge
 -- @param p_namespace Namespace
@@ -20,15 +30,17 @@ DECLARE
     v_key1 text := p_namespace || E'\x1F' || p_type1 || E'\x1F' || p_id1;
     v_key2 text := p_namespace || E'\x1F' || p_type2 || E'\x1F' || p_id2;
 BEGIN
-    -- Use two-argument pg_advisory_xact_lock(int, int) to reduce collision probability.
-    -- First arg is namespace hash, second is entity hash. This gives ~64 bits of
-    -- lock space instead of 32, making collisions astronomically unlikely.
+    -- Use single-argument pg_advisory_xact_lock(bigint) with 64-bit hash.
+    -- This provides much better collision resistance than the two 32-bit hash approach:
+    -- - hashtext() returns 32-bit int, birthday paradox kicks in at ~65K entities
+    -- - md5-based 64-bit hash: birthday threshold is ~4 billion entities
+    -- Collisions cause unnecessary serialization (performance) not correctness issues.
     IF v_key1 < v_key2 THEN
-        PERFORM pg_advisory_xact_lock(hashtext(p_namespace), hashtext(p_type1 || E'\x1F' || p_id1));
-        PERFORM pg_advisory_xact_lock(hashtext(p_namespace), hashtext(p_type2 || E'\x1F' || p_id2));
+        PERFORM pg_advisory_xact_lock(authz._hash64(v_key1));
+        PERFORM pg_advisory_xact_lock(authz._hash64(v_key2));
     ELSE
-        PERFORM pg_advisory_xact_lock(hashtext(p_namespace), hashtext(p_type2 || E'\x1F' || p_id2));
-        PERFORM pg_advisory_xact_lock(hashtext(p_namespace), hashtext(p_type1 || E'\x1F' || p_id1));
+        PERFORM pg_advisory_xact_lock(authz._hash64(v_key2));
+        PERFORM pg_advisory_xact_lock(authz._hash64(v_key1));
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authz, pg_temp;

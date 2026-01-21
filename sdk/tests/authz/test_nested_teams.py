@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from postkit.authz import AuthzCycleError
 
 
 class TestNestedTeamMembership:
@@ -113,31 +114,23 @@ class TestCycleDetection:
 
     def test_self_membership_prevented(self, authz):
         """Cannot add a group as member of itself."""
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(AuthzCycleError):
             authz.grant("member", resource=("team", "a"), subject=("team", "a"))
-
-        assert (
-            "itself" in str(exc.value).lower() or "circular" in str(exc.value).lower()
-        )
 
     def test_direct_cycle_prevented(self, authz):
         """Cannot create A in B in A cycle."""
         authz.grant("member", resource=("team", "b"), subject=("team", "a"))
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(AuthzCycleError):
             authz.grant("member", resource=("team", "a"), subject=("team", "b"))
-
-        assert "circular" in str(exc.value).lower()
 
     def test_indirect_cycle_prevented(self, authz):
         """Cannot create A in B in C in A cycle."""
         authz.grant("member", resource=("team", "b"), subject=("team", "a"))
         authz.grant("member", resource=("team", "c"), subject=("team", "b"))
 
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(AuthzCycleError):
             authz.grant("member", resource=("team", "a"), subject=("team", "c"))
-
-        assert "circular" in str(exc.value).lower()
 
     def test_long_cycle_prevented(self, authz):
         """Cannot create cycle through long chain."""
@@ -148,10 +141,8 @@ class TestCycleDetection:
         authz.grant("member", resource=("team", "e"), subject=("team", "d"))
 
         # Try to add e in a (would create cycle)
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(AuthzCycleError):
             authz.grant("member", resource=("team", "a"), subject=("team", "e"))
-
-        assert "circular" in str(exc.value).lower()
 
     def test_valid_dag_allowed(self, authz):
         """Valid DAG structures (no cycles) are allowed."""

@@ -667,3 +667,70 @@ class TestExpirationAudit:
         assert alice_event["expires_at"] is not None
         assert bob_event["expires_at"] is not None
         assert charlie_event["expires_at"] is None
+
+
+class TestAuditPagination:
+    """Tests for audit event cursor-based pagination."""
+
+    def test_pagination_returns_correct_pages(self, authz):
+        """before cursor returns events before the specified event."""
+        # Create multiple audit events
+        for i in range(5):
+            authz.grant("read", resource=("doc", str(i)), subject=("user", "alice"))
+
+        # Get first page (most recent first)
+        events = authz.get_audit_events(limit=2)
+        assert len(events) == 2
+
+        # Use opaque cursor from last event
+        assert "cursor" in events[-1], "Events should include opaque cursor field"
+
+        # Get second page using opaque cursor
+        events2 = authz.get_audit_events(limit=2, before=events[-1]["cursor"])
+        assert len(events2) == 2
+
+        # Pages should not overlap
+        first_ids = {e["id"] for e in events}
+        second_ids = {e["id"] for e in events2}
+        assert first_ids.isdisjoint(second_ids)
+
+    def test_pagination_with_event_type_filter(self, authz):
+        """Pagination works correctly with event_type filter."""
+        # Create tuple events
+        for i in range(3):
+            authz.grant(
+                "read", resource=("doc", f"filter-{i}"), subject=("user", "alice")
+            )
+
+        # Get filtered events with pagination
+        first_page = authz.get_audit_events(event_type="tuple_created", limit=2)
+
+        if len(first_page) == 2:
+            # Use opaque cursor
+            second_page = authz.get_audit_events(
+                event_type="tuple_created", limit=2, before=first_page[-1]["cursor"]
+            )
+
+            # Pages should not overlap
+            first_ids = {e["id"] for e in first_page}
+            second_ids = {e["id"] for e in second_page}
+            assert first_ids.isdisjoint(second_ids)
+
+    def test_events_include_cursor_field(self, authz):
+        """Events include opaque cursor field for pagination."""
+        authz.grant("read", resource=("doc", "cursor-test"), subject=("user", "alice"))
+
+        events = authz.get_audit_events(limit=1)
+
+        assert len(events) >= 1
+        assert "cursor" in events[0]
+        # Cursor should be a non-empty string (opaque)
+        assert isinstance(events[0]["cursor"], str)
+        assert len(events[0]["cursor"]) > 0
+
+    def test_invalid_cursor_raises_error(self, authz):
+        """Invalid cursor raises clear error."""
+        from postkit.authz import AuthzError
+
+        with pytest.raises(AuthzError, match="Invalid pagination cursor"):
+            authz.get_audit_events(before="garbage")

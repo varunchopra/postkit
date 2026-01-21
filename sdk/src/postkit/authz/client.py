@@ -61,6 +61,13 @@ class AuthzClient(BaseClient):
 
     _schema = "authz"
     _error_class = AuthzError
+    _module_sqlstate_map = {
+        "22023": AuthzValidationError,  # invalid_parameter_value
+        "22004": AuthzValidationError,  # null_value_not_allowed
+        "22001": AuthzValidationError,  # string_data_right_truncation
+        "22026": AuthzValidationError,  # string_data_length_mismatch
+        "PK001": AuthzCycleError,  # postkit cycle error
+    }
 
     def __init__(self, cursor, namespace: str):
         super().__init__(cursor, namespace)
@@ -348,7 +355,7 @@ class AuthzClient(BaseClient):
 
         Example:
             paths = authz.explain(("user", "alice"), "read", ("repo", "api"))
-            # ["HIERARCHY: alice is member of team:eng which has admin (admin -> read)"]
+            # ["HIERARCHY: user:alice is member of team:eng which has admin (admin -> read) on repo:api"]
         """
         subject_type, subject_id = subject
         resource_type, resource_id = resource
@@ -628,9 +635,6 @@ class AuthzClient(BaseClient):
 
             # Revoke only note-related grants
             count = authz.revoke_all_grants(("api_key", key_id), resource_type="note")
-
-        See Also:
-            revoke_resource_grants: Revoke all grants ON a resource (when deleting a resource)
         """
         subject_type, subject_id = subject
         return self._fetch_val(
@@ -817,22 +821,22 @@ class AuthzClient(BaseClient):
 
         Args:
             limit: Maximum number of events to return (default 100)
-            before: Cursor for pagination (format: "event_time_iso,id")
-                Build from previous result: f"{event['event_time'].isoformat()},{event['id']}"
+            before: Opaque cursor from a previous response's event['cursor']
             event_type: Filter by event type (e.g., 'tuple_created')
             actor_id: Filter by actor ID
             resource: Filter by resource as (type, id) tuple
             subject: Filter by subject as (type, id) tuple
 
         Returns:
-            List of audit event dictionaries (includes 'id' for cursor building)
+            List of audit event dictionaries. Each event includes a 'cursor' field
+            that can be passed to 'before' for pagination.
 
         Example:
             events = authz.get_audit_events(actor_id="admin@acme.com", limit=50)
             if events:
-                # Get next page using cursor from last event
-                cursor = f"{events[-1]['event_time'].isoformat()},{events[-1]['id']}"
-                more = authz.get_audit_events(actor_id="admin@acme.com", limit=50, before=cursor)
+                more = authz.get_audit_events(
+                    actor_id="admin@acme.com", limit=50, before=events[-1]["cursor"]
+                )
         """
         conditions = ["namespace = %s"]
         params: list = [self.namespace]
@@ -856,7 +860,7 @@ class AuthzClient(BaseClient):
             params.extend(subject)
 
         if before is not None:
-            cursor_time, cursor_id = before.rsplit(",", 1)
+            cursor_time, cursor_id = self._decode_cursor(before)
             conditions.append("(event_time, id) < (%s::timestamptz, %s::bigint)")
             params.extend([cursor_time, cursor_id])
 
@@ -884,6 +888,7 @@ class AuthzClient(BaseClient):
                 "event_id": str(row[1]),
                 "event_type": row[2],
                 "event_time": row[3],
+                "cursor": self._encode_cursor(row[3], row[0]),
                 "actor_id": row[4],
                 "request_id": row[5],
                 "reason": row[6],
@@ -967,7 +972,11 @@ class AuthzClient(BaseClient):
         """
         resource_type, resource_id = resource
 
-        # Group subjects by type for efficient batch inserts
+        # Group subjects by type for efficient batch inserts.
+        # Design note: We make one SQL call per subject type rather than a single
+        # mixed-type call. This keeps the SQL simpler and real-world bulk grants
+        # typically share subject types (e.g., inviting many users). A mixed-type
+        # SQL function would add complexity for marginal benefit.
         by_type: dict[str, list[str]] = {}
         for subject_type, subject_id in subjects:
             by_type.setdefault(subject_type, []).append(subject_id)

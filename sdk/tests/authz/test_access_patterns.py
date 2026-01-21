@@ -12,18 +12,6 @@ With lazy evaluation, permissions are computed at query time via recursive
 CTEs. These tests ensure the resolution logic handles edge cases correctly.
 """
 
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def cleanup_global_hierarchies(db_connection):
-    """Clean up global hierarchies before and after each test."""
-    with db_connection.cursor() as cur:
-        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
-    yield
-    with db_connection.cursor() as cur:
-        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
-
 
 class TestMultiLevelHierarchyAlternatePath:
     """

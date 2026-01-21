@@ -6,6 +6,7 @@ Access to a parent resource grants access to child resources.
 """
 
 import pytest
+from postkit.authz import AuthzCycleError
 
 
 class TestBasicResourceHierarchy:
@@ -153,7 +154,7 @@ class TestResourceHierarchyCycleDetection:
 
     def test_direct_cycle_rejected(self, authz):
         """Resource cannot be its own parent."""
-        with pytest.raises(Exception):
+        with pytest.raises(AuthzCycleError):
             authz.grant(
                 "parent", resource=("folder", "docs"), subject=("folder", "docs")
             )
@@ -164,7 +165,7 @@ class TestResourceHierarchyCycleDetection:
         authz.grant("parent", resource=("folder", "b"), subject=("folder", "a"))
 
         # folder:b cannot contain folder:a (would create cycle)
-        with pytest.raises(Exception):
+        with pytest.raises(AuthzCycleError):
             authz.grant("parent", resource=("folder", "a"), subject=("folder", "b"))
 
     def test_long_cycle_rejected(self, authz):
@@ -175,7 +176,7 @@ class TestResourceHierarchyCycleDetection:
         authz.grant("parent", resource=("folder", "d"), subject=("folder", "c"))
 
         # d cannot contain a (would create cycle)
-        with pytest.raises(Exception):
+        with pytest.raises(AuthzCycleError):
             authz.grant("parent", resource=("folder", "a"), subject=("folder", "d"))
 
 

@@ -12,7 +12,7 @@ Tests for:
 
 import psycopg
 import pytest
-from postkit.authz import AuthzError
+from postkit.authz import AuthzError, AuthzValidationError
 
 
 class TestBoundaryConditions:
@@ -363,3 +363,31 @@ class TestNamespaceValidation:
     def test_rejects_over_max_length(self, make_authz):
         with pytest.raises(AuthzError):
             make_authz("a" * 1025)
+
+
+class TestValidationErrorType:
+    """Validation errors raise AuthzValidationError for precise error handling."""
+
+    def test_null_validation_raises_authz_validation_error(self, make_authz):
+        """Null validation raises AuthzValidationError (SQLSTATE 22004)."""
+        with pytest.raises(AuthzValidationError, match="cannot be null"):
+            make_authz(None)
+
+    def test_empty_validation_raises_authz_validation_error(self, make_authz):
+        """Empty string validation raises AuthzValidationError (SQLSTATE 22026)."""
+        with pytest.raises(AuthzValidationError, match="cannot be empty"):
+            make_authz("")
+
+    def test_length_validation_raises_authz_validation_error(self, make_authz):
+        """Length exceeded validation raises AuthzValidationError (SQLSTATE 22001)."""
+        with pytest.raises(AuthzValidationError, match="exceeds maximum"):
+            make_authz("a" * 1025)
+
+    def test_format_validation_raises_authz_validation_error(self, make_authz):
+        """Format validation raises AuthzValidationError (SQLSTATE 22023)."""
+        with pytest.raises(AuthzValidationError, match="control characters"):
+            make_authz("has\ttab")
+
+    def test_authz_validation_error_is_authz_error(self):
+        """AuthzValidationError is a subclass of AuthzError for backwards compatibility."""
+        assert issubclass(AuthzValidationError, AuthzError)

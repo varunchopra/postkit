@@ -715,3 +715,29 @@ class TestSetDefault:
         for key, value in DEFAULT_PLANS.items():
             version, created = config.set_default(key, value)
             assert created is False
+
+
+class TestSqlValidationErrors:
+    """Tests for SQL-level validation errors raising ConfigValidationError."""
+
+    def test_invalid_key_raises_config_validation_error(self, config):
+        """Invalid key format raises ConfigValidationError (not ConfigError)."""
+        from postkit.config import ConfigValidationError
+
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.set("/leading-slash", {"v": 1})
+
+        assert exc_info.value.sqlstate == "22023"
+
+    def test_delete_active_version_raises_config_validation_error(self, config):
+        """Cannot delete active version raises ConfigValidationError."""
+        from postkit.config import ConfigValidationError
+
+        config.set("prompts/bot", {"v": 1})
+        config.set("prompts/bot", {"v": 2})
+
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.delete_version("prompts/bot", 2)  # v2 is active
+
+        assert exc_info.value.sqlstate == "22023"
+        assert "active" in str(exc_info.value).lower()

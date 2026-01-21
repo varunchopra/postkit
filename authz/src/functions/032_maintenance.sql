@@ -1,7 +1,7 @@
 -- @group Maintenance
 
 -- @function authz.verify_integrity
--- @brief Check for data corruption (circular memberships, broken hierarchies)
+-- @brief Check for data corruption (circular memberships, broken hierarchies, partition issues)
 -- @returns Rows describing any issues found, empty if healthy
 -- @example -- Run as part of health checks
 -- @example SELECT * FROM authz.verify_integrity('default');
@@ -13,6 +13,8 @@ RETURNS TABLE (
     details text
 )
 AS $$
+DECLARE
+    v_default_count bigint;
 BEGIN
     -- Check for group membership cycles
     RETURN QUERY
@@ -31,6 +33,18 @@ BEGIN
         'warning'::text AS status,
         'Circular resource hierarchy detected: ' || array_to_string(cycle_path, ' -> ') AS details
     FROM authz._detect_resource_cycles(p_namespace);
+
+    -- Check for audit events in default partition (indicates partitioning problem)
+    SELECT COUNT(*) INTO v_default_count FROM authz.audit_events_default;
+    IF v_default_count > 0 THEN
+        RETURN QUERY
+        SELECT
+            'system'::text AS resource_type,
+            'audit_partitions'::text AS resource_id,
+            'error'::text AS status,
+            'Audit events in default partition: ' || v_default_count::text ||
+            ' rows. Run ensure_audit_partitions() to create missing partitions.' AS details;
+    END IF;
 
     RETURN;
 END;

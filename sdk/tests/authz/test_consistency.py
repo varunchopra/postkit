@@ -4,18 +4,6 @@ Consistency and statistics tests for postkit/authz.
 These tests verify data integrity checks and statistics functions.
 """
 
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def cleanup_global_hierarchies(db_connection):
-    """Clean up global hierarchies before and after each test."""
-    with db_connection.cursor() as cur:
-        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
-    yield
-    with db_connection.cursor() as cur:
-        cur.execute("DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'")
-
 
 class TestStatistics:
     """Test the stats monitoring function."""

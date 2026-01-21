@@ -65,7 +65,7 @@
 | [`authz.list_subjects`](sql.md#authzlist_subjects) | List all subjects who can access a resource ("Who can read this doc?") |
 | [`authz.get_stats`](sql.md#authzget_stats) | Get namespace statistics for monitoring dashboards |
 | [`authz.grant_to_resources_bulk`](sql.md#authzgrant_to_resources_bulk) | Grant same user/team access to many resources at once |
-| [`authz.verify_integrity`](sql.md#authzverify_integrity) | Check for data corruption (circular memberships, broken hierarchies) |
+| [`authz.verify_integrity`](sql.md#authzverify_integrity) | Check for data corruption (circular memberships, broken hierarchies, partition issues) |
 | [`authz.clear_tenant`](sql.md#authzclear_tenant) | Clear tenant context. Queries return no rows (fail-closed for safety). |
 | [`authz.set_tenant`](sql.md#authzset_tenant) | Set the tenant context for Row-Level Security (session-level) |
 | [`authz.check`](sql.md#authzcheck) | Check if a subject has a permission on a resource |

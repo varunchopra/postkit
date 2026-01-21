@@ -26,7 +26,7 @@ SELECT authn.create_session(user_id, 'a1b2c3...hex-encoded-sha256-hash', '24 hou
 
 -- Validate session on each request (pass the same hash)
 SELECT * FROM authn.validate_session('a1b2c3...hex-encoded-sha256-hash');
--- -> user_id, email, session_id (or empty if invalid)
+-- -> user_id, email, session_id, is_impersonating, impersonator_id, ... (or no rows if invalid)
 
 -- Logout
 SELECT authn.revoke_session('a1b2c3...hex-encoded-sha256-hash');
@@ -51,3 +51,14 @@ token_hash = hashlib.sha256(token.encode()).hexdigest()  # You hash
 Works fine. Google, GitHub, SAML - we don't care how you verify identity. You handle the OAuth/SAML flow, then call `authn.create_user()` and `authn.create_session()`.
 
 See [docs/authn/](../docs/authn/) for full API reference.
+
+## Connection Pooling
+
+When using connection pools (e.g., PgBouncer, application-level pools), clear context before returning connections:
+
+```python
+# After request completes, before returning connection to pool
+authn.clear_actor()  # Clear audit actor context
+```
+
+Tenant context (`authn.tenant_id`) is set per-request via `AuthnClient(cursor, namespace=...)`, so it's automatically overwritten on next use.

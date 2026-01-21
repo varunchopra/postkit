@@ -19,7 +19,7 @@ SELECT * FROM meter.allocate('alice', 'llm_call', 100000, 'tokens', 'claude-sonn
 
 -- Record consumption (immediate, known amount)
 SELECT * FROM meter.consume('alice', 'llm_call', 1500, 'tokens', 'claude-sonnet');
--- -> success: true, balance: 98500
+-- -> success: true, balance: 98500, available: 98500, entry_id: 2
 
 -- Check balance
 SELECT * FROM meter.get_balance('alice', 'llm_call', 'tokens', 'claude-sonnet');
@@ -33,13 +33,13 @@ For operations where you don't know the final cost upfront (streaming LLM calls,
 ```sql
 -- 1. Reserve before starting (holds tokens, doesn't deduct)
 SELECT * FROM meter.reserve('alice', 'llm_call', 4000, 'tokens', 'claude-sonnet');
--- -> granted: true, reservation_id: 'res_abc123', available: 94500
+-- -> granted: true, reservation_id: 'res_abc123', balance: 98500, available: 94500, expires_at: ...
 
 -- 2. Do your streaming LLM call...
 
 -- 3. Commit with actual usage (creates ledger entry, releases hold)
 SELECT * FROM meter.commit('res_abc123', 2347);
--- -> success: true, consumed: 2347, released: 1653, balance: 96153
+-- -> success: true, consumed: 2347, released: 1653, reserved_amount: 4000, balance: 96153, entry_id: 3
 
 -- Or if the operation failed/was cancelled:
 SELECT meter.release('res_abc123');
@@ -102,3 +102,14 @@ SELECT * FROM meter.consume(
 ```
 
 See [docs/meter/](../docs/meter/) for full API reference.
+
+## Connection Pooling
+
+When using connection pools (e.g., PgBouncer, application-level pools), clear context before returning connections:
+
+```python
+# After request completes, before returning connection to pool
+meter.clear_actor()  # Clear audit actor context
+```
+
+Tenant context (`meter.tenant_id`) is set per-request via `MeterClient(cursor, namespace=...)`, so it's automatically overwritten on next use.
