@@ -98,7 +98,7 @@ BEGIN
         RETURN QUERY
         SELECT e.namespace, e.key, e.value
         FROM config.entries e
-        WHERE e.key LIKE p_key_pattern || '%'
+        WHERE e.key LIKE replace(p_key_pattern, '_', '\_') || '%' ESCAPE '\'
           AND e.is_active = true;
     ELSE
         RETURN QUERY
@@ -145,7 +145,7 @@ BEGIN
     SELECT s.schema INTO v_schema
     FROM config.schemas s
     WHERE s.key_pattern LIKE '%/'
-      AND p_key LIKE s.key_pattern || '%'
+      AND p_key LIKE replace(s.key_pattern, '_', '\_') || '%' ESCAPE '\'
     ORDER BY length(s.key_pattern) DESC
     LIMIT 1;
 
@@ -206,7 +206,7 @@ BEGIN
         RETURN QUERY
         SELECT s.key_pattern, s.schema, s.description, s.created_at, s.updated_at
         FROM config.schemas s
-        WHERE s.key_pattern LIKE p_prefix || '%'
+        WHERE s.key_pattern LIKE replace(p_prefix, '_', '\_') || '%' ESCAPE '\'
         ORDER BY s.key_pattern
         LIMIT p_limit;
     ELSE

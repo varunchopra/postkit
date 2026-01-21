@@ -321,7 +321,7 @@ BEGIN
     FROM config.entries e
     WHERE e.namespace = p_namespace
       AND e.is_active = true
-      AND (p_prefix IS NULL OR e.key LIKE replace(replace(p_prefix, '%', '\%'), '_', '\_') || '%' ESCAPE '\')
+      AND (p_prefix IS NULL OR e.key LIKE replace(p_prefix, '_', '\_') || '%' ESCAPE '\')
       AND (p_cursor IS NULL OR e.key > p_cursor)
     ORDER BY e.key
     LIMIT p_limit;
@@ -572,7 +572,7 @@ BEGIN
     WHERE e.namespace = p_namespace
       AND e.is_active = true
       AND e.value @> p_contains
-      AND (p_prefix IS NULL OR e.key LIKE replace(replace(p_prefix, '%', '\%'), '_', '\_') || '%' ESCAPE '\')
+      AND (p_prefix IS NULL OR e.key LIKE replace(p_prefix, '_', '\_') || '%' ESCAPE '\')
     ORDER BY e.key
     LIMIT p_limit;
 END;

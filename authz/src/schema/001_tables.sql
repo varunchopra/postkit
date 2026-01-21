@@ -119,7 +119,7 @@ CREATE POLICY tuples_recipient_can_leave ON authz.tuples
     );
 
 -- Index for efficient cross-namespace recipient queries
-CREATE INDEX IF NOT EXISTS idx_tuples_subject
+CREATE INDEX IF NOT EXISTS tuples_subject_idx
     ON authz.tuples(subject_id, subject_type);
 
 CREATE POLICY hierarchy_tenant_isolation ON authz.permission_hierarchy

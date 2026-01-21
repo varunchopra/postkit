@@ -115,6 +115,17 @@ class TestListSchemas:
         schemas = admin_config.list_schemas(prefix="flags")
         assert len(schemas) == 2
 
+    def test_prefix_underscores_escaped(self, admin_config):
+        """list_schemas() escapes SQL underscore wildcard in prefix."""
+        admin_config.set_schema("test_exact/", {"type": "object"})
+        admin_config.set_schema("testXother/", {"type": "object"})
+
+        # Underscore should be literal, not single-char wildcard
+        schemas = admin_config.list_schemas(prefix="test_")
+        patterns = [s["key_pattern"] for s in schemas]
+        assert patterns == ["test_exact/"]
+        assert "testXother/" not in patterns
+
 
 class TestPatternMatching:
     """Tests for schema pattern matching precedence."""

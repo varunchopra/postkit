@@ -220,7 +220,7 @@ BEGIN
     SELECT
         (SELECT COUNT(*) FROM meter.accounts WHERE namespace = p_namespace)::bigint,
         (SELECT COUNT(*) FROM meter.ledger WHERE namespace = p_namespace)::bigint,
-        (SELECT COUNT(*) FROM meter.reservations WHERE namespace = p_namespace)::bigint,
+        (SELECT COUNT(*) FROM meter.reservations WHERE namespace = p_namespace AND status = 'active')::bigint,
         (SELECT COALESCE(SUM(balance), 0) FROM meter.accounts WHERE namespace = p_namespace),
         (SELECT COALESCE(SUM(reserved), 0) FROM meter.accounts WHERE namespace = p_namespace);
 END;

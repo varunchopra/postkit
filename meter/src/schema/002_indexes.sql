@@ -44,3 +44,8 @@ CREATE UNIQUE INDEX reservations_idempotency_idx
 -- Namespace-level account lookup
 CREATE INDEX accounts_namespace_idx
     ON meter.accounts (namespace, event_type, resource, unit);
+
+-- User balance lookups (get_user_balances, dashboard queries)
+CREATE INDEX accounts_user_lookup_idx
+    ON meter.accounts (namespace, user_id)
+    WHERE user_id IS NOT NULL;

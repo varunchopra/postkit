@@ -267,6 +267,17 @@ class TestSearch:
         assert len(results) == 1
         assert results[0]["created_at"] is not None
 
+    def test_prefix_underscores_escaped(self, config):
+        """search() escapes SQL underscore wildcard in prefix."""
+        config.set("test_exact", {"enabled": True})
+        config.set("testXother", {"enabled": True})  # _ wildcard would match this
+
+        # Underscore should be literal, not single-char wildcard
+        results = config.search({"enabled": True}, prefix="test_")
+        keys = [r["key"] for r in results]
+        assert keys == ["test_exact"]
+        assert "testXother" not in keys
+
 
 class TestGetValue:
     """Tests for config.get_value()"""
