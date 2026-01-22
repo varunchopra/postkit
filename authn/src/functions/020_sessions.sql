@@ -176,13 +176,17 @@ BEGIN
 
     v_new_expires_at := now() + COALESCE(p_extend_by, authn._session_duration());
 
-    UPDATE authn.sessions
+    UPDATE authn.sessions s
     SET expires_at = v_new_expires_at
-    WHERE token_hash = p_token_hash
-      AND namespace = p_namespace
-      AND revoked_at IS NULL
-      AND expires_at > now()
-    RETURNING id, user_id INTO v_session_id, v_user_id;
+    FROM authn.users u
+    WHERE s.token_hash = p_token_hash
+      AND s.namespace = p_namespace
+      AND s.revoked_at IS NULL
+      AND s.expires_at > now()
+      AND u.id = s.user_id
+      AND u.namespace = s.namespace
+      AND u.disabled_at IS NULL
+    RETURNING s.id, s.user_id INTO v_session_id, v_user_id;
 
     IF NOT FOUND THEN
         RETURN NULL;

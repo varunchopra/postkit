@@ -396,3 +396,36 @@ BEGIN
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
+
+
+-- @function authn._end_impersonations_for_user
+-- @brief End all impersonation sessions where user is actor or target
+-- @param p_user_id The user being disabled
+-- @param p_namespace The namespace
+-- @returns Count of impersonations ended
+CREATE OR REPLACE FUNCTION authn._end_impersonations_for_user(
+    p_user_id uuid,
+    p_namespace text
+)
+RETURNS int AS $$
+DECLARE
+    v_count int;
+BEGIN
+    -- End impersonations and revoke their sessions in one operation
+    WITH ended AS (
+        UPDATE authn.impersonation_sessions
+        SET ended_at = now()
+        WHERE namespace = p_namespace
+          AND (actor_id = p_user_id OR target_user_id = p_user_id)
+          AND ended_at IS NULL
+        RETURNING impersonation_session_id
+    )
+    UPDATE authn.sessions
+    SET revoked_at = now()
+    WHERE id IN (SELECT impersonation_session_id FROM ended WHERE impersonation_session_id IS NOT NULL)
+      AND revoked_at IS NULL;
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;

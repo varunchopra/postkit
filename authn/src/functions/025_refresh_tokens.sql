@@ -44,16 +44,18 @@ BEGIN
     PERFORM authn._validate_hash(p_token_hash, 'token_hash', false);
     PERFORM authn._validate_namespace(p_namespace);
 
-    -- Verify session exists and get user_id
+    -- Verify session exists, is valid, and user is not disabled
     SELECT s.user_id INTO v_user_id
     FROM authn.sessions s
+    JOIN authn.users u ON u.id = s.user_id AND u.namespace = s.namespace
     WHERE s.id = p_session_id
       AND s.namespace = p_namespace
       AND s.revoked_at IS NULL
-      AND s.expires_at > now();
+      AND s.expires_at > now()
+      AND u.disabled_at IS NULL;
 
     IF v_user_id IS NULL THEN
-        RAISE EXCEPTION 'Session not found or invalid'
+        RAISE EXCEPTION 'Session not found, invalid, or user disabled'
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:authn:SESSION_INVALID';
     END IF;

@@ -41,6 +41,18 @@ BEGIN
         PERFORM authn._validate_secret(p_secret_data);
     END IF;
 
+    -- Verify user exists and is not disabled
+    IF NOT EXISTS (
+        SELECT 1 FROM authn.users u
+        WHERE u.id = p_user_id
+          AND u.namespace = p_namespace
+          AND u.disabled_at IS NULL
+    ) THEN
+        RAISE EXCEPTION 'User not found or disabled'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:USER_DISABLED';
+    END IF;
+
     INSERT INTO authn.credentials (
         namespace, user_id, credential_type, lookup_key, secret_data,
         name, metadata, created_by

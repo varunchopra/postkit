@@ -141,7 +141,7 @@
 | [`authn.verify_email`](sql.md#authnverify_email) | Verify email address using token from email link |
 | [`authn.create_user`](sql.md#authncreate_user) | Create a new user account |
 | [`authn.delete_user`](sql.md#authndelete_user) | Permanently delete user and all their data (sessions, tokens, credentials) |
-| [`authn.disable_user`](sql.md#authndisable_user) | Disable user account and revoke all active sessions |
+| [`authn.disable_user`](sql.md#authndisable_user) | Disable user and revoke all credentials (sessions, API keys, refresh tokens, impersonations, tokens) |
 | [`authn.enable_user`](sql.md#authnenable_user) | Re-enable a disabled user account |
 | [`authn.get_or_create_user`](sql.md#authnget_or_create_user) | Atomically get existing user or create new one (for SSO flows) |
 | [`authn.get_user`](sql.md#authnget_user) | Get user by ID (does not return password hash) |

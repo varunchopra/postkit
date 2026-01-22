@@ -706,3 +706,58 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION authn.get_operator_audit_events FROM PUBLIC;
+
+
+-- @function authn._end_operator_impersonations_for_operator
+-- @brief End all operator impersonation sessions for a disabled operator (cross-namespace)
+CREATE OR REPLACE FUNCTION authn._end_operator_impersonations_for_operator(
+    p_operator_id uuid,
+    p_operator_namespace text
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, authn
+AS $$
+DECLARE
+    v_count int := 0;
+    v_imp RECORD;
+BEGIN
+    -- Must loop to audit each impersonation individually
+    FOR v_imp IN
+        SELECT ois.id, ois.impersonation_session_id,
+               ois.target_namespace, ois.target_user_id, ois.target_user_email,
+               ois.reason, ois.ticket_reference, ois.original_session_id,
+               ois.operator_email
+        FROM authn.operator_impersonation_sessions ois
+        WHERE ois.operator_id = p_operator_id
+          AND ois.operator_namespace = p_operator_namespace
+          AND ois.ended_at IS NULL
+        FOR UPDATE
+    LOOP
+        UPDATE authn.operator_impersonation_sessions
+        SET ended_at = now()
+        WHERE id = v_imp.id;
+
+        UPDATE authn.sessions
+        SET revoked_at = now()
+        WHERE id = v_imp.impersonation_session_id
+          AND revoked_at IS NULL;
+
+        PERFORM authn._log_operator_audit_event(
+            'operator_impersonation_ended_operator_disabled',
+            p_operator_namespace, p_operator_id, v_imp.operator_email,
+            v_imp.target_namespace, v_imp.target_user_id, v_imp.target_user_email,
+            v_imp.reason, v_imp.ticket_reference,
+            v_imp.impersonation_session_id, v_imp.original_session_id,
+            jsonb_build_object('impersonation_id', v_imp.id)
+        );
+
+        v_count := v_count + 1;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION authn._end_operator_impersonations_for_operator FROM PUBLIC;

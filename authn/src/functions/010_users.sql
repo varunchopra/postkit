@@ -159,9 +159,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 
 -- @function authn.disable_user
--- @brief Disable user account and revoke all active sessions
+-- @brief Disable user and revoke all credentials (sessions, API keys, refresh tokens, impersonations, tokens)
 -- @returns True if user was found and disabled
--- @example SELECT authn.disable_user(user_id); -- User can no longer log in
+-- @example SELECT authn.disable_user(user_id);
 CREATE OR REPLACE FUNCTION authn.disable_user(
     p_user_id uuid,
     p_namespace text DEFAULT 'default'
@@ -171,33 +171,49 @@ AS $$
 DECLARE
     v_count int;
     v_sessions_revoked int;
+    v_api_keys_revoked int;
+    v_refresh_tokens_revoked int;
+    v_impersonations_ended int;
+    v_operator_impersonations_ended int;
+    v_tokens_invalidated int;
 BEGIN
     PERFORM authn._validate_namespace(p_namespace);
 
-    -- Disable user
     UPDATE authn.users
-    SET disabled_at = now(),
-        updated_at = now()
-    WHERE id = p_user_id
-      AND namespace = p_namespace
-      AND disabled_at IS NULL;
-
+    SET disabled_at = now(), updated_at = now()
+    WHERE id = p_user_id AND namespace = p_namespace AND disabled_at IS NULL;
     GET DIAGNOSTICS v_count = ROW_COUNT;
 
     IF v_count > 0 THEN
-        -- Revoke all active sessions
-        UPDATE authn.sessions
-        SET revoked_at = now()
-        WHERE user_id = p_user_id
-          AND namespace = p_namespace
-          AND revoked_at IS NULL;
-
+        UPDATE authn.sessions SET revoked_at = now()
+        WHERE user_id = p_user_id AND namespace = p_namespace AND revoked_at IS NULL;
         GET DIAGNOSTICS v_sessions_revoked = ROW_COUNT;
 
-        -- Audit log
+        UPDATE authn.api_keys SET revoked_at = now()
+        WHERE user_id = p_user_id AND namespace = p_namespace AND revoked_at IS NULL;
+        GET DIAGNOSTICS v_api_keys_revoked = ROW_COUNT;
+
+        UPDATE authn.refresh_tokens SET revoked_at = now()
+        WHERE user_id = p_user_id AND namespace = p_namespace AND revoked_at IS NULL;
+        GET DIAGNOSTICS v_refresh_tokens_revoked = ROW_COUNT;
+
+        v_impersonations_ended := authn._end_impersonations_for_user(p_user_id, p_namespace);
+        v_operator_impersonations_ended := authn._end_operator_impersonations_for_operator(p_user_id, p_namespace);
+
+        UPDATE authn.tokens SET used_at = now()
+        WHERE user_id = p_user_id AND namespace = p_namespace AND used_at IS NULL;
+        GET DIAGNOSTICS v_tokens_invalidated = ROW_COUNT;
+
         PERFORM authn._log_event(
-            'user_disabled', p_namespace, 'user', p_user_id::text,
-            NULL, jsonb_build_object('sessions_revoked', v_sessions_revoked)
+            'user_disabled', p_namespace, 'user', p_user_id::text, NULL,
+            jsonb_build_object(
+                'sessions_revoked', v_sessions_revoked,
+                'api_keys_revoked', v_api_keys_revoked,
+                'refresh_tokens_revoked', v_refresh_tokens_revoked,
+                'impersonations_ended', v_impersonations_ended,
+                'operator_impersonations_ended', v_operator_impersonations_ended,
+                'tokens_invalidated', v_tokens_invalidated
+            )
         );
     END IF;
 

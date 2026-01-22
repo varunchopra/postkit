@@ -295,7 +295,7 @@ Consume a one-time credential (e.g., recovery code)
 SELECT authn.consume_credential(recovery_code_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:176*
+*Source: authn/src/functions/040_credentials.sql:188*
 
 ---
 
@@ -318,7 +318,7 @@ Bulk disable all credentials for a user (incident response)
 SELECT authn.disable_all_credentials(user_id, 'User reported device stolen');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:464*
+*Source: authn/src/functions/040_credentials.sql:476*
 
 ---
 
@@ -341,7 +341,7 @@ Soft-disable a credential (preserves for forensics)
 SELECT authn.disable_credential(credential_id, 'Reported as compromised');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:277*
+*Source: authn/src/functions/040_credentials.sql:289*
 
 ---
 
@@ -365,7 +365,7 @@ Lookup a credential by its lookup_key (requires user context for security)
 SELECT * FROM authn.get_credential_by_lookup(user_id, hash, 'recovery_code');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:107*
+*Source: authn/src/functions/040_credentials.sql:119*
 
 ---
 
@@ -407,7 +407,7 @@ Get active credentials for verification (returns secrets)
 SELECT * FROM authn.get_credentials(user_id, 'totp');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:67*
+*Source: authn/src/functions/040_credentials.sql:79*
 
 ---
 
@@ -430,7 +430,7 @@ Check if user has active credential of a specific type
 IF authn.has_credential(user_id, 'totp') THEN prompt_for_code(); END IF;
 ```
 
-*Source: authn/src/functions/040_credentials.sql:434*
+*Source: authn/src/functions/040_credentials.sql:446*
 
 ---
 
@@ -454,7 +454,7 @@ List credentials for settings UI (no secrets exposed)
 SELECT * FROM authn.list_credentials(user_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:383*
+*Source: authn/src/functions/040_credentials.sql:395*
 
 ---
 
@@ -474,7 +474,7 @@ Record credential usage (updates last_used_at)
 SELECT authn.record_credential_use(credential_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:149*
+*Source: authn/src/functions/040_credentials.sql:161*
 
 ---
 
@@ -496,7 +496,7 @@ Hard-delete a credential (user self-service)
 SELECT authn.remove_credential(credential_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:332*
+*Source: authn/src/functions/040_credentials.sql:344*
 
 ---
 
@@ -539,7 +539,7 @@ Update WebAuthn sign count (clone detection)
 SELECT authn.update_sign_count(webauthn_credential_id, 42);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:219*
+*Source: authn/src/functions/040_credentials.sql:231*
 
 ---
 
@@ -1046,7 +1046,7 @@ List active refresh tokens for a user (for "manage devices" UI)
 SELECT * FROM authn.list_refresh_tokens(user_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:373*
+*Source: authn/src/functions/025_refresh_tokens.sql:375*
 
 ---
 
@@ -1065,7 +1065,7 @@ Revoke all refresh tokens for a user (password change, security concern)
 SELECT authn.revoke_all_refresh_tokens(user_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:337*
+*Source: authn/src/functions/025_refresh_tokens.sql:339*
 
 ---
 
@@ -1087,7 +1087,7 @@ Revoke all tokens in a family (for security response)
 SELECT authn.revoke_refresh_token_family(family_id);
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:292*
+*Source: authn/src/functions/025_refresh_tokens.sql:294*
 
 ---
 
@@ -1111,7 +1111,7 @@ Rotate a refresh token: invalidate old, create new (secure by default)
 SELECT * FROM authn.rotate_refresh_token('old_token_hash', 'new_token_hash');
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:86*
+*Source: authn/src/functions/025_refresh_tokens.sql:88*
 
 ---
 
@@ -1130,7 +1130,7 @@ Check if a refresh token is valid WITHOUT rotating (for inspection only)
 SELECT * FROM authn.validate_refresh_token('a1b2c3...token_hash');
 ```
 
-*Source: authn/src/functions/025_refresh_tokens.sql:248*
+*Source: authn/src/functions/025_refresh_tokens.sql:250*
 
 ---
 
@@ -1194,7 +1194,7 @@ List active sessions for "manage devices" UI
 SELECT * FROM authn.list_sessions(user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:314*
+*Source: authn/src/functions/020_sessions.sql:318*
 
 ---
 
@@ -1213,7 +1213,7 @@ Log out all sessions for a user (password change, security concern)
 SELECT authn.revoke_all_sessions(user_id); -- "Log out everywhere"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:237*
+*Source: authn/src/functions/020_sessions.sql:241*
 
 ---
 
@@ -1236,7 +1236,7 @@ Log out all sessions except the current one ("sign out other devices")
 SELECT authn.revoke_other_sessions(user_id, current_session_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:272*
+*Source: authn/src/functions/020_sessions.sql:276*
 
 ---
 
@@ -1253,7 +1253,7 @@ Log out a specific session
 SELECT authn.revoke_session(token_hash); -- User clicks "log out"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:199*
+*Source: authn/src/functions/020_sessions.sql:203*
 
 ---
 
@@ -1276,7 +1276,7 @@ Revoke a specific session by ID (for "manage devices" UI)
 SELECT authn.revoke_session_by_id(session_id, user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:350*
+*Source: authn/src/functions/020_sessions.sql:354*
 
 ---
 
@@ -1316,7 +1316,7 @@ Use a one-time token (marks as used, can't be reused)
 SELECT * FROM authn.consume_token('a1b2c3...token_hash', 'password_reset');
 ```
 
-*Source: authn/src/functions/030_tokens.sql:46*
+*Source: authn/src/functions/030_tokens.sql:58*
 
 ---
 
@@ -1360,7 +1360,7 @@ Invalidate unused tokens (e.g., after password change, invalidate reset tokens)
 SELECT authn.invalidate_tokens(user_id, 'password_reset');
 ```
 
-*Source: authn/src/functions/030_tokens.sql:140*
+*Source: authn/src/functions/030_tokens.sql:153*
 
 ---
 
@@ -1379,7 +1379,7 @@ Verify email address using token from email link
 SELECT * FROM authn.verify_email('a1b2c3...token_hash');
 ```
 
-*Source: authn/src/functions/030_tokens.sql:98*
+*Source: authn/src/functions/030_tokens.sql:111*
 
 ---
 
@@ -1422,7 +1422,7 @@ Permanently delete user and all their data (sessions, tokens, credentials)
 SELECT authn.delete_user(user_id); -- Irreversible!
 ```
 
-*Source: authn/src/functions/010_users.sql:240*
+*Source: authn/src/functions/010_users.sql:256*
 
 ---
 
@@ -1432,13 +1432,13 @@ SELECT authn.delete_user(user_id); -- Irreversible!
 authn.disable_user(p_user_id: uuid, p_namespace: text) -> bool
 ```
 
-Disable user account and revoke all active sessions
+Disable user and revoke all credentials (sessions, API keys, refresh tokens, impersonations, tokens)
 
 **Returns:** True if user was found and disabled
 
 **Example:**
 ```sql
-SELECT authn.disable_user(user_id); -- User can no longer log in
+SELECT authn.disable_user(user_id);
 ```
 
 *Source: authn/src/functions/010_users.sql:159*
@@ -1458,7 +1458,7 @@ Re-enable a disabled user account
 SELECT authn.enable_user(user_id);
 ```
 
-*Source: authn/src/functions/010_users.sql:206*
+*Source: authn/src/functions/010_users.sql:222*
 
 ---
 
@@ -1483,7 +1483,7 @@ Atomically get existing user or create new one (for SSO flows)
 SELECT * FROM authn.get_or_create_user('alice@example.com', NULL, 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:365*
+*Source: authn/src/functions/010_users.sql:381*
 
 ---
 
@@ -1540,7 +1540,7 @@ Get multiple users by ID in a single query
 SELECT * FROM authn.get_users_batch(ARRAY['uuid1', 'uuid2']::uuid[], 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:328*
+*Source: authn/src/functions/010_users.sql:344*
 
 ---
 
@@ -1561,7 +1561,7 @@ List users with cursor-based pagination
 SELECT * FROM authn.list_users('default', 50, NULL); -- First page
 ```
 
-*Source: authn/src/functions/010_users.sql:284*
+*Source: authn/src/functions/010_users.sql:300*
 
 ---
 
