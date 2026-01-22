@@ -86,11 +86,33 @@ CREATE INDEX tokens_user_type_idx ON authn.tokens (namespace, user_id, token_typ
     WHERE used_at IS NULL;
 
 -- =============================================================================
--- MFA SECRETS INDEXES
+-- CREDENTIALS INDEXES
 -- =============================================================================
 
--- MFA lookup - get secrets for verification
-CREATE INDEX mfa_secrets_user_idx ON authn.mfa_secrets (namespace, user_id, mfa_type);
+-- WebAuthn: credential_id globally unique per namespace (relying party)
+-- WebAuthn spec requires globally unique credential_id per relying party
+CREATE UNIQUE INDEX credentials_webauthn_lookup_idx
+    ON authn.credentials (namespace, lookup_key)
+    WHERE credential_type = 'webauthn' AND lookup_key IS NOT NULL;
+
+-- Recovery codes: unique per user (prevents cross-user enumeration)
+-- Without user_id, attacker could probe hashes via INSERT conflicts
+CREATE UNIQUE INDEX credentials_recovery_lookup_idx
+    ON authn.credentials (namespace, user_id, lookup_key)
+    WHERE credential_type = 'recovery_code' AND lookup_key IS NOT NULL;
+
+-- Hot path: list_credentials() for settings UI (covering index - no heap access)
+-- Includes all fields needed for list display without table lookup
+CREATE INDEX credentials_user_type_idx
+    ON authn.credentials (namespace, user_id, credential_type, created_at DESC)
+    INCLUDE (id, name, last_used_at, consumed_at)
+    WHERE disabled_at IS NULL;
+
+-- Auth flow: get_credentials() needs secret_data (not covering, but fast filter)
+-- Filters out consumed/disabled credentials at index level
+CREATE INDEX credentials_user_active_idx
+    ON authn.credentials (namespace, user_id, credential_type)
+    WHERE disabled_at IS NULL AND consumed_at IS NULL;
 
 -- =============================================================================
 -- LOGIN ATTEMPTS INDEXES
@@ -164,8 +186,8 @@ CREATE INDEX refresh_tokens_user_id_idx ON authn.refresh_tokens (user_id);
 -- Tokens: efficient cascade when user is deleted
 CREATE INDEX tokens_user_id_idx ON authn.tokens (user_id);
 
--- MFA secrets: efficient cascade when user is deleted
-CREATE INDEX mfa_secrets_user_id_idx ON authn.mfa_secrets (user_id);
+-- Credentials: efficient cascade when user is deleted
+CREATE INDEX credentials_user_id_idx ON authn.credentials (user_id);
 
 -- API keys: efficient cascade when user is deleted
 CREATE INDEX api_keys_user_id_idx ON authn.api_keys (user_id);

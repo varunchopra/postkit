@@ -13,7 +13,7 @@
 -- - Credential changes: password_updated, email_updated, email_verified
 -- - Sessions: created, extended, revoked, revoked_all
 -- - Tokens: created, consumed
--- - MFA: added, removed, used
+-- - Credentials: added, removed, used, disabled
 -- - Security events: login_attempt_failed, lockout_triggered
 -- - Impersonation: started, ended (within same namespace)
 --
@@ -85,7 +85,8 @@ CREATE TABLE authn.audit_events (
         'refresh_token_created', 'refresh_token_rotated', 'refresh_token_reuse_detected',
         'refresh_token_family_revoked', 'refresh_tokens_revoked_all',
         'api_key_created', 'api_key_revoked', 'api_keys_revoked_all',
-        'mfa_added', 'mfa_removed', 'mfa_used',
+        'credential_added', 'credential_consumed', 'credential_clone_detected',
+        'credential_disabled', 'credential_removed', 'bulk_credentials_disabled',
         'login_attempt_failed', 'lockout_triggered',
         'impersonation_started', 'impersonation_ended'
     ))

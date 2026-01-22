@@ -2,7 +2,7 @@
 -- SCHEMA AND TABLES FOR POSTKIT/AUTHN
 -- =============================================================================
 -- PostgreSQL-native authentication module.
--- Stores users, sessions, tokens, MFA secrets, and login attempts.
+-- Stores users, sessions, tokens, credentials, and login attempts.
 -- No crypto: caller provides pre-hashed passwords and tokens.
 -- =============================================================================
 
@@ -98,24 +98,40 @@ CREATE TABLE authn.tokens (
 );
 
 -- =============================================================================
--- MFA SECRETS TABLE
+-- CREDENTIALS TABLE
 -- =============================================================================
--- Multi-factor authentication methods. Secret is stored for caller to verify.
--- Supports TOTP, WebAuthn, and recovery codes.
-CREATE TABLE authn.mfa_secrets (
+-- Authentication credentials: TOTP, WebAuthn, and recovery codes.
+-- Supports passwordless auth, one-time codes, and clone detection.
+-- Secrets stored for caller to verify (TOTP seed, WebAuthn public key).
+CREATE TABLE authn.credentials (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     namespace text NOT NULL DEFAULT 'default',
     user_id uuid NOT NULL REFERENCES authn.users(id) ON DELETE CASCADE,
-    mfa_type text NOT NULL,
-    secret text NOT NULL,
-    name text,  -- User-friendly name like "Work Yubikey"
-    created_at timestamptz NOT NULL DEFAULT now(),
-    last_used_at timestamptz,
+    credential_type text NOT NULL,
 
-    CONSTRAINT mfa_secrets_type_valid CHECK (
-        mfa_type IN ('totp', 'webauthn', 'recovery_codes')
+    lookup_key text,                              -- WebAuthn credential_id, recovery code hash
+    secret_data text,                             -- TOTP seed, WebAuthn public key
+    sign_count int NOT NULL DEFAULT 0,            -- WebAuthn replay protection
+
+    consumed_at timestamptz,                      -- Recovery codes: one-time use
+
+    name text,                                    -- User-friendly name: "Work Yubikey"
+    metadata jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    created_by uuid,
+    last_used_at timestamptz,
+    disabled_at timestamptz,
+    disabled_reason text,
+
+    CONSTRAINT credentials_type_valid CHECK (
+        credential_type IN ('totp', 'recovery_code', 'webauthn')
     ),
-    CONSTRAINT mfa_secrets_secret_not_empty CHECK (length(trim(secret)) > 0)
+    CONSTRAINT credentials_has_material CHECK (
+        lookup_key IS NOT NULL OR secret_data IS NOT NULL
+    ),
+    CONSTRAINT credentials_disabled_reason CHECK (
+        disabled_at IS NULL OR disabled_reason IS NOT NULL
+    )
 );
 
 -- =============================================================================
@@ -235,10 +251,10 @@ CREATE POLICY tokens_tenant_isolation ON authn.tokens
         AND namespace = current_setting('authn.tenant_id', TRUE)
     );
 
-ALTER TABLE authn.mfa_secrets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE authn.mfa_secrets FORCE ROW LEVEL SECURITY;
+ALTER TABLE authn.credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE authn.credentials FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY mfa_secrets_tenant_isolation ON authn.mfa_secrets
+CREATE POLICY credentials_tenant_isolation ON authn.credentials
     USING (
         current_setting('authn.tenant_id', TRUE) != ''
         AND namespace = current_setting('authn.tenant_id', TRUE)

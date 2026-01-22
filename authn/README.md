@@ -1,8 +1,8 @@
 # authn
 
-PostgreSQL-native user management, sessions, tokens, MFA, and lockout. Your application handles password hashing and TOTP verification - this library stores the data securely.
+PostgreSQL-native user management, sessions, tokens, credentials, and lockout. Your application handles password hashing and TOTP verification - this library stores the data securely.
 
-**Good fit:** SaaS apps needing user accounts, sessions, password reset flows, MFA, and brute-force protection - all without external auth services.
+**Good fit:** SaaS apps needing user accounts, sessions, password reset flows, credentials, and brute-force protection - all without external auth services.
 
 **Not a fit:** Building an OAuth/OIDC provider, or if you need the library to handle cryptographic operations.
 

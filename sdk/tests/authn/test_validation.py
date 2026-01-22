@@ -93,21 +93,28 @@ class TestTokenTypeValidation:
             authn.create_token(user_id, "hash", "invalid_type")
 
 
-class TestMfaTypeValidation:
-    """MFA type must be totp, webauthn, or recovery_codes."""
+class TestCredentialTypeValidation:
+    """Credential type must be totp, webauthn, or recovery_code."""
 
     def test_valid_types(self, authn):
         user_id = authn.create_user("alice@example.com", "hash")
 
-        for mfa_type in ["totp", "webauthn", "recovery_codes"]:
-            mfa_id = authn.add_mfa(user_id, mfa_type, f"secret_{mfa_type}")
-            assert mfa_id is not None
+        for cred_type in ["totp", "webauthn", "recovery_code"]:
+            if cred_type == "totp":
+                cred_id = authn.add_credential(user_id, cred_type, secret_data="seed")
+            elif cred_type == "recovery_code":
+                cred_id = authn.add_credential(user_id, cred_type, lookup_key="hash")
+            else:  # webauthn
+                cred_id = authn.add_credential(
+                    user_id, cred_type, lookup_key="cred_id", secret_data="pubkey"
+                )
+            assert cred_id is not None
 
     def test_rejects_invalid_type(self, authn):
         user_id = authn.create_user("alice@example.com", "hash")
 
         with pytest.raises(AuthnError):
-            authn.add_mfa(user_id, "invalid_type", "secret")
+            authn.add_credential(user_id, "invalid_type", secret_data="secret")
 
 
 class TestNamespaceValidation:

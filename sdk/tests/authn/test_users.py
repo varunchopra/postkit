@@ -194,6 +194,14 @@ class TestDeleteUser:
         authn.delete_user(user_id)
         assert test_helpers.count_sessions(user_id) == 0
 
+    def test_cascades_to_credentials(self, authn):
+        user_id = authn.create_user("alice@example.com", "hash")
+        authn.add_credential(user_id, "totp", secret_data="seed")
+        assert len(authn.list_user_credentials(user_id)) == 1
+
+        authn.delete_user(user_id)
+        assert len(authn.list_user_credentials(user_id)) == 0
+
     def test_returns_false_for_unknown_user(self, authn):
         result = authn.delete_user("00000000-0000-0000-0000-000000000000")
         assert result is False

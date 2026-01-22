@@ -13,7 +13,7 @@ Acme builds a B2B project management tool. They need:
 - User signup with email verification
 - Login with session management
 - Password reset flows
-- MFA for enterprise customers
+- Credentials (TOTP, WebAuthn, recovery codes) for enterprise customers
 - Brute-force protection
 
 postkit/authn handles the data layer. Acme's code handles the crypto
@@ -222,7 +222,7 @@ class TestSaaSAuthentication:
 
     def test_security_features(self, authn: AuthnClient):
         """
-        Security features: brute-force protection, MFA, account disable.
+        Security features: brute-force protection, credentials (TOTP), account disable.
         """
         acme = AcmeAuth(authn)
 
@@ -248,32 +248,32 @@ class TestSaaSAuthentication:
         authn.clear_attempts("bob@company.com")
         assert acme.login("bob@company.com", "secure-password-123") is not None
 
-        # 2. MFA setup
+        # 2. Credential setup (TOTP)
         # Carol enables TOTP for extra security.
         result = acme.signup("carol@company.com", "password")
         carol_id = result["user_id"]
 
-        assert not authn.has_mfa(carol_id)
+        assert not authn.has_credential(carol_id, "totp")
 
         # She scans the QR code and adds her authenticator app
         totp_secret = "JBSWY3DPEHPK3PXP"
-        mfa_id = authn.add_mfa(
-            carol_id, "totp", totp_secret, name="Google Authenticator"
+        cred_id = authn.add_credential(
+            carol_id, "totp", secret_data=totp_secret, name="Google Authenticator"
         )
 
-        assert authn.has_mfa(carol_id)
+        assert authn.has_credential(carol_id, "totp")
 
         # During login, Acme fetches the secret to verify her TOTP code
-        secrets_list = authn.get_mfa(carol_id, "totp")
-        assert secrets_list[0]["secret"] == totp_secret
+        secrets_list = authn.get_user_credentials(carol_id, "totp")
+        assert secrets_list[0]["secret_data"] == totp_secret
 
-        # Record that MFA was used (for audit)
-        authn.record_mfa_use(mfa_id)
+        # Record that credential was used (for audit)
+        authn.record_credential_use(cred_id)
 
-        # Carol can also see her MFA methods (secrets hidden)
-        methods = authn.list_mfa(carol_id)
+        # Carol can also see her credentials (secrets hidden)
+        methods = authn.list_user_credentials(carol_id)
         assert methods[0]["name"] == "Google Authenticator"
-        assert "secret" not in methods[0]
+        assert "secret_data" not in methods[0]
 
         # 3. Account disable
         # Dave leaves the company. Admin disables his account.

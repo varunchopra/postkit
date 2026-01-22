@@ -240,7 +240,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 
 -- @function authn.delete_user
--- @brief Permanently delete user and all their data (sessions, tokens, MFA)
+-- @brief Permanently delete user and all their data (sessions, tokens, credentials)
 -- @returns True if user was found and deleted
 -- @example SELECT authn.delete_user(user_id); -- Irreversible!
 CREATE OR REPLACE FUNCTION authn.delete_user(

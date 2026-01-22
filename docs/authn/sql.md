@@ -249,6 +249,126 @@ SELECT authn.set_actor('user:admin-bob', on_behalf_of := 'user:customer-alice', 
 
 ## Credentials
 
+### authn.add_credential
+
+```sql
+authn.add_credential(p_user_id: uuid, p_type: text, p_lookup_key: text, p_secret_data: text, p_name: text, p_metadata: jsonb, p_created_by: uuid, p_namespace: text) -> uuid
+```
+
+Add a credential (TOTP, WebAuthn, or recovery code)
+
+**Parameters:**
+- `p_user_id`: User to add credential for
+- `p_type`: One of: 'totp', 'recovery_code', 'webauthn'
+- `p_lookup_key`: Lookup key (WebAuthn credential_id, recovery code hash)
+- `p_secret_data`: Secret data (TOTP seed, WebAuthn public key)
+- `p_name`: User-friendly name like "Work Yubikey"
+- `p_metadata`: Optional JSON metadata
+- `p_created_by`: UUID of user who added this credential (for audit)
+
+**Returns:** Credential ID
+
+**Example:**
+```sql
+SELECT authn.add_credential(user_id, 'totp', NULL, 'JBSWY3DPEHPK3PXP', 'Authenticator');
+```
+
+*Source: authn/src/functions/040_credentials.sql:1*
+
+---
+
+### authn.consume_credential
+
+```sql
+authn.consume_credential(p_credential_id: uuid, p_namespace: text) -> bool
+```
+
+Consume a one-time credential (e.g., recovery code)
+
+**Parameters:**
+- `p_credential_id`: Credential to consume
+
+**Returns:** true if consumed, false if already consumed/disabled
+
+**Example:**
+```sql
+SELECT authn.consume_credential(recovery_code_id);
+```
+
+*Source: authn/src/functions/040_credentials.sql:176*
+
+---
+
+### authn.disable_all_credentials
+
+```sql
+authn.disable_all_credentials(p_user_id: uuid, p_reason: text, p_namespace: text) -> int4
+```
+
+Bulk disable all credentials for a user (incident response)
+
+**Parameters:**
+- `p_user_id`: User whose credentials to disable
+- `p_reason`: Reason for bulk disable (required for audit)
+
+**Returns:** Count of credentials disabled
+
+**Example:**
+```sql
+SELECT authn.disable_all_credentials(user_id, 'User reported device stolen');
+```
+
+*Source: authn/src/functions/040_credentials.sql:464*
+
+---
+
+### authn.disable_credential
+
+```sql
+authn.disable_credential(p_credential_id: uuid, p_reason: text, p_namespace: text) -> bool
+```
+
+Soft-disable a credential (preserves for forensics)
+
+**Parameters:**
+- `p_credential_id`: Credential to disable
+- `p_reason`: Reason for disabling (required for audit)
+
+**Returns:** true if disabled, false if not found/already disabled
+
+**Example:**
+```sql
+SELECT authn.disable_credential(credential_id, 'Reported as compromised');
+```
+
+*Source: authn/src/functions/040_credentials.sql:277*
+
+---
+
+### authn.get_credential_by_lookup
+
+```sql
+authn.get_credential_by_lookup(p_user_id: uuid, p_lookup_key: text, p_type: text, p_namespace: text) -> table(id: uuid, secret_data: text, sign_count: int4, consumed_at: timestamptz)
+```
+
+Lookup a credential by its lookup_key (requires user context for security)
+
+**Parameters:**
+- `p_user_id`: User to search within (prevents enumeration)
+- `p_lookup_key`: The lookup key to search for
+- `p_type`: Credential type to filter by
+
+**Returns:** Single credential or empty if not found
+
+**Example:**
+```sql
+SELECT * FROM authn.get_credential_by_lookup(user_id, hash, 'recovery_code');
+```
+
+*Source: authn/src/functions/040_credentials.sql:107*
+
+---
+
 ### authn.get_credentials
 
 ```sql
@@ -265,6 +385,118 @@ SELECT * FROM authn.get_credentials('alice@example.com');
 ```
 
 *Source: authn/src/functions/011_credentials.sql:1*
+
+---
+
+### authn.get_credentials
+
+```sql
+authn.get_credentials(p_user_id: uuid, p_type: text, p_namespace: text) -> table(id: uuid, lookup_key: text, secret_data: text, sign_count: int4)
+```
+
+Get active credentials for verification (returns secrets)
+
+**Parameters:**
+- `p_user_id`: User to get credentials for
+- `p_type`: Credential type to filter by
+
+**Returns:** Table of credentials with secrets for verification
+
+**Example:**
+```sql
+SELECT * FROM authn.get_credentials(user_id, 'totp');
+```
+
+*Source: authn/src/functions/040_credentials.sql:67*
+
+---
+
+### authn.has_credential
+
+```sql
+authn.has_credential(p_user_id: uuid, p_type: text, p_namespace: text) -> bool
+```
+
+Check if user has active credential of a specific type
+
+**Parameters:**
+- `p_user_id`: User to check
+- `p_type`: Credential type to check for
+
+**Returns:** true if user has at least one active credential of type
+
+**Example:**
+```sql
+IF authn.has_credential(user_id, 'totp') THEN prompt_for_code(); END IF;
+```
+
+*Source: authn/src/functions/040_credentials.sql:434*
+
+---
+
+### authn.list_credentials
+
+```sql
+authn.list_credentials(p_user_id: uuid, p_type: text, p_include_disabled: bool, p_namespace: text) -> table(id: uuid, credential_type: text, name: text, created_at: timestamptz, last_used_at: timestamptz, consumed_at: timestamptz, disabled_at: timestamptz, disabled_reason: text)
+```
+
+List credentials for settings UI (no secrets exposed)
+
+**Parameters:**
+- `p_user_id`: User to list credentials for
+- `p_type`: Optional: filter by credential type
+- `p_include_disabled`: Include disabled credentials (for admin/forensics)
+
+**Returns:** Table of credential metadata
+
+**Example:**
+```sql
+SELECT * FROM authn.list_credentials(user_id);
+```
+
+*Source: authn/src/functions/040_credentials.sql:383*
+
+---
+
+### authn.record_credential_use
+
+```sql
+authn.record_credential_use(p_credential_id: uuid, p_namespace: text) -> void
+```
+
+Record credential usage (updates last_used_at)
+
+**Parameters:**
+- `p_credential_id`: Credential that was used
+
+**Example:**
+```sql
+SELECT authn.record_credential_use(credential_id);
+```
+
+*Source: authn/src/functions/040_credentials.sql:149*
+
+---
+
+### authn.remove_credential
+
+```sql
+authn.remove_credential(p_credential_id: uuid, p_namespace: text) -> bool
+```
+
+Hard-delete a credential (user self-service)
+
+**Parameters:**
+- `p_credential_id`: Credential to remove
+
+**Returns:** true if removed, false if not found
+
+**Example:**
+```sql
+SELECT authn.remove_credential(credential_id);
+```
+
+*Source: authn/src/functions/040_credentials.sql:332*
 
 ---
 
@@ -285,6 +517,29 @@ SELECT authn.update_password(user_id, '$argon2id$...');
 ```
 
 *Source: authn/src/functions/011_credentials.sql:51*
+
+---
+
+### authn.update_sign_count
+
+```sql
+authn.update_sign_count(p_credential_id: uuid, p_new_count: int4, p_namespace: text) -> bool
+```
+
+Update WebAuthn sign count (clone detection)
+
+**Parameters:**
+- `p_credential_id`: Credential to update
+- `p_new_count`: New sign count from authenticator
+
+**Returns:** true if updated, false if clone detected (new_count <= current)
+
+**Example:**
+```sql
+SELECT authn.update_sign_count(webauthn_credential_id, 42);
+```
+
+*Source: authn/src/functions/040_credentials.sql:219*
 
 ---
 
@@ -491,120 +746,6 @@ SELECT authn.record_login_attempt(email, password_correct, '1.2.3.4');
 
 ---
 
-## MFA
-
-### authn.add_mfa
-
-```sql
-authn.add_mfa(p_user_id: uuid, p_mfa_type: text, p_secret: text, p_name: text, p_namespace: text) -> uuid
-```
-
-Add an MFA method (TOTP, WebAuthn, or recovery codes)
-
-**Parameters:**
-- `p_mfa_type`: One of: 'totp', 'webauthn', 'recovery_codes'
-- `p_secret`: The secret to store (TOTP seed, WebAuthn public key, etc.)
-- `p_name`: User-friendly name like "My iPhone" or "Backup codes"
-
-**Returns:** MFA method ID
-
-**Example:**
-```sql
-SELECT authn.add_mfa(user_id, 'totp', 'JBSWY3DPEHPK3PXP', 'Authenticator');
-```
-
-*Source: authn/src/functions/040_mfa.sql:1*
-
----
-
-### authn.get_mfa
-
-```sql
-authn.get_mfa(p_user_id: uuid, p_mfa_type: text, p_namespace: text) -> table(mfa_id: uuid, secret: text, name: text)
-```
-
-Get MFA secrets for verification (returns raw secrets)
-
-**Returns:** mfa_id, secret, name. Use to verify TOTP code or WebAuthn assertion.
-
-**Example:**
-```sql
-SELECT * FROM authn.get_mfa(user_id, 'totp'); -- Verify code against secret
-```
-
-*Source: authn/src/functions/040_mfa.sql:42*
-
----
-
-### authn.has_mfa
-
-```sql
-authn.has_mfa(p_user_id: uuid, p_namespace: text) -> bool
-```
-
-Check if user has any MFA method configured
-
-**Example:**
-```sql
-IF authn.has_mfa(user_id) THEN prompt_for_mfa(); END IF;
-```
-
-*Source: authn/src/functions/040_mfa.sql:185*
-
----
-
-### authn.list_mfa
-
-```sql
-authn.list_mfa(p_user_id: uuid, p_namespace: text) -> table(mfa_id: uuid, mfa_type: text, name: text, created_at: timestamptz, last_used_at: timestamptz)
-```
-
-List user's MFA methods for "manage security" UI (no secrets)
-
-**Example:**
-```sql
-SELECT * FROM authn.list_mfa(user_id);
-```
-
-*Source: authn/src/functions/040_mfa.sql:74*
-
----
-
-### authn.record_mfa_use
-
-```sql
-authn.record_mfa_use(p_mfa_id: uuid, p_namespace: text) -> bool
-```
-
-Record successful MFA verification (updates last_used_at)
-
-**Example:**
-```sql
--- After verifying TOTP code
-SELECT authn.record_mfa_use(mfa_id);
-```
-
-*Source: authn/src/functions/040_mfa.sql:152*
-
----
-
-### authn.remove_mfa
-
-```sql
-authn.remove_mfa(p_mfa_id: uuid, p_namespace: text) -> bool
-```
-
-Remove an MFA method
-
-**Example:**
-```sql
-SELECT authn.remove_mfa(mfa_id);
-```
-
-*Source: authn/src/functions/040_mfa.sql:107*
-
----
-
 ## Maintenance
 
 ### authn.cleanup_expired
@@ -635,12 +776,12 @@ SELECT * FROM authn.cleanup_expired('default', 5000); -- smaller batches
 ### authn.get_stats
 
 ```sql
-authn.get_stats(p_namespace: text) -> table(user_count: int8, verified_user_count: int8, disabled_user_count: int8, active_session_count: int8, active_refresh_token_count: int8, active_api_key_count: int8, mfa_enabled_user_count: int8)
+authn.get_stats(p_namespace: text) -> table(user_count: int8, verified_user_count: int8, disabled_user_count: int8, active_session_count: int8, active_refresh_token_count: int8, active_api_key_count: int8, credential_enabled_user_count: int8)
 ```
 
 Get namespace statistics for monitoring dashboards
 
-**Returns:** user_count, verified_user_count, disabled_user_count, active_session_count, active_refresh_token_count, active_api_key_count, mfa_enabled_user_count
+**Returns:** user_count, verified_user_count, disabled_user_count, active_session_count, active_refresh_token_count, active_api_key_count, credential_enabled_user_count
 
 **Example:**
 ```sql
@@ -1272,7 +1413,7 @@ SELECT authn.create_user('alice@example.com', '$argon2id$...', 'default');
 authn.delete_user(p_user_id: uuid, p_namespace: text) -> bool
 ```
 
-Permanently delete user and all their data (sessions, tokens, MFA)
+Permanently delete user and all their data (sessions, tokens, credentials)
 
 **Returns:** True if user was found and deleted
 

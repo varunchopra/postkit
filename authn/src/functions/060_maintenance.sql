@@ -207,7 +207,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @function authn.get_stats
 -- @brief Get namespace statistics for monitoring dashboards
 -- @returns user_count, verified_user_count, disabled_user_count,
---   active_session_count, active_refresh_token_count, active_api_key_count, mfa_enabled_user_count
+--   active_session_count, active_refresh_token_count, active_api_key_count, credential_enabled_user_count
 -- @example SELECT * FROM authn.get_stats('default');
 CREATE OR REPLACE FUNCTION authn.get_stats(
     p_namespace text DEFAULT 'default'
@@ -219,7 +219,7 @@ RETURNS TABLE(
     active_session_count bigint,
     active_refresh_token_count bigint,
     active_api_key_count bigint,
-    mfa_enabled_user_count bigint
+    credential_enabled_user_count bigint
 )
 AS $$
 BEGIN
@@ -234,7 +234,7 @@ BEGIN
         (SELECT COUNT(*) FROM authn.sessions WHERE namespace = p_namespace AND revoked_at IS NULL AND expires_at > now()),
         (SELECT COUNT(*) FROM authn.refresh_tokens WHERE namespace = p_namespace AND revoked_at IS NULL AND replaced_by IS NULL AND expires_at > now()),
         (SELECT COUNT(*) FROM authn.api_keys WHERE namespace = p_namespace AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())),
-        (SELECT COUNT(DISTINCT user_id) FROM authn.mfa_secrets WHERE namespace = p_namespace);
+        (SELECT COUNT(DISTINCT user_id) FROM authn.credentials WHERE namespace = p_namespace AND disabled_at IS NULL AND consumed_at IS NULL);
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
 

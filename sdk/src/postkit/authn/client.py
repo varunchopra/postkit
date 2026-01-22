@@ -923,67 +923,224 @@ class AuthnClient(BaseClient):
             write=True,
         )
 
-    def add_mfa(
+    # =========================================================================
+    # CREDENTIALS (TOTP, WebAuthn, Recovery Codes)
+    # =========================================================================
+
+    def add_credential(
         self,
         user_id: str,
-        mfa_type: str,
-        secret: str,
+        credential_type: str,
+        *,
+        lookup_key: str | None = None,
+        secret_data: str | None = None,
         name: str | None = None,
+        metadata: dict | None = None,
+        created_by: str | None = None,
     ) -> str:
         """
-        Add an MFA method for a user.
+        Add a credential for a user.
 
         Args:
             user_id: User ID
-            mfa_type: 'totp', 'webauthn', or 'recovery_codes'
-            secret: The MFA secret (caller stores this securely)
-            name: Optional friendly name
+            credential_type: 'totp', 'recovery_code', or 'webauthn'
+            lookup_key: Lookup key (WebAuthn credential_id, recovery code hash)
+            secret_data: Secret data (TOTP seed, WebAuthn public key)
+            name: Optional friendly name like "Work Yubikey"
+            metadata: Optional JSON metadata
+            created_by: UUID of user who added this credential (for audit)
 
         Returns:
-            MFA ID (UUID string)
+            Credential ID (UUID string)
         """
+        import json
+
         result = self._fetch_val(
-            "SELECT authn.add_mfa(%s::uuid, %s, %s, %s, %s)",
-            (user_id, mfa_type, secret, name, self.namespace),
+            "SELECT authn.add_credential(%s::uuid, %s, %s, %s, %s, %s::jsonb, %s::uuid, %s)",
+            (
+                user_id,
+                credential_type,
+                lookup_key,
+                secret_data,
+                name,
+                json.dumps(metadata) if metadata else None,
+                created_by,
+                self.namespace,
+            ),
             write=True,
         )
         return str(result)
 
-    def get_mfa(self, user_id: str, mfa_type: str) -> list[dict]:
-        """Get MFA secrets for verification. Returns secrets!"""
+    def get_user_credentials(self, user_id: str, credential_type: str) -> list[dict]:
+        """
+        Get active credentials for verification. Returns secrets!
+
+        Args:
+            user_id: User ID
+            credential_type: 'totp', 'recovery_code', or 'webauthn'
+
+        Returns:
+            List of credentials with id, lookup_key, secret_data, sign_count
+        """
         return self._fetch_all(
-            "SELECT * FROM authn.get_mfa(%s::uuid, %s, %s)",
-            (user_id, mfa_type, self.namespace),
+            "SELECT * FROM authn.get_credentials(%s::uuid, %s, %s)",
+            (user_id, credential_type, self.namespace),
         )
 
-    def list_mfa(self, user_id: str) -> list[dict]:
-        """List MFA methods. Does NOT return secrets."""
-        return self._fetch_all(
-            "SELECT * FROM authn.list_mfa(%s::uuid, %s)",
-            (user_id, self.namespace),
+    def get_credential_by_lookup(
+        self, user_id: str, lookup_key: str, credential_type: str
+    ) -> dict | None:
+        """
+        Lookup a credential by key. Requires user_id for enumeration safety.
+
+        Args:
+            user_id: User ID (prevents cross-user enumeration)
+            lookup_key: The lookup key (e.g., recovery code hash)
+            credential_type: 'totp', 'recovery_code', or 'webauthn'
+
+        Returns:
+            Credential with id, secret_data, sign_count, consumed_at - or None
+        """
+        return self._fetch_one(
+            "SELECT * FROM authn.get_credential_by_lookup(%s::uuid, %s, %s, %s)",
+            (user_id, lookup_key, credential_type, self.namespace),
         )
 
-    def remove_mfa(self, mfa_id: str) -> bool:
-        """Remove an MFA method."""
-        return self._fetch_val(
-            "SELECT authn.remove_mfa(%s::uuid, %s)",
-            (mfa_id, self.namespace),
+    def record_credential_use(self, credential_id: str) -> None:
+        """
+        Record credential usage (lazy update: only if >1hr since last).
+
+        Args:
+            credential_id: Credential that was used
+        """
+        self._fetch_val(
+            "SELECT authn.record_credential_use(%s::uuid, %s)",
+            (credential_id, self.namespace),
             write=True,
         )
 
-    def record_mfa_use(self, mfa_id: str) -> bool:
-        """Record that an MFA method was used."""
+    def consume_credential(self, credential_id: str) -> bool:
+        """
+        Consume a one-time credential (e.g., recovery code).
+
+        Args:
+            credential_id: Credential to consume
+
+        Returns:
+            True if consumed, False if already consumed/disabled
+        """
         return self._fetch_val(
-            "SELECT authn.record_mfa_use(%s::uuid, %s)",
-            (mfa_id, self.namespace),
+            "SELECT authn.consume_credential(%s::uuid, %s)",
+            (credential_id, self.namespace),
             write=True,
         )
 
-    def has_mfa(self, user_id: str) -> bool:
-        """Check if user has any MFA method enabled."""
+    def update_sign_count(self, credential_id: str, new_count: int) -> bool:
+        """
+        Update WebAuthn sign count. Returns False if clone detected.
+
+        SECURITY: A False return indicates potential authenticator cloning.
+        The caller should log a security alert and potentially disable the credential.
+
+        Args:
+            credential_id: WebAuthn credential to update
+            new_count: New sign count from authenticator
+
+        Returns:
+            True if updated, False if new_count <= current (clone attack!)
+        """
         return self._fetch_val(
-            "SELECT authn.has_mfa(%s::uuid, %s)",
-            (user_id, self.namespace),
+            "SELECT authn.update_sign_count(%s::uuid, %s, %s)",
+            (credential_id, new_count, self.namespace),
+            write=True,
+        )
+
+    def disable_credential(self, credential_id: str, reason: str) -> bool:
+        """
+        Soft-disable a credential (preserves for forensics).
+
+        Args:
+            credential_id: Credential to disable
+            reason: Required reason for audit trail
+
+        Returns:
+            True if disabled, False if not found/already disabled
+        """
+        return self._fetch_val(
+            "SELECT authn.disable_credential(%s::uuid, %s, %s)",
+            (credential_id, reason, self.namespace),
+            write=True,
+        )
+
+    def remove_credential(self, credential_id: str) -> bool:
+        """
+        Hard-delete a credential (user self-service).
+
+        Args:
+            credential_id: Credential to remove
+
+        Returns:
+            True if removed, False if not found
+        """
+        return self._fetch_val(
+            "SELECT authn.remove_credential(%s::uuid, %s)",
+            (credential_id, self.namespace),
+            write=True,
+        )
+
+    def disable_all_credentials(self, user_id: str, reason: str) -> int:
+        """
+        Disable all credentials for a user (incident response).
+
+        Args:
+            user_id: User whose credentials to disable
+            reason: Required reason for audit trail
+
+        Returns:
+            Count of credentials disabled
+        """
+        return self._fetch_val(
+            "SELECT authn.disable_all_credentials(%s::uuid, %s, %s)",
+            (user_id, reason, self.namespace),
+            write=True,
+        )
+
+    def list_user_credentials(
+        self,
+        user_id: str,
+        credential_type: str | None = None,
+        include_disabled: bool = False,
+    ) -> list[dict]:
+        """
+        List credentials for settings UI. Does NOT return secrets.
+
+        Args:
+            user_id: User ID
+            credential_type: Optional filter by type
+            include_disabled: Include disabled credentials (for admin/forensics)
+
+        Returns:
+            List of credential metadata (no secrets)
+        """
+        return self._fetch_all(
+            "SELECT * FROM authn.list_credentials(%s::uuid, %s, %s, %s)",
+            (user_id, credential_type, include_disabled, self.namespace),
+        )
+
+    def has_credential(self, user_id: str, credential_type: str) -> bool:
+        """
+        Check if user has active credential of a specific type.
+
+        Args:
+            user_id: User ID
+            credential_type: 'totp', 'recovery_code', or 'webauthn'
+
+        Returns:
+            True if user has at least one active credential of type
+        """
+        return self._fetch_val(
+            "SELECT authn.has_credential(%s::uuid, %s, %s)",
+            (user_id, credential_type, self.namespace),
         )
 
     def record_login_attempt(

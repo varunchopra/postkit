@@ -2,23 +2,26 @@
 
 # Authn Python SDK
 
-### add_mfa
+### add_credential
 
 ```python
-add_mfa(user_id: str, mfa_type: str, secret: str, name: str | None = None) -> str
+add_credential(user_id: str, credential_type: str, *, lookup_key: str | None = None, secret_data: str | None = None, name: str | None = None, metadata: dict | None = None, created_by: str | None = None) -> str
 ```
 
-Add an MFA method for a user.
+Add a credential for a user.
 
 **Parameters:**
 - `user_id`: User ID
-- `mfa_type`: 'totp', 'webauthn', or 'recovery_codes'
-- `secret`: The MFA secret (caller stores this securely)
-- `name`: Optional friendly name
+- `credential_type`: 'totp', 'recovery_code', or 'webauthn'
+- `lookup_key`: Lookup key (WebAuthn credential_id, recovery code hash)
+- `secret_data`: Secret data (TOTP seed, WebAuthn public key)
+- `name`: Optional friendly name like "Work Yubikey"
+- `metadata`: Optional JSON metadata
+- `created_by`: UUID of user who added this credential (for audit)
 
-**Returns:** MFA ID (UUID string)
+**Returns:** Credential ID (UUID string)
 
-*Source: sdk/src/postkit/authn/client.py:926*
+*Source: sdk/src/postkit/authn/client.py:930*
 
 ---
 
@@ -37,7 +40,7 @@ Clean up expired sessions, tokens, impersonation records, and old login attempts
 api_keys_deleted, impersonations_deleted, operator_impersonations_deleted,
 attempts_deleted
 
-*Source: sdk/src/postkit/authn/client.py:1029*
+*Source: sdk/src/postkit/authn/client.py:1186*
 
 ---
 
@@ -49,7 +52,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/authn/client.py:1092*
+*Source: sdk/src/postkit/authn/client.py:1249*
 
 ---
 
@@ -61,7 +64,24 @@ clear_attempts(email: str) -> int
 
 Clear login attempts for an email. Returns count deleted.
 
-*Source: sdk/src/postkit/authn/client.py:1021*
+*Source: sdk/src/postkit/authn/client.py:1178*
+
+---
+
+### consume_credential
+
+```python
+consume_credential(credential_id: str) -> bool
+```
+
+Consume a one-time credential (e.g., recovery code).
+
+**Parameters:**
+- `credential_id`: Credential to consume
+
+**Returns:** True if consumed, False if already consumed/disabled
+
+*Source: sdk/src/postkit/authn/client.py:1022*
 
 ---
 
@@ -187,6 +207,42 @@ Permanently delete a user and all associated data.
 
 ---
 
+### disable_all_credentials
+
+```python
+disable_all_credentials(user_id: str, reason: str) -> int
+```
+
+Disable all credentials for a user (incident response).
+
+**Parameters:**
+- `user_id`: User whose credentials to disable
+- `reason`: Required reason for audit trail
+
+**Returns:** Count of credentials disabled
+
+*Source: sdk/src/postkit/authn/client.py:1091*
+
+---
+
+### disable_credential
+
+```python
+disable_credential(credential_id: str, reason: str) -> bool
+```
+
+Soft-disable a credential (preserves for forensics).
+
+**Parameters:**
+- `credential_id`: Credential to disable
+- `reason`: Required reason for audit trail
+
+**Returns:** True if disabled, False if not found/already disabled
+
+*Source: sdk/src/postkit/authn/client.py:1058*
+
+---
+
 ### disable_user
 
 ```python
@@ -302,7 +358,26 @@ if events:
     more = authn.get_audit_events(limit=50, before=events[-1]["cursor"])
 ```
 
-*Source: sdk/src/postkit/authn/client.py:1098*
+*Source: sdk/src/postkit/authn/client.py:1255*
+
+---
+
+### get_credential_by_lookup
+
+```python
+get_credential_by_lookup(user_id: str, lookup_key: str, credential_type: str) -> dict | None
+```
+
+Lookup a credential by key. Requires user_id for enumeration safety.
+
+**Parameters:**
+- `user_id`: User ID (prevents cross-user enumeration)
+- `lookup_key`: The lookup key (e.g., recovery code hash)
+- `credential_type`: 'totp', 'recovery_code', or 'webauthn'
+
+**Returns:** Credential with id, secret_data, sign_count, consumed_at - or None
+
+*Source: sdk/src/postkit/authn/client.py:990*
 
 ---
 
@@ -334,18 +409,6 @@ impersonation_id, actor_id, actor_email, target_user_id,
 reason, started_at, expires_at
 
 *Source: sdk/src/postkit/authn/client.py:433*
-
----
-
-### get_mfa
-
-```python
-get_mfa(user_id: str, mfa_type: str) -> list[dict]
-```
-
-Get MFA secrets for verification. Returns secrets!
-
-*Source: sdk/src/postkit/authn/client.py:952*
 
 ---
 
@@ -415,7 +478,7 @@ get_recent_attempts(email: str, limit: int = 10) -> list[dict]
 
 Get recent login attempts for an email.
 
-*Source: sdk/src/postkit/authn/client.py:1014*
+*Source: sdk/src/postkit/authn/client.py:1171*
 
 ---
 
@@ -427,7 +490,7 @@ get_stats() -> dict
 
 Get namespace statistics.
 
-*Source: sdk/src/postkit/authn/client.py:1050*
+*Source: sdk/src/postkit/authn/client.py:1207*
 
 ---
 
@@ -455,6 +518,24 @@ Get user by email. Does not return password_hash.
 
 ---
 
+### get_user_credentials
+
+```python
+get_user_credentials(user_id: str, credential_type: str) -> list[dict]
+```
+
+Get active credentials for verification. Returns secrets!
+
+**Parameters:**
+- `user_id`: User ID
+- `credential_type`: 'totp', 'recovery_code', or 'webauthn'
+
+**Returns:** List of credentials with id, lookup_key, secret_data, sign_count
+
+*Source: sdk/src/postkit/authn/client.py:974*
+
+---
+
 ### get_users_batch
 
 ```python
@@ -472,15 +553,21 @@ Get multiple users by ID in a single query.
 
 ---
 
-### has_mfa
+### has_credential
 
 ```python
-has_mfa(user_id: str) -> bool
+has_credential(user_id: str, credential_type: str) -> bool
 ```
 
-Check if user has any MFA method enabled.
+Check if user has active credential of a specific type.
 
-*Source: sdk/src/postkit/authn/client.py:982*
+**Parameters:**
+- `user_id`: User ID
+- `credential_type`: 'totp', 'recovery_code', or 'webauthn'
+
+**Returns:** True if user has at least one active credential of type
+
+*Source: sdk/src/postkit/authn/client.py:1130*
 
 ---
 
@@ -504,7 +591,7 @@ is_locked_out(email: str, window: timedelta | None = None, max_attempts: int | N
 
 Check if an email is locked out due to too many failed attempts.
 
-*Source: sdk/src/postkit/authn/client.py:1002*
+*Source: sdk/src/postkit/authn/client.py:1159*
 
 ---
 
@@ -570,18 +657,6 @@ List impersonation history for audit purposes.
 
 ---
 
-### list_mfa
-
-```python
-list_mfa(user_id: str) -> list[dict]
-```
-
-List MFA methods. Does NOT return secrets.
-
-*Source: sdk/src/postkit/authn/client.py:959*
-
----
-
 ### list_operator_impersonations_by_operator
 
 ```python
@@ -644,6 +719,25 @@ List active sessions for a user. Does not return token_hash.
 
 ---
 
+### list_user_credentials
+
+```python
+list_user_credentials(user_id: str, credential_type: str | None = None, include_disabled: bool = False) -> list[dict]
+```
+
+List credentials for settings UI. Does NOT return secrets.
+
+**Parameters:**
+- `user_id`: User ID
+- `credential_type`: Optional filter by type
+- `include_disabled`: Include disabled credentials (for admin/forensics)
+
+**Returns:** List of credential metadata (no secrets)
+
+*Source: sdk/src/postkit/authn/client.py:1108*
+
+---
+
 ### list_users
 
 ```python
@@ -656,6 +750,21 @@ List users with pagination.
 
 ---
 
+### record_credential_use
+
+```python
+record_credential_use(credential_id: str) -> None
+```
+
+Record credential usage (lazy update: only if >1hr since last).
+
+**Parameters:**
+- `credential_id`: Credential that was used
+
+*Source: sdk/src/postkit/authn/client.py:1009*
+
+---
+
 ### record_login_attempt
 
 ```python
@@ -664,31 +773,24 @@ record_login_attempt(email: str, success: bool, ip_address: str | None = None) -
 
 Record a login attempt.
 
-*Source: sdk/src/postkit/authn/client.py:989*
+*Source: sdk/src/postkit/authn/client.py:1146*
 
 ---
 
-### record_mfa_use
+### remove_credential
 
 ```python
-record_mfa_use(mfa_id: str) -> bool
+remove_credential(credential_id: str) -> bool
 ```
 
-Record that an MFA method was used.
+Hard-delete a credential (user self-service).
 
-*Source: sdk/src/postkit/authn/client.py:974*
+**Parameters:**
+- `credential_id`: Credential to remove
 
----
+**Returns:** True if removed, False if not found
 
-### remove_mfa
-
-```python
-remove_mfa(mfa_id: str) -> bool
-```
-
-Remove an MFA method.
-
-*Source: sdk/src/postkit/authn/client.py:966*
+*Source: sdk/src/postkit/authn/client.py:1075*
 
 ---
 
@@ -850,7 +952,7 @@ authn.set_actor(request_id=req_id, ip_address=ip, user_agent=ua)
 authn.set_actor(actor_id="user:alice")
 ```
 
-*Source: sdk/src/postkit/authn/client.py:1058*
+*Source: sdk/src/postkit/authn/client.py:1215*
 
 ---
 
@@ -919,6 +1021,24 @@ update_password(user_id: str, new_password_hash: str) -> bool
 Update user's password hash.
 
 *Source: sdk/src/postkit/authn/client.py:233*
+
+---
+
+### update_sign_count
+
+```python
+update_sign_count(credential_id: str, new_count: int) -> bool
+```
+
+Update WebAuthn sign count. Returns False if clone detected.
+
+**Parameters:**
+- `credential_id`: WebAuthn credential to update
+- `new_count`: New sign count from authenticator
+
+**Returns:** True if updated, False if new_count <= current (clone attack!)
+
+*Source: sdk/src/postkit/authn/client.py:1038*
 
 ---
 

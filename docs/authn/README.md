@@ -4,10 +4,11 @@
 
 | Function | Description |
 |----------|-------------|
-| [`add_mfa`](sdk.md#add_mfa) | Add an MFA method for a user. |
+| [`add_credential`](sdk.md#add_credential) | Add a credential for a user. |
 | [`cleanup_expired`](sdk.md#cleanup_expired) | Clean up expired sessions, tokens, impersonation records, and old login attempts. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`clear_attempts`](sdk.md#clear_attempts) | Clear login attempts for an email. Returns count deleted. |
+| [`consume_credential`](sdk.md#consume_credential) | Consume a one-time credential (e.g., recovery code). |
 | [`consume_token`](sdk.md#consume_token) | Consume a one-time token. |
 | [`create_api_key`](sdk.md#create_api_key) | Create an API key for programmatic access. |
 | [`create_refresh_token`](sdk.md#create_refresh_token) | Create a refresh token for a session. |
@@ -15,6 +16,8 @@
 | [`create_token`](sdk.md#create_token) | Create a one-time use token. |
 | [`create_user`](sdk.md#create_user) | Create a new user. |
 | [`delete_user`](sdk.md#delete_user) | Permanently delete a user and all associated data. |
+| [`disable_all_credentials`](sdk.md#disable_all_credentials) | Disable all credentials for a user (incident response). |
+| [`disable_credential`](sdk.md#disable_credential) | Soft-disable a credential (preserves for forensics). |
 | [`disable_user`](sdk.md#disable_user) | Disable user and revoke all their sessions. |
 | [`enable_user`](sdk.md#enable_user) | Re-enable a disabled user. |
 | [`end_impersonation`](sdk.md#end_impersonation) | End an impersonation session early. |
@@ -22,9 +25,9 @@
 | [`extend_session`](sdk.md#extend_session) | Extend session expiration. |
 | [`get_api_key`](sdk.md#get_api_key) | Get an API key by ID if owned by user. |
 | [`get_audit_events`](sdk.md#get_audit_events) | Query audit events with optional filters. |
+| [`get_credential_by_lookup`](sdk.md#get_credential_by_lookup) | Lookup a credential by key. Requires user_id for enumeration safety. |
 | [`get_credentials`](sdk.md#get_credentials) | Get credentials for login verification. |
 | [`get_impersonation_context`](sdk.md#get_impersonation_context) | Check if a session is an impersonation session. |
-| [`get_mfa`](sdk.md#get_mfa) | Get MFA secrets for verification. Returns secrets! |
 | [`get_operator_audit_events`](sdk.md#get_operator_audit_events) | Query operator audit events. |
 | [`get_operator_impersonation_context`](sdk.md#get_operator_impersonation_context) | Check if a session is an operator impersonation session. |
 | [`get_or_create_user`](sdk.md#get_or_create_user) | Atomically get existing user or create new one. |
@@ -32,23 +35,24 @@
 | [`get_stats`](sdk.md#get_stats) | Get namespace statistics. |
 | [`get_user`](sdk.md#get_user) | Get user by ID. Does not return password_hash. |
 | [`get_user_by_email`](sdk.md#get_user_by_email) | Get user by email. Does not return password_hash. |
+| [`get_user_credentials`](sdk.md#get_user_credentials) | Get active credentials for verification. Returns secrets! |
 | [`get_users_batch`](sdk.md#get_users_batch) | Get multiple users by ID in a single query. |
-| [`has_mfa`](sdk.md#has_mfa) | Check if user has any MFA method enabled. |
+| [`has_credential`](sdk.md#has_credential) | Check if user has active credential of a specific type. |
 | [`invalidate_tokens`](sdk.md#invalidate_tokens) | Invalidate all unused tokens of a type for a user. |
 | [`is_locked_out`](sdk.md#is_locked_out) | Check if an email is locked out due to too many failed attempts. |
 | [`list_active_impersonations`](sdk.md#list_active_impersonations) | List all active impersonations in the namespace. |
 | [`list_active_operator_impersonations`](sdk.md#list_active_operator_impersonations) | List all active operator impersonations. |
 | [`list_api_keys`](sdk.md#list_api_keys) | List active API keys for a user. Does not return key_hash. |
 | [`list_impersonation_history`](sdk.md#list_impersonation_history) | List impersonation history for audit purposes. |
-| [`list_mfa`](sdk.md#list_mfa) | List MFA methods. Does NOT return secrets. |
 | [`list_operator_impersonations_by_operator`](sdk.md#list_operator_impersonations_by_operator) | List impersonations performed by an operator. |
 | [`list_operator_impersonations_for_target`](sdk.md#list_operator_impersonations_for_target) | List operator impersonation history affecting a target namespace. |
 | [`list_refresh_tokens`](sdk.md#list_refresh_tokens) | List active refresh tokens for a user. |
 | [`list_sessions`](sdk.md#list_sessions) | List active sessions for a user. Does not return token_hash. |
+| [`list_user_credentials`](sdk.md#list_user_credentials) | List credentials for settings UI. Does NOT return secrets. |
 | [`list_users`](sdk.md#list_users) | List users with pagination. |
+| [`record_credential_use`](sdk.md#record_credential_use) | Record credential usage (lazy update: only if >1hr since last). |
 | [`record_login_attempt`](sdk.md#record_login_attempt) | Record a login attempt. |
-| [`record_mfa_use`](sdk.md#record_mfa_use) | Record that an MFA method was used. |
-| [`remove_mfa`](sdk.md#remove_mfa) | Remove an MFA method. |
+| [`remove_credential`](sdk.md#remove_credential) | Hard-delete a credential (user self-service). |
 | [`revoke_all_api_keys`](sdk.md#revoke_all_api_keys) | Revoke all API keys for a user. Returns count revoked. |
 | [`revoke_all_refresh_tokens`](sdk.md#revoke_all_refresh_tokens) | Revoke all refresh tokens for a user. |
 | [`revoke_all_sessions`](sdk.md#revoke_all_sessions) | Revoke all sessions for a user. Returns count revoked. |
@@ -63,6 +67,7 @@
 | [`start_operator_impersonation`](sdk.md#start_operator_impersonation) | Start cross-namespace operator impersonation. |
 | [`update_email`](sdk.md#update_email) | Update user's email. Clears email_verified_at. |
 | [`update_password`](sdk.md#update_password) | Update user's password hash. |
+| [`update_sign_count`](sdk.md#update_sign_count) | Update WebAuthn sign count. Returns False if clone detected. |
 | [`validate_api_key`](sdk.md#validate_api_key) | Validate an API key. |
 | [`validate_refresh_token`](sdk.md#validate_refresh_token) | Validate a refresh token without rotating (read-only check). |
 | [`validate_session`](sdk.md#validate_session) | Validate a session token. |
@@ -83,8 +88,19 @@
 | [`authn.drop_audit_partitions`](sql.md#authndrop_audit_partitions) | Delete old audit partitions (default: keep 7 years for compliance) |
 | [`authn.ensure_audit_partitions`](sql.md#authnensure_audit_partitions) | Create partitions for upcoming months (run monthly via cron) |
 | [`authn.set_actor`](sql.md#authnset_actor) | Tag audit events with who made the change (call before user operations) |
+| [`authn.add_credential`](sql.md#authnadd_credential) | Add a credential (TOTP, WebAuthn, or recovery code) |
+| [`authn.consume_credential`](sql.md#authnconsume_credential) | Consume a one-time credential (e.g., recovery code) |
+| [`authn.disable_all_credentials`](sql.md#authndisable_all_credentials) | Bulk disable all credentials for a user (incident response) |
+| [`authn.disable_credential`](sql.md#authndisable_credential) | Soft-disable a credential (preserves for forensics) |
+| [`authn.get_credential_by_lookup`](sql.md#authnget_credential_by_lookup) | Lookup a credential by its lookup_key (requires user context for security) |
 | [`authn.get_credentials`](sql.md#authnget_credentials) | Get password hash for login verification (only function that returns hash) |
+| [`authn.get_credentials`](sql.md#authnget_credentials) | Get active credentials for verification (returns secrets) |
+| [`authn.has_credential`](sql.md#authnhas_credential) | Check if user has active credential of a specific type |
+| [`authn.list_credentials`](sql.md#authnlist_credentials) | List credentials for settings UI (no secrets exposed) |
+| [`authn.record_credential_use`](sql.md#authnrecord_credential_use) | Record credential usage (updates last_used_at) |
+| [`authn.remove_credential`](sql.md#authnremove_credential) | Hard-delete a credential (user self-service) |
 | [`authn.update_password`](sql.md#authnupdate_password) | Update user's password hash (after password change or reset) |
+| [`authn.update_sign_count`](sql.md#authnupdate_sign_count) | Update WebAuthn sign count (clone detection) |
 | [`authn.end_impersonation`](sql.md#authnend_impersonation) | End an impersonation session early (revokes the impersonation session) |
 | [`authn.get_impersonation_context`](sql.md#authnget_impersonation_context) | Get impersonation context for a session (is this an impersonated session?) |
 | [`authn.list_active_impersonations`](sql.md#authnlist_active_impersonations) | List all active impersonations in a namespace (admin dashboard) |
@@ -94,12 +110,6 @@
 | [`authn.get_recent_attempts`](sql.md#authnget_recent_attempts) | Get recent login attempts for admin UI or user security page |
 | [`authn.is_locked_out`](sql.md#authnis_locked_out) | Check if email is locked out due to too many failed attempts |
 | [`authn.record_login_attempt`](sql.md#authnrecord_login_attempt) | Record a login attempt (success or failure) for lockout tracking |
-| [`authn.add_mfa`](sql.md#authnadd_mfa) | Add an MFA method (TOTP, WebAuthn, or recovery codes) |
-| [`authn.get_mfa`](sql.md#authnget_mfa) | Get MFA secrets for verification (returns raw secrets) |
-| [`authn.has_mfa`](sql.md#authnhas_mfa) | Check if user has any MFA method configured |
-| [`authn.list_mfa`](sql.md#authnlist_mfa) | List user's MFA methods for "manage security" UI (no secrets) |
-| [`authn.record_mfa_use`](sql.md#authnrecord_mfa_use) | Record successful MFA verification (updates last_used_at) |
-| [`authn.remove_mfa`](sql.md#authnremove_mfa) | Remove an MFA method |
 | [`authn.cleanup_expired`](sql.md#authncleanup_expired) | Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron) |
 | [`authn.get_stats`](sql.md#authnget_stats) | Get namespace statistics for monitoring dashboards |
 | [`authn.clear_tenant`](sql.md#authnclear_tenant) | Clear tenant context. Queries return no rows (fail-closed for safety). |
@@ -130,7 +140,7 @@
 | [`authn.invalidate_tokens`](sql.md#authninvalidate_tokens) | Invalidate unused tokens (e.g., after password change, invalidate reset tokens) |
 | [`authn.verify_email`](sql.md#authnverify_email) | Verify email address using token from email link |
 | [`authn.create_user`](sql.md#authncreate_user) | Create a new user account |
-| [`authn.delete_user`](sql.md#authndelete_user) | Permanently delete user and all their data (sessions, tokens, MFA) |
+| [`authn.delete_user`](sql.md#authndelete_user) | Permanently delete user and all their data (sessions, tokens, credentials) |
 | [`authn.disable_user`](sql.md#authndisable_user) | Disable user account and revoke all active sessions |
 | [`authn.enable_user`](sql.md#authnenable_user) | Re-enable a disabled user account |
 | [`authn.get_or_create_user`](sql.md#authnget_or_create_user) | Atomically get existing user or create new one (for SSO flows) |

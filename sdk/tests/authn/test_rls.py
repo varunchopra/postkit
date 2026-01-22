@@ -71,11 +71,11 @@ class TestTenantIsolation:
         user_b = tenant_b.create_user("bob@example.com", "hash")
         assert user_b is not None  # Created in tenant_b
 
-        mfa_a = tenant_a.add_mfa(user_a, "totp", "secret_a")
-        assert mfa_a is not None
+        cred_a = tenant_a.add_credential(user_a, "totp", secret_data="secret_a")
+        assert cred_a is not None
 
-        # Tenant A can access their MFA
-        assert tenant_a.has_mfa(user_a) is True
+        # Tenant A can access their credentials
+        assert tenant_a.has_credential(user_a, "totp") is True
 
-        # Tenant B can't access Tenant A's MFA
-        assert tenant_b.has_mfa(user_a) is False
+        # Tenant B can't access Tenant A's credentials
+        assert tenant_b.has_credential(user_a, "totp") is False

@@ -129,24 +129,24 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
 
 
--- @function authn._validate_mfa_type
--- @brief Validates MFA type
--- @param p_type The MFA type to validate
--- Must be totp, webauthn, or recovery_codes.
-CREATE OR REPLACE FUNCTION authn._validate_mfa_type(p_type text)
+-- @function authn._validate_credential_type
+-- @brief Validates credential type
+-- @param p_type The credential type to validate
+-- Must be totp, recovery_code, or webauthn.
+CREATE OR REPLACE FUNCTION authn._validate_credential_type(p_type text)
 RETURNS void
 AS $$
 BEGIN
     IF p_type IS NULL THEN
-        RAISE EXCEPTION 'mfa_type cannot be null'
+        RAISE EXCEPTION 'credential_type cannot be null'
             USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:authn:VAL_MFA_TYPE_NULL';
+                  HINT = 'postkit:authn:VAL_CREDENTIAL_TYPE_NULL';
     END IF;
 
-    IF p_type NOT IN ('totp', 'webauthn', 'recovery_codes') THEN
-        RAISE EXCEPTION 'mfa_type must be totp, webauthn, or recovery_codes (got: %)', p_type
+    IF p_type NOT IN ('totp', 'recovery_code', 'webauthn') THEN
+        RAISE EXCEPTION 'credential_type must be totp, recovery_code, or webauthn (got: %)', p_type
             USING ERRCODE = 'invalid_parameter_value',
-                  HINT = 'postkit:authn:VAL_MFA_TYPE_INVALID';
+                  HINT = 'postkit:authn:VAL_CREDENTIAL_TYPE_INVALID';
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
@@ -253,7 +253,7 @@ $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_temp;
 
 
 -- @function authn._validate_secret
--- @brief Validates MFA secret
+-- @brief Validates credential secret
 -- @param p_secret The secret to validate
 -- Allows larger values for WebAuthn and recovery codes.
 CREATE OR REPLACE FUNCTION authn._validate_secret(p_secret text)

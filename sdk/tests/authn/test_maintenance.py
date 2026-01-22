@@ -116,8 +116,8 @@ class TestGetStats:
         session3 = authn.create_session(user1, "session3")
         authn.create_refresh_token(session3, "refresh1")
 
-        # Add MFA
-        authn.add_mfa(user1, "totp", "secret")
+        # Add credential (TOTP)
+        authn.add_credential(user1, "totp", secret_data="secret")
 
         stats = authn.get_stats()
 
@@ -127,7 +127,7 @@ class TestGetStats:
         assert stats["active_session_count"] == 3
         assert stats["active_api_key_count"] == 1
         assert stats["active_refresh_token_count"] == 1
-        assert stats["mfa_enabled_user_count"] == 1
+        assert stats["credential_enabled_user_count"] == 1
 
     def test_returns_zeros_for_empty_namespace(self, authn):
         stats = authn.get_stats()
@@ -138,4 +138,4 @@ class TestGetStats:
         assert stats["active_session_count"] == 0
         assert stats["active_api_key_count"] == 0
         assert stats["active_refresh_token_count"] == 0
-        assert stats["mfa_enabled_user_count"] == 0
+        assert stats["credential_enabled_user_count"] == 0
