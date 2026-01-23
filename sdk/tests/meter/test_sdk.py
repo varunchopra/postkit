@@ -665,3 +665,98 @@ class TestNormalizeValue:
             assert isinstance(balance[field], float), (
                 f"{field}: Expected float, got {type(balance[field])}"
             )
+
+
+class TestIdempotencyWithInterveningTransactions:
+    """Regression tests: idempotent retries must return historical balance."""
+
+    def test_consume_idempotency_returns_historical_balance(self, meter):
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+
+        # First consume: balance goes from 1000 to 900
+        result1 = meter.consume(
+            "alice", "llm_call", 100, "tokens", idempotency_key="op-1"
+        )
+        assert result1["balance"] == 900
+
+        # Intervening transaction: balance goes from 900 to 700
+        meter.consume("alice", "llm_call", 200, "tokens", idempotency_key="op-2")
+
+        # Verify current balance is different
+        current = meter.get_balance("alice", "llm_call", "tokens")
+        assert current["balance"] == 700
+
+        # Retry - MUST return HISTORICAL balance (900), not current (700)
+        result2 = meter.consume(
+            "alice", "llm_call", 100, "tokens", idempotency_key="op-1"
+        )
+        assert result2["entry_id"] == result1["entry_id"]
+        assert result2["balance"] == 900  # Historical, NOT 700
+
+    def test_reserve_idempotency_returns_historical_balance(self, meter):
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+
+        # First reserve: balance is 1000 (reservations don't change balance)
+        result1 = meter.reserve(
+            "alice", "llm_call", 100, "tokens", idempotency_key="res-1"
+        )
+        assert result1["balance"] == 1000
+        assert result1["granted"] is True
+
+        # Intervening transaction: allocate more (balance goes to 1500)
+        meter.allocate("alice", "llm_call", 500, "tokens")
+
+        # Verify current balance is different
+        current = meter.get_balance("alice", "llm_call", "tokens")
+        assert current["balance"] == 1500
+
+        # Retry - MUST return HISTORICAL balance (1000), not current (1500)
+        result2 = meter.reserve(
+            "alice", "llm_call", 100, "tokens", idempotency_key="res-1"
+        )
+        assert result2["reservation_id"] == result1["reservation_id"]
+        assert result2["balance"] == 1000  # Historical, NOT 1500
+
+    def test_allocate_idempotency_returns_historical_balance(self, meter):
+        # First allocate: balance goes from 0 to 1000
+        result1 = meter.allocate(
+            "alice", "llm_call", 1000, "tokens", idempotency_key="alloc-1"
+        )
+        assert result1["balance"] == 1000
+
+        # Intervening transaction: consume some
+        meter.consume("alice", "llm_call", 300, "tokens")
+
+        # Verify current balance is different
+        current = meter.get_balance("alice", "llm_call", "tokens")
+        assert current["balance"] == 700
+
+        # Retry - MUST return HISTORICAL balance (1000), not current (700)
+        result2 = meter.allocate(
+            "alice", "llm_call", 1000, "tokens", idempotency_key="alloc-1"
+        )
+        assert result2["entry_id"] == result1["entry_id"]
+        assert result2["balance"] == 1000  # Historical, NOT 700
+
+    def test_adjust_idempotency_returns_historical_balance(self, meter):
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+
+        # First adjust: balance goes from 1000 to 1500
+        result1 = meter.adjust(
+            "alice", "llm_call", 500, "tokens", idempotency_key="adj-1"
+        )
+        assert result1["balance"] == 1500
+
+        # Intervening transaction: consume some
+        meter.consume("alice", "llm_call", 200, "tokens")
+
+        # Verify current balance is different
+        current = meter.get_balance("alice", "llm_call", "tokens")
+        assert current["balance"] == 1300
+
+        # Retry - MUST return HISTORICAL balance (1500), not current (1300)
+        result2 = meter.adjust(
+            "alice", "llm_call", 500, "tokens", idempotency_key="adj-1"
+        )
+        assert result2["entry_id"] == result1["entry_id"]
+        assert result2["balance"] == 1500  # Historical, NOT 1300

@@ -69,20 +69,17 @@ BEGIN
           AND r.idempotency_key = p_idempotency_key;
 
         IF FOUND THEN
-            -- Return existing reservation (even if completed)
-            SELECT a.balance, a.balance - a.reserved INTO v_account.balance, v_available
-            FROM meter.accounts a
-            WHERE a.namespace = p_namespace
-              AND a.user_id = p_user_id
-              AND a.event_type = p_event_type
-              AND a.resource = COALESCE(p_resource, '')
-              AND a.unit = p_unit;
-
             RETURN QUERY SELECT
-                v_existing.status = 'active',  -- granted=true only if still active
+                v_existing.status = 'active',
                 v_existing.reservation_id,
-                v_account.balance,
-                v_available,
+                v_existing.balance_at_create,
+                v_existing.balance_at_create - COALESCE((
+                    SELECT a.reserved FROM meter.accounts a
+                    WHERE a.namespace = p_namespace AND a.user_id = p_user_id
+                      AND a.event_type = p_event_type
+                      AND a.resource = COALESCE(p_resource, '')
+                      AND a.unit = p_unit
+                ), 0),
                 v_existing.expires_at;
             RETURN;
         END IF;
@@ -105,13 +102,13 @@ BEGIN
     -- Track reservation (NO ledger entry - reservations are holds, not balance changes)
     INSERT INTO meter.reservations (
         reservation_id, namespace, user_id, event_type, resource, unit,
-        amount, expires_at, status,
+        amount, balance_at_create, expires_at, status,
         idempotency_key, actor_id, request_id, metadata
     )
     SELECT
         v_reservation_id, p_namespace, p_user_id, p_event_type,
         COALESCE(p_resource, ''), p_unit,
-        p_amount, v_expires_at, 'active',
+        p_amount, v_account.balance, v_expires_at, 'active',
         p_idempotency_key, ctx.actor_id, ctx.request_id, p_metadata
     FROM meter._get_actor_context() ctx;
 

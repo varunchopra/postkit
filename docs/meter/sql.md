@@ -542,7 +542,7 @@ SELECT * FROM meter.commit('res_abc123', 2347);
 SELECT consumed - reserved_amount AS overage FROM meter.commit('res_abc123', 500);
 ```
 
-*Source: meter/src/functions/012_reserve.sql:132*
+*Source: meter/src/functions/012_reserve.sql:129*
 
 ---
 
@@ -596,7 +596,7 @@ Release a reservation without consuming. Does not affect balance or create ledge
 SELECT meter.release('res_abc123');
 ```
 
-*Source: meter/src/functions/012_reserve.sql:235*
+*Source: meter/src/functions/012_reserve.sql:232*
 
 ---
 

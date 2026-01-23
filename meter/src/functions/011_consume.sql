@@ -63,15 +63,14 @@ BEGIN
         WHERE l.namespace = p_namespace AND l.idempotency_key = p_idempotency_key;
 
         IF FOUND THEN
-            SELECT a.balance, a.balance - a.reserved INTO v_new_balance, v_available
-            FROM meter.accounts a
-            WHERE a.namespace = p_namespace
-              AND a.user_id = p_user_id
-              AND a.event_type = p_event_type
-              AND a.resource = COALESCE(p_resource, '')
-              AND a.unit = p_unit;
-
-            RETURN QUERY SELECT true, v_new_balance, v_available, v_existing.id;
+            RETURN QUERY SELECT true, v_existing.balance_after,
+                v_existing.balance_after - COALESCE((
+                    SELECT a.reserved FROM meter.accounts a
+                    WHERE a.namespace = p_namespace AND a.user_id = p_user_id
+                      AND a.event_type = p_event_type
+                      AND a.resource = COALESCE(p_resource, '')
+                      AND a.unit = p_unit
+                ), 0), v_existing.id;
             RETURN;
         END IF;
     END IF;

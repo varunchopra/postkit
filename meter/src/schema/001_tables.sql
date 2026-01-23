@@ -145,6 +145,7 @@ CREATE TABLE meter.reservations (
     unit text NOT NULL,
 
     amount numeric NOT NULL,
+    balance_at_create numeric NOT NULL,  -- account balance when reservation was created
 
     -- Lifecycle tracking
     status text NOT NULL DEFAULT 'active',
