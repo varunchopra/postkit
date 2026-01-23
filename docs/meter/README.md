@@ -34,9 +34,9 @@
 | [`meter.get_stats`](sql.md#meterget_stats) | Get namespace statistics |
 | [`meter.reconcile`](sql.md#meterreconcile) | Verify account invariants: balance vs ledger sum, reserved vs active reservations |
 | [`meter.clear_actor`](sql.md#meterclear_actor) | Clear actor context |
-| [`meter.clear_tenant`](sql.md#meterclear_tenant) | Clear tenant context |
+| [`meter.clear_tenant`](sql.md#meterclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
 | [`meter.set_actor`](sql.md#meterset_actor) | Set actor context for audit trail |
-| [`meter.set_tenant`](sql.md#meterset_tenant) | Set the tenant context for Row-Level Security |
+| [`meter.set_tenant`](sql.md#meterset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |
 | [`meter.close_period`](sql.md#meterclose_period) | Close a billing period, handle expiration and carry-over |
 | [`meter.open_period`](sql.md#meteropen_period) | Open a new billing period with fresh allocation |
 | [`meter.release_expired_reservations`](sql.md#meterrelease_expired_reservations) | Mark expired reservations as 'expired' and release their holds. Distinct from 'released' to distinguish automatic expiry. No ledger entries. |

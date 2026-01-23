@@ -556,14 +556,14 @@ SELECT * FROM authz.verify_integrity('default');
 authz.clear_tenant() -> void
 ```
 
-Clear tenant context. Queries return no rows (fail-closed for safety).
+Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants.
 
 **Example:**
 ```sql
 SELECT authz.clear_tenant();
 ```
 
-*Source: authz/src/functions/034_rls.sql:18*
+*Source: authz/src/functions/034_rls.sql:17*
 
 ---
 
@@ -573,16 +573,14 @@ SELECT authz.clear_tenant();
 authz.set_tenant(p_tenant_id: text) -> void
 ```
 
-Set the tenant context for Row-Level Security (session-level)
+Set tenant context for RLS (session-level, persists across transactions). For connection pools, call clear_tenant() before returning connections.
 
 **Parameters:**
-- `p_tenant_id`: Tenant/organization ID. All queries will be filtered to this tenant.
+- `p_tenant_id`: Tenant ID
 
 **Example:**
 ```sql
--- At start of request, set tenant from JWT or session
 SELECT authz.set_tenant('acme-corp');
--- All queries now scoped to acme-corp
 ```
 
 *Source: authz/src/functions/034_rls.sql:1*

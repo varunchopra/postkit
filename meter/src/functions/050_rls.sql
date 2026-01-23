@@ -1,9 +1,13 @@
 -- @group Multi-tenancy
 
 -- @function meter.set_tenant
--- @brief Set the tenant context for Row-Level Security
--- @param p_tenant_id Tenant namespace
+-- @brief Set tenant context for RLS (transaction-local, clears on commit).
+-- Use BEGIN/COMMIT when autocommit is enabled.
+-- @param p_tenant_id Tenant ID
+-- @example BEGIN;
 -- @example SELECT meter.set_tenant('acme-corp');
+-- @example SELECT * FROM meter.balances;
+-- @example COMMIT;
 CREATE FUNCTION meter.set_tenant(p_tenant_id text)
 RETURNS void AS $$
 BEGIN
@@ -14,7 +18,8 @@ $$ LANGUAGE plpgsql SET search_path = meter, pg_temp;
 
 
 -- @function meter.clear_tenant
--- @brief Clear tenant context
+-- @brief Clear tenant context (fail-closed: queries return no rows).
+-- Call before returning pooled connections or when switching tenants.
 -- @example SELECT meter.clear_tenant();
 CREATE FUNCTION meter.clear_tenant()
 RETURNS void AS $$

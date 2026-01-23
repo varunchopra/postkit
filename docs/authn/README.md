@@ -112,8 +112,8 @@
 | [`authn.record_login_attempt`](sql.md#authnrecord_login_attempt) | Record a login attempt (success or failure) for lockout tracking |
 | [`authn.cleanup_expired`](sql.md#authncleanup_expired) | Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron) |
 | [`authn.get_stats`](sql.md#authnget_stats) | Get namespace statistics for monitoring dashboards |
-| [`authn.clear_tenant`](sql.md#authnclear_tenant) | Clear tenant context. Queries return no rows (fail-closed for safety). |
-| [`authn.set_tenant`](sql.md#authnset_tenant) | Set the tenant context for Row-Level Security |
+| [`authn.clear_tenant`](sql.md#authnclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
+| [`authn.set_tenant`](sql.md#authnset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |
 | [`authn.end_operator_impersonation`](sql.md#authnend_operator_impersonation) | End an operator impersonation session early |
 | [`authn.get_operator_audit_events`](sql.md#authnget_operator_audit_events) | Query operator audit events |
 | [`authn.get_operator_impersonation_context`](sql.md#authnget_operator_impersonation_context) | Get operator impersonation context for a session |

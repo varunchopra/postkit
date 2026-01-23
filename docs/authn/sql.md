@@ -800,14 +800,14 @@ SELECT * FROM authn.get_stats('default');
 authn.clear_tenant() -> void
 ```
 
-Clear tenant context. Queries return no rows (fail-closed for safety).
+Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants.
 
 **Example:**
 ```sql
 SELECT authn.clear_tenant();
 ```
 
-*Source: authn/src/functions/080_rls.sql:17*
+*Source: authn/src/functions/080_rls.sql:20*
 
 ---
 
@@ -817,15 +817,17 @@ SELECT authn.clear_tenant();
 authn.set_tenant(p_tenant_id: text) -> void
 ```
 
-Set the tenant context for Row-Level Security
+Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled.
 
 **Parameters:**
-- `p_tenant_id`: Tenant/organization ID. All queries will be filtered to this tenant.
+- `p_tenant_id`: Tenant ID
 
 **Example:**
 ```sql
--- At start of request, set tenant from JWT or session
+BEGIN;
 SELECT authn.set_tenant('acme-corp');
+SELECT * FROM authn.users;
+COMMIT;
 ```
 
 *Source: authn/src/functions/080_rls.sql:1*

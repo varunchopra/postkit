@@ -57,5 +57,5 @@
 | [`config.list_schemas`](sql.md#configlist_schemas) | List all schemas, optionally filtered by prefix |
 | [`config.cleanup_old_versions`](sql.md#configcleanup_old_versions) | Delete old inactive versions, keeping N most recent per key |
 | [`config.get_stats`](sql.md#configget_stats) | Get namespace statistics |
-| [`config.clear_tenant`](sql.md#configclear_tenant) | Clear tenant context. Queries return no rows (fail-closed for safety). |
-| [`config.set_tenant`](sql.md#configset_tenant) | Set the tenant context for Row-Level Security |
+| [`config.clear_tenant`](sql.md#configclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
+| [`config.set_tenant`](sql.md#configset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |

@@ -516,9 +516,14 @@ SELECT * FROM config.get_stats();
 config.clear_tenant() -> void
 ```
 
-Clear tenant context. Queries return no rows (fail-closed for safety).
+Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants.
 
-*Source: config/src/functions/040_rls.sql:14*
+**Example:**
+```sql
+SELECT config.clear_tenant();
+```
+
+*Source: config/src/functions/040_rls.sql:18*
 
 ---
 
@@ -528,14 +533,17 @@ Clear tenant context. Queries return no rows (fail-closed for safety).
 config.set_tenant(p_tenant_id: text) -> void
 ```
 
-Set the tenant context for Row-Level Security
+Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled.
 
 **Parameters:**
-- `p_tenant_id`: The tenant/namespace ID
+- `p_tenant_id`: Tenant ID
 
 **Example:**
 ```sql
+BEGIN;
 SELECT config.set_tenant('acme-corp');
+SELECT * FROM config.entries;
+COMMIT;
 ```
 
 *Source: config/src/functions/040_rls.sql:1*

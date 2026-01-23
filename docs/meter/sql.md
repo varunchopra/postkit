@@ -130,7 +130,7 @@ Clear actor context
 SELECT meter.clear_actor();
 ```
 
-*Source: meter/src/functions/050_rls.sql:47*
+*Source: meter/src/functions/050_rls.sql:52*
 
 ---
 
@@ -140,14 +140,14 @@ SELECT meter.clear_actor();
 meter.clear_tenant() -> void
 ```
 
-Clear tenant context
+Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants.
 
 **Example:**
 ```sql
 SELECT meter.clear_tenant();
 ```
 
-*Source: meter/src/functions/050_rls.sql:13*
+*Source: meter/src/functions/050_rls.sql:17*
 
 ---
 
@@ -170,7 +170,7 @@ Set actor context for audit trail
 SELECT meter.set_actor('user:admin-bob', 'req-123', 'user:alice', 'refund');
 ```
 
-*Source: meter/src/functions/050_rls.sql:24*
+*Source: meter/src/functions/050_rls.sql:29*
 
 ---
 
@@ -180,14 +180,17 @@ SELECT meter.set_actor('user:admin-bob', 'req-123', 'user:alice', 'refund');
 meter.set_tenant(p_tenant_id: text) -> void
 ```
 
-Set the tenant context for Row-Level Security
+Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled.
 
 **Parameters:**
-- `p_tenant_id`: Tenant namespace
+- `p_tenant_id`: Tenant ID
 
 **Example:**
 ```sql
+BEGIN;
 SELECT meter.set_tenant('acme-corp');
+SELECT * FROM meter.balances;
+COMMIT;
 ```
 
 *Source: meter/src/functions/050_rls.sql:1*

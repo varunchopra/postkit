@@ -66,8 +66,8 @@
 | [`authz.get_stats`](sql.md#authzget_stats) | Get namespace statistics for monitoring dashboards |
 | [`authz.grant_to_resources_bulk`](sql.md#authzgrant_to_resources_bulk) | Grant same user/team access to many resources at once |
 | [`authz.verify_integrity`](sql.md#authzverify_integrity) | Check for data corruption (circular memberships, broken hierarchies, partition issues) |
-| [`authz.clear_tenant`](sql.md#authzclear_tenant) | Clear tenant context. Queries return no rows (fail-closed for safety). |
-| [`authz.set_tenant`](sql.md#authzset_tenant) | Set the tenant context for Row-Level Security (session-level) |
+| [`authz.clear_tenant`](sql.md#authzclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
+| [`authz.set_tenant`](sql.md#authzset_tenant) | Set tenant context for RLS (session-level, persists across transactions). For connection pools, call clear_tenant() before returning connections. |
 | [`authz.check`](sql.md#authzcheck) | Check if a subject has a permission on a resource |
 | [`authz.check_all`](sql.md#authzcheck_all) | Check if a subject has all of the specified permissions |
 | [`authz.check_any`](sql.md#authzcheck_any) | Check if a subject has any of the specified permissions |
