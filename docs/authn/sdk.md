@@ -21,7 +21,7 @@ Add a credential for a user.
 
 **Returns:** Credential ID (UUID string)
 
-*Source: sdk/src/postkit/authn/client.py:930*
+*Source: sdk/src/postkit/authn/client.py:929*
 
 ---
 
@@ -40,7 +40,7 @@ Clean up expired sessions, tokens, impersonation records, and old login attempts
 api_keys_deleted, impersonations_deleted, operator_impersonations_deleted,
 attempts_deleted
 
-*Source: sdk/src/postkit/authn/client.py:1186*
+*Source: sdk/src/postkit/authn/client.py:1185*
 
 ---
 
@@ -52,7 +52,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/authn/client.py:1249*
+*Source: sdk/src/postkit/authn/client.py:1248*
 
 ---
 
@@ -64,7 +64,7 @@ clear_attempts(email: str) -> int
 
 Clear login attempts for an email. Returns count deleted.
 
-*Source: sdk/src/postkit/authn/client.py:1178*
+*Source: sdk/src/postkit/authn/client.py:1177*
 
 ---
 
@@ -81,7 +81,7 @@ Consume a one-time credential (e.g., recovery code).
 
 **Returns:** True if consumed, False if already consumed/disabled
 
-*Source: sdk/src/postkit/authn/client.py:1022*
+*Source: sdk/src/postkit/authn/client.py:1021*
 
 ---
 
@@ -93,7 +93,7 @@ consume_token(token_hash: str, token_type: str) -> dict | None
 
 Consume a one-time token.
 
-*Source: sdk/src/postkit/authn/client.py:893*
+*Source: sdk/src/postkit/authn/client.py:892*
 
 ---
 
@@ -113,7 +113,7 @@ Create an API key for programmatic access.
 
 **Returns:** API key ID (UUID string)
 
-*Source: sdk/src/postkit/authn/client.py:786*
+*Source: sdk/src/postkit/authn/client.py:785*
 
 ---
 
@@ -132,7 +132,7 @@ Create a refresh token for a session.
 
 **Returns:** Dict with refresh_token_id, family_id, expires_at
 
-*Source: sdk/src/postkit/authn/client.py:675*
+*Source: sdk/src/postkit/authn/client.py:674*
 
 ---
 
@@ -153,7 +153,7 @@ Create a new session.
 
 **Returns:** Session ID (UUID string)
 
-*Source: sdk/src/postkit/authn/client.py:241*
+*Source: sdk/src/postkit/authn/client.py:240*
 
 ---
 
@@ -173,7 +173,7 @@ Create a one-time use token.
 
 **Returns:** Token ID (UUID string)
 
-*Source: sdk/src/postkit/authn/client.py:867*
+*Source: sdk/src/postkit/authn/client.py:866*
 
 ---
 
@@ -191,7 +191,7 @@ Create a new user.
 
 **Returns:** User ID (UUID string)
 
-*Source: sdk/src/postkit/authn/client.py:92*
+*Source: sdk/src/postkit/authn/client.py:91*
 
 ---
 
@@ -203,7 +203,7 @@ delete_user(user_id: str) -> bool
 
 Permanently delete a user and all associated data.
 
-*Source: sdk/src/postkit/authn/client.py:152*
+*Source: sdk/src/postkit/authn/client.py:151*
 
 ---
 
@@ -221,7 +221,7 @@ Disable all credentials for a user (incident response).
 
 **Returns:** Count of credentials disabled
 
-*Source: sdk/src/postkit/authn/client.py:1091*
+*Source: sdk/src/postkit/authn/client.py:1090*
 
 ---
 
@@ -239,7 +239,7 @@ Soft-disable a credential (preserves for forensics).
 
 **Returns:** True if disabled, False if not found/already disabled
 
-*Source: sdk/src/postkit/authn/client.py:1058*
+*Source: sdk/src/postkit/authn/client.py:1057*
 
 ---
 
@@ -251,7 +251,7 @@ disable_user(user_id: str) -> bool
 
 Disable user and revoke all their sessions.
 
-*Source: sdk/src/postkit/authn/client.py:136*
+*Source: sdk/src/postkit/authn/client.py:135*
 
 ---
 
@@ -263,7 +263,7 @@ enable_user(user_id: str) -> bool
 
 Re-enable a disabled user.
 
-*Source: sdk/src/postkit/authn/client.py:144*
+*Source: sdk/src/postkit/authn/client.py:143*
 
 ---
 
@@ -280,7 +280,7 @@ End an impersonation session early.
 
 **Returns:** True if ended, False if not found or already ended
 
-*Source: sdk/src/postkit/authn/client.py:415*
+*Source: sdk/src/postkit/authn/client.py:414*
 
 ---
 
@@ -297,7 +297,7 @@ End an operator impersonation session early.
 
 **Returns:** True if ended, False if not found or already ended
 
-*Source: sdk/src/postkit/authn/client.py:546*
+*Source: sdk/src/postkit/authn/client.py:545*
 
 ---
 
@@ -311,7 +311,7 @@ Extend session expiration.
 
 **Returns:** New expires_at timestamp, or None if session invalid/expired/revoked.
 
-*Source: sdk/src/postkit/authn/client.py:290*
+*Source: sdk/src/postkit/authn/client.py:289*
 
 ---
 
@@ -329,14 +329,14 @@ Get an API key by ID if owned by user.
 
 **Returns:** Key metadata dict if found and owned by user, None otherwise
 
-*Source: sdk/src/postkit/authn/client.py:850*
+*Source: sdk/src/postkit/authn/client.py:849*
 
 ---
 
 ### get_audit_events
 
 ```python
-get_audit_events(limit: int = 100, event_type: str | None = None, resource_type: str | None = None, resource_id: str | None = None, before: str | None = None) -> list[dict]
+get_audit_events(limit: int = 100, event_type: str | None = None, actor_id: str | None = None, resource_type: str | None = None, resource_id: str | None = None, before: str | None = None) -> list[dict]
 ```
 
 Query audit events with optional filters.
@@ -344,6 +344,7 @@ Query audit events with optional filters.
 **Parameters:**
 - `limit`: Maximum number of events to return (default 100)
 - `event_type`: Filter by event type (e.g., 'user_created', 'session_revoked')
+- `actor_id`: Filter by actor ID (who made the change)
 - `resource_type`: Filter by resource type (e.g., 'user', 'session')
 - `resource_id`: Filter by resource ID
 - `before`: Opaque cursor from a previous response's event['cursor']
@@ -358,7 +359,7 @@ if events:
     more = authn.get_audit_events(limit=50, before=events[-1]["cursor"])
 ```
 
-*Source: sdk/src/postkit/authn/client.py:1255*
+*Source: sdk/src/postkit/authn/client.py:1254*
 
 ---
 
@@ -377,7 +378,7 @@ Lookup a credential by key. Requires user_id for enumeration safety.
 
 **Returns:** Credential with id, secret_data, sign_count, consumed_at - or None
 
-*Source: sdk/src/postkit/authn/client.py:990*
+*Source: sdk/src/postkit/authn/client.py:989*
 
 ---
 
@@ -389,7 +390,7 @@ get_credentials(email: str) -> dict | None
 
 Get credentials for login verification.
 
-*Source: sdk/src/postkit/authn/client.py:221*
+*Source: sdk/src/postkit/authn/client.py:220*
 
 ---
 
@@ -408,7 +409,7 @@ Check if a session is an impersonation session.
 impersonation_id, actor_id, actor_email, target_user_id,
 reason, started_at, expires_at
 
-*Source: sdk/src/postkit/authn/client.py:433*
+*Source: sdk/src/postkit/authn/client.py:432*
 
 ---
 
@@ -428,7 +429,7 @@ Query operator audit events.
 
 **Returns:** List of operator audit event records
 
-*Source: sdk/src/postkit/authn/client.py:647*
+*Source: sdk/src/postkit/authn/client.py:646*
 
 ---
 
@@ -448,7 +449,7 @@ impersonation_id, operator_id, operator_email, operator_namespace,
 target_user_id, target_user_email, target_namespace, reason,
 ticket_reference, started_at, expires_at
 
-*Source: sdk/src/postkit/authn/client.py:564*
+*Source: sdk/src/postkit/authn/client.py:563*
 
 ---
 
@@ -466,7 +467,7 @@ Atomically get existing user or create new one.
 
 **Returns:** Tuple of (user_id, was_created)
 
-*Source: sdk/src/postkit/authn/client.py:185*
+*Source: sdk/src/postkit/authn/client.py:184*
 
 ---
 
@@ -478,7 +479,7 @@ get_recent_attempts(email: str, limit: int = 10) -> list[dict]
 
 Get recent login attempts for an email.
 
-*Source: sdk/src/postkit/authn/client.py:1171*
+*Source: sdk/src/postkit/authn/client.py:1170*
 
 ---
 
@@ -490,7 +491,7 @@ get_stats() -> dict
 
 Get namespace statistics.
 
-*Source: sdk/src/postkit/authn/client.py:1207*
+*Source: sdk/src/postkit/authn/client.py:1206*
 
 ---
 
@@ -502,7 +503,7 @@ get_user(user_id: str) -> dict | None
 
 Get user by ID. Does not return password_hash.
 
-*Source: sdk/src/postkit/authn/client.py:114*
+*Source: sdk/src/postkit/authn/client.py:113*
 
 ---
 
@@ -514,7 +515,7 @@ get_user_by_email(email: str) -> dict | None
 
 Get user by email. Does not return password_hash.
 
-*Source: sdk/src/postkit/authn/client.py:121*
+*Source: sdk/src/postkit/authn/client.py:120*
 
 ---
 
@@ -532,7 +533,7 @@ Get active credentials for verification. Returns secrets!
 
 **Returns:** List of credentials with id, lookup_key, secret_data, sign_count
 
-*Source: sdk/src/postkit/authn/client.py:974*
+*Source: sdk/src/postkit/authn/client.py:973*
 
 ---
 
@@ -549,7 +550,7 @@ Get multiple users by ID in a single query.
 
 **Returns:** Dict mapping user_id -> user dict. Missing IDs are omitted.
 
-*Source: sdk/src/postkit/authn/client.py:167*
+*Source: sdk/src/postkit/authn/client.py:166*
 
 ---
 
@@ -567,7 +568,7 @@ Check if user has active credential of a specific type.
 
 **Returns:** True if user has at least one active credential of type
 
-*Source: sdk/src/postkit/authn/client.py:1130*
+*Source: sdk/src/postkit/authn/client.py:1129*
 
 ---
 
@@ -579,7 +580,7 @@ invalidate_tokens(user_id: str, token_type: str) -> int
 
 Invalidate all unused tokens of a type for a user.
 
-*Source: sdk/src/postkit/authn/client.py:918*
+*Source: sdk/src/postkit/authn/client.py:917*
 
 ---
 
@@ -591,7 +592,7 @@ is_locked_out(email: str, window: timedelta | None = None, max_attempts: int | N
 
 Check if an email is locked out due to too many failed attempts.
 
-*Source: sdk/src/postkit/authn/client.py:1159*
+*Source: sdk/src/postkit/authn/client.py:1158*
 
 ---
 
@@ -605,7 +606,7 @@ List all active impersonations in the namespace.
 
 **Returns:** List of active impersonation records with actor/target info
 
-*Source: sdk/src/postkit/authn/client.py:454*
+*Source: sdk/src/postkit/authn/client.py:453*
 
 ---
 
@@ -622,7 +623,7 @@ List all active operator impersonations.
 
 **Returns:** List of active impersonation records
 
-*Source: sdk/src/postkit/authn/client.py:629*
+*Source: sdk/src/postkit/authn/client.py:628*
 
 ---
 
@@ -634,7 +635,7 @@ list_api_keys(user_id: str) -> list[dict]
 
 List active API keys for a user. Does not return key_hash.
 
-*Source: sdk/src/postkit/authn/client.py:843*
+*Source: sdk/src/postkit/authn/client.py:842*
 
 ---
 
@@ -653,7 +654,7 @@ List impersonation history for audit purposes.
 
 **Returns:** List of impersonation records (including ended ones)
 
-*Source: sdk/src/postkit/authn/client.py:468*
+*Source: sdk/src/postkit/authn/client.py:467*
 
 ---
 
@@ -672,7 +673,7 @@ List impersonations performed by an operator.
 
 **Returns:** List of impersonation records by the operator
 
-*Source: sdk/src/postkit/authn/client.py:607*
+*Source: sdk/src/postkit/authn/client.py:606*
 
 ---
 
@@ -691,7 +692,7 @@ List operator impersonation history affecting a target namespace.
 
 **Returns:** List of impersonation records (including ended ones)
 
-*Source: sdk/src/postkit/authn/client.py:583*
+*Source: sdk/src/postkit/authn/client.py:582*
 
 ---
 
@@ -703,7 +704,7 @@ list_refresh_tokens(user_id: str) -> list[dict]
 
 List active refresh tokens for a user.
 
-*Source: sdk/src/postkit/authn/client.py:775*
+*Source: sdk/src/postkit/authn/client.py:774*
 
 ---
 
@@ -715,7 +716,7 @@ list_sessions(user_id: str) -> list[dict]
 
 List active sessions for a user. Does not return token_hash.
 
-*Source: sdk/src/postkit/authn/client.py:358*
+*Source: sdk/src/postkit/authn/client.py:357*
 
 ---
 
@@ -734,7 +735,7 @@ List credentials for settings UI. Does NOT return secrets.
 
 **Returns:** List of credential metadata (no secrets)
 
-*Source: sdk/src/postkit/authn/client.py:1108*
+*Source: sdk/src/postkit/authn/client.py:1107*
 
 ---
 
@@ -746,7 +747,7 @@ list_users(limit: int = 100, cursor: str | None = None) -> list[dict]
 
 List users with pagination.
 
-*Source: sdk/src/postkit/authn/client.py:160*
+*Source: sdk/src/postkit/authn/client.py:159*
 
 ---
 
@@ -761,7 +762,7 @@ Record credential usage (lazy update: only if >1hr since last).
 **Parameters:**
 - `credential_id`: Credential that was used
 
-*Source: sdk/src/postkit/authn/client.py:1009*
+*Source: sdk/src/postkit/authn/client.py:1008*
 
 ---
 
@@ -773,7 +774,7 @@ record_login_attempt(email: str, success: bool, ip_address: str | None = None) -
 
 Record a login attempt.
 
-*Source: sdk/src/postkit/authn/client.py:1146*
+*Source: sdk/src/postkit/authn/client.py:1145*
 
 ---
 
@@ -790,7 +791,7 @@ Hard-delete a credential (user self-service).
 
 **Returns:** True if removed, False if not found
 
-*Source: sdk/src/postkit/authn/client.py:1075*
+*Source: sdk/src/postkit/authn/client.py:1074*
 
 ---
 
@@ -802,7 +803,7 @@ revoke_all_api_keys(user_id: str) -> int
 
 Revoke all API keys for a user. Returns count revoked.
 
-*Source: sdk/src/postkit/authn/client.py:835*
+*Source: sdk/src/postkit/authn/client.py:834*
 
 ---
 
@@ -816,7 +817,7 @@ Revoke all refresh tokens for a user.
 
 **Returns:** Count of tokens revoked
 
-*Source: sdk/src/postkit/authn/client.py:762*
+*Source: sdk/src/postkit/authn/client.py:761*
 
 ---
 
@@ -828,7 +829,7 @@ revoke_all_sessions(user_id: str) -> int
 
 Revoke all sessions for a user. Returns count revoked.
 
-*Source: sdk/src/postkit/authn/client.py:330*
+*Source: sdk/src/postkit/authn/client.py:329*
 
 ---
 
@@ -840,7 +841,7 @@ revoke_api_key(key_id: str) -> bool
 
 Revoke an API key.
 
-*Source: sdk/src/postkit/authn/client.py:827*
+*Source: sdk/src/postkit/authn/client.py:826*
 
 ---
 
@@ -858,7 +859,7 @@ Revoke all sessions except the specified one ("sign out other devices").
 
 **Returns:** Count of sessions revoked (excludes the preserved session)
 
-*Source: sdk/src/postkit/authn/client.py:338*
+*Source: sdk/src/postkit/authn/client.py:337*
 
 ---
 
@@ -872,7 +873,7 @@ Revoke all tokens in a family (security response).
 
 **Returns:** Count of tokens revoked
 
-*Source: sdk/src/postkit/authn/client.py:749*
+*Source: sdk/src/postkit/authn/client.py:748*
 
 ---
 
@@ -884,7 +885,7 @@ revoke_session(token_hash: str) -> bool
 
 Revoke a session.
 
-*Source: sdk/src/postkit/authn/client.py:306*
+*Source: sdk/src/postkit/authn/client.py:305*
 
 ---
 
@@ -902,7 +903,7 @@ Revoke a session by ID (for manage devices UI).
 
 **Returns:** True if revoked, False if not found or not owned by user
 
-*Source: sdk/src/postkit/authn/client.py:314*
+*Source: sdk/src/postkit/authn/client.py:313*
 
 ---
 
@@ -922,7 +923,7 @@ Rotate a refresh token (invalidate old, issue new).
 **Returns:** Dict with user_id, session_id, new_refresh_token_id, family_id,
 generation, expires_at - or None if rotation failed
 
-*Source: sdk/src/postkit/authn/client.py:703*
+*Source: sdk/src/postkit/authn/client.py:702*
 
 ---
 
@@ -952,7 +953,7 @@ authn.set_actor(request_id=req_id, ip_address=ip, user_agent=ua)
 authn.set_actor(actor_id="user:alice")
 ```
 
-*Source: sdk/src/postkit/authn/client.py:1215*
+*Source: sdk/src/postkit/authn/client.py:1214*
 
 ---
 
@@ -973,7 +974,7 @@ Start impersonating a user.
 
 **Returns:** Dict with impersonation_id, impersonation_session_id, expires_at
 
-*Source: sdk/src/postkit/authn/client.py:369*
+*Source: sdk/src/postkit/authn/client.py:368*
 
 ---
 
@@ -996,7 +997,7 @@ Start cross-namespace operator impersonation.
 
 **Returns:** Dict with impersonation_id, impersonation_session_id, expires_at
 
-*Source: sdk/src/postkit/authn/client.py:494*
+*Source: sdk/src/postkit/authn/client.py:493*
 
 ---
 
@@ -1008,7 +1009,7 @@ update_email(user_id: str, new_email: str) -> bool
 
 Update user's email. Clears email_verified_at.
 
-*Source: sdk/src/postkit/authn/client.py:128*
+*Source: sdk/src/postkit/authn/client.py:127*
 
 ---
 
@@ -1020,7 +1021,7 @@ update_password(user_id: str, new_password_hash: str) -> bool
 
 Update user's password hash.
 
-*Source: sdk/src/postkit/authn/client.py:233*
+*Source: sdk/src/postkit/authn/client.py:232*
 
 ---
 
@@ -1038,7 +1039,7 @@ Update WebAuthn sign count. Returns False if clone detected.
 
 **Returns:** True if updated, False if new_count <= current (clone attack!)
 
-*Source: sdk/src/postkit/authn/client.py:1038*
+*Source: sdk/src/postkit/authn/client.py:1037*
 
 ---
 
@@ -1052,7 +1053,7 @@ Validate an API key.
 
 **Returns:** Dict with user_id, key_id, name, expires_at or None if invalid
 
-*Source: sdk/src/postkit/authn/client.py:812*
+*Source: sdk/src/postkit/authn/client.py:811*
 
 ---
 
@@ -1067,7 +1068,7 @@ Validate a refresh token without rotating (read-only check).
 **Returns:** Dict with user_id, session_id, family_id, generation,
 expires_at, is_current - or None if invalid
 
-*Source: sdk/src/postkit/authn/client.py:734*
+*Source: sdk/src/postkit/authn/client.py:733*
 
 ---
 
@@ -1083,7 +1084,7 @@ Validate a session token.
 impersonator_id, impersonator_email, impersonation_reason
 - or None if session invalid/expired/revoked.
 
-*Source: sdk/src/postkit/authn/client.py:269*
+*Source: sdk/src/postkit/authn/client.py:268*
 
 ---
 
@@ -1095,6 +1096,6 @@ verify_email(token_hash: str) -> dict | None
 
 Verify email using a token.
 
-*Source: sdk/src/postkit/authn/client.py:906*
+*Source: sdk/src/postkit/authn/client.py:905*
 
 ---

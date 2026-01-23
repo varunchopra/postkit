@@ -82,7 +82,7 @@ Delete a schema by its key pattern.
 Note:
     Requires admin connection that bypasses RLS.
 
-*Source: sdk/src/postkit/config/client.py:537*
+*Source: sdk/src/postkit/config/client.py:539*
 
 ---
 
@@ -142,7 +142,7 @@ Get config entry.
 ### get_audit_events
 
 ```python
-get_audit_events(limit: int = 100, event_type: str | None = None, key: str | None = None, before: str | None = None) -> list[dict]
+get_audit_events(limit: int = 100, event_type: str | None = None, actor_id: str | None = None, key: str | None = None, before: str | None = None) -> list[dict]
 ```
 
 Query audit events with optional filters.
@@ -150,6 +150,7 @@ Query audit events with optional filters.
 **Parameters:**
 - `limit`: Maximum number of events to return (default 100)
 - `event_type`: Filter by event type (e.g., 'entry_created', 'entry_deleted')
+- `actor_id`: Filter by actor ID (who made the change)
 - `key`: Filter by config key
 - `before`: Opaque cursor from a previous response's event['cursor']
 
@@ -224,7 +225,7 @@ Get the JSON Schema that applies to a config key.
 Note:
     All connections (admin and tenant) can read schemas.
 
-*Source: sdk/src/postkit/config/client.py:518*
+*Source: sdk/src/postkit/config/client.py:520*
 
 ---
 
@@ -312,7 +313,7 @@ List all schemas, optionally filtered by prefix.
 **Returns:** List of dicts with 'key_pattern', 'schema', 'description',
 'created_at', 'updated_at'
 
-*Source: sdk/src/postkit/config/client.py:553*
+*Source: sdk/src/postkit/config/client.py:555*
 
 ---
 
@@ -461,6 +462,6 @@ Register a JSON Schema for validating config values.
 - `schema`: JSON Schema document (Draft 7)
 - `description`: Human-readable description
 
-*Source: sdk/src/postkit/config/client.py:458*
+*Source: sdk/src/postkit/config/client.py:460*
 
 ---

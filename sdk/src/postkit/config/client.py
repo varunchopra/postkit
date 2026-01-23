@@ -425,6 +425,7 @@ class ConfigClient(BaseClient):
         self,
         limit: int = 100,
         event_type: str | None = None,
+        actor_id: str | None = None,
         key: str | None = None,
         before: str | None = None,
     ) -> list[dict]:
@@ -433,6 +434,7 @@ class ConfigClient(BaseClient):
         Args:
             limit: Maximum number of events to return (default 100)
             event_type: Filter by event type (e.g., 'entry_created', 'entry_deleted')
+            actor_id: Filter by actor ID (who made the change)
             key: Filter by config key
             before: Opaque cursor from a previous response's event['cursor']
 
@@ -445,12 +447,12 @@ class ConfigClient(BaseClient):
             if events:
                 more = config.get_audit_events(limit=50, before=events[-1]["cursor"])
         """
-        filters: dict[str, Any] = {}
-        if key is not None:
-            filters["key"] = key
-
-        return self._get_audit_events(
-            limit=limit, event_type=event_type, filters=filters, before=before
+        return super().get_audit_events(
+            limit=limit,
+            event_type=event_type,
+            actor_id=actor_id,
+            before=before,
+            key=key,
         )
 
     # Schema management

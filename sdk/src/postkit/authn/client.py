@@ -9,7 +9,6 @@ This module provides:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from postkit.base import BaseClient, PostkitError
 
@@ -1256,6 +1255,7 @@ class AuthnClient(BaseClient):
         self,
         limit: int = 100,
         event_type: str | None = None,
+        actor_id: str | None = None,
         resource_type: str | None = None,
         resource_id: str | None = None,
         before: str | None = None,
@@ -1265,6 +1265,7 @@ class AuthnClient(BaseClient):
         Args:
             limit: Maximum number of events to return (default 100)
             event_type: Filter by event type (e.g., 'user_created', 'session_revoked')
+            actor_id: Filter by actor ID (who made the change)
             resource_type: Filter by resource type (e.g., 'user', 'session')
             resource_id: Filter by resource ID
             before: Opaque cursor from a previous response's event['cursor']
@@ -1278,12 +1279,11 @@ class AuthnClient(BaseClient):
             if events:
                 more = authn.get_audit_events(limit=50, before=events[-1]["cursor"])
         """
-        filters: dict[str, Any] = {}
-        if resource_type is not None:
-            filters["resource_type"] = resource_type
-        if resource_id is not None:
-            filters["resource_id"] = resource_id
-
-        return self._get_audit_events(
-            limit=limit, event_type=event_type, filters=filters, before=before
+        return super().get_audit_events(
+            limit=limit,
+            event_type=event_type,
+            actor_id=actor_id,
+            before=before,
+            resource_type=resource_type,
+            resource_id=resource_id,
         )

@@ -399,17 +399,20 @@ class BaseClient(ABC):
         self,
         limit: int = 100,
         event_type: str | None = None,
+        actor_id: str | None = None,
         filters: dict[str, Any] | None = None,
         before: str | None = None,
     ) -> list[dict[str, Any]]:
         """Internal helper for audit event queries.
 
-        Subclasses should define their own public get_audit_events() with
-        explicit parameters and call this helper.
+        Called by get_audit_events(). Subclasses that need custom query
+        handling (e.g., authz with Entity tuples) can bypass this and
+        implement their own get_audit_events() entirely.
 
         Args:
             limit: Maximum number of events to return
             event_type: Filter by event type
+            actor_id: Filter by actor ID (who made the change)
             filters: Pre-validated column:value pairs (keys MUST be safe identifiers)
             before: Opaque cursor from a previous response's event['cursor']
 
@@ -423,6 +426,10 @@ class BaseClient(ABC):
         if event_type is not None:
             conditions.append("event_type = %s")
             params.append(event_type)
+
+        if actor_id is not None:
+            conditions.append("actor_id = %s")
+            params.append(actor_id)
 
         if filters:
             for col, val in filters.items():
@@ -456,10 +463,37 @@ class BaseClient(ABC):
 
         return events
 
-    def get_audit_events(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        """Query audit events. Subclasses must override with explicit parameters."""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must override get_audit_events() with explicit parameters"
+    def get_audit_events(
+        self,
+        limit: int = 100,
+        event_type: str | None = None,
+        actor_id: str | None = None,
+        before: str | None = None,
+        **extra_filters: Any,
+    ) -> list[dict[str, Any]]:
+        """Query audit events with optional filters.
+
+        Args:
+            limit: Maximum number of events to return (default 100)
+            event_type: Filter by event type
+            actor_id: Filter by actor ID (who made the change)
+            before: Opaque cursor from a previous response's event['cursor']
+            **extra_filters: Module-specific filters (e.g., resource_type, key)
+
+        Returns:
+            List of audit event dictionaries. Each event includes a 'cursor' field
+            that can be passed to 'before' for pagination.
+
+        Note:
+            Subclasses may override to add explicit parameters with type hints,
+            but should call super() to avoid reimplementing the logic.
+        """
+        return self._get_audit_events(
+            limit=limit,
+            event_type=event_type,
+            actor_id=actor_id,
+            filters=extra_filters if extra_filters else None,
+            before=before,
         )
 
     def get_stats(self) -> dict:

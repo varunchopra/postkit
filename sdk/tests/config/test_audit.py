@@ -143,6 +143,22 @@ class TestAuditEvents:
         assert len(events) >= 1
         assert events[0]["actor_id"] is None
 
+    def test_filter_by_actor(self, config, test_helpers):
+        """Can filter events by actor ID."""
+        config.set_actor("alice")
+        config.set("prompts/alice-bot", {"template": "alice's bot"})
+
+        config.set_actor("bob")
+        config.set("prompts/bob-bot", {"template": "bob's bot"})
+
+        alice_events = config.get_audit_events(actor_id="alice")
+        bob_events = config.get_audit_events(actor_id="bob")
+
+        assert len(alice_events) == 1
+        assert len(bob_events) == 1
+        assert alice_events[0]["actor_id"] == "alice"
+        assert bob_events[0]["actor_id"] == "bob"
+
 
 class TestAuditPartitions:
     """Tests for audit partition management."""

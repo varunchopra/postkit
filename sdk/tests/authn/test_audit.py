@@ -252,6 +252,22 @@ class TestSetActor:
         assert matching[0]["on_behalf_of"] is None
         assert matching[0]["reason"] is None
 
+    def test_filter_by_actor(self, authn, test_helpers):
+        """Can filter events by actor ID."""
+        authn.set_actor("alice")
+        authn.create_user("alice-created@example.com", "hash")
+
+        authn.set_actor("bob")
+        authn.create_user("bob-created@example.com", "hash")
+
+        alice_events = authn.get_audit_events(actor_id="alice")
+        bob_events = authn.get_audit_events(actor_id="bob")
+
+        assert len(alice_events) == 1
+        assert len(bob_events) == 1
+        assert alice_events[0]["actor_id"] == "alice"
+        assert bob_events[0]["actor_id"] == "bob"
+
 
 class TestSetActorMergeSemantics:
     """Tests for set_actor merge/bind semantics (clear + bind pattern)."""
