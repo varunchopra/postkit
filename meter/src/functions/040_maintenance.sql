@@ -218,11 +218,20 @@ RETURNS TABLE(
 BEGIN
     RETURN QUERY
     SELECT
-        (SELECT COUNT(*) FROM meter.accounts WHERE namespace = p_namespace)::bigint,
-        (SELECT COUNT(*) FROM meter.ledger WHERE namespace = p_namespace)::bigint,
-        (SELECT COUNT(*) FROM meter.reservations WHERE namespace = p_namespace AND status = 'active')::bigint,
-        (SELECT COALESCE(SUM(balance), 0) FROM meter.accounts WHERE namespace = p_namespace),
-        (SELECT COALESCE(SUM(reserved), 0) FROM meter.accounts WHERE namespace = p_namespace);
+        a.cnt::bigint,
+        l.cnt::bigint,
+        r.cnt::bigint,
+        a.total_balance,
+        a.total_reserved
+    FROM
+        (SELECT COUNT(*) AS cnt,
+                COALESCE(SUM(balance), 0) AS total_balance,
+                COALESCE(SUM(reserved), 0) AS total_reserved
+         FROM meter.accounts WHERE namespace = p_namespace) a,
+        (SELECT COUNT(*) AS cnt
+         FROM meter.ledger WHERE namespace = p_namespace) l,
+        (SELECT COUNT(*) AS cnt
+         FROM meter.reservations WHERE namespace = p_namespace AND status = 'active') r;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = meter, pg_temp;
 

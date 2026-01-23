@@ -65,11 +65,18 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT
-        (SELECT COUNT(*) FROM authz.tuples WHERE namespace = p_namespace)::bigint,
+        t.tuple_count,
+        h.hierarchy_count,
+        t.unique_users,
+        t.unique_resources
+    FROM
+        (SELECT COUNT(*)::bigint AS tuple_count,
+                COUNT(DISTINCT CASE WHEN subject_type = 'user' THEN subject_id END)::bigint AS unique_users,
+                COUNT(DISTINCT (resource_type, resource_id))::bigint AS unique_resources
+         FROM authz.tuples WHERE namespace = p_namespace) t,
         -- Count hierarchies from both global (app defaults) and tenant namespace (org overrides)
-        (SELECT COUNT(*) FROM authz.permission_hierarchy WHERE namespace IN ('global', p_namespace))::bigint,
-        (SELECT COUNT(DISTINCT subject_id) FROM authz.tuples WHERE namespace = p_namespace AND subject_type = 'user')::bigint,
-        (SELECT COUNT(DISTINCT (resource_type, resource_id)) FROM authz.tuples WHERE namespace = p_namespace)::bigint;
+        (SELECT COUNT(*)::bigint AS hierarchy_count
+         FROM authz.permission_hierarchy WHERE namespace IN ('global', p_namespace)) h;
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 

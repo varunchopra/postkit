@@ -422,7 +422,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/023_list.sql:230*
+*Source: authz/src/functions/023_list.sql:285*
 
 ---
 
@@ -524,7 +524,7 @@ SELECT authz.grant_to_resources_bulk('doc', ARRAY['doc1', 'doc2', ...],
 'read', 'user', 'alice', NULL, 'default');
 ```
 
-*Source: authz/src/functions/032_maintenance.sql:74*
+*Source: authz/src/functions/032_maintenance.sql:81*
 
 ---
 

@@ -228,13 +228,26 @@ BEGIN
 
     RETURN QUERY
     SELECT
-        (SELECT COUNT(*) FROM authn.users WHERE namespace = p_namespace),
-        (SELECT COUNT(*) FROM authn.users WHERE namespace = p_namespace AND email_verified_at IS NOT NULL),
-        (SELECT COUNT(*) FROM authn.users WHERE namespace = p_namespace AND disabled_at IS NOT NULL),
-        (SELECT COUNT(*) FROM authn.sessions WHERE namespace = p_namespace AND revoked_at IS NULL AND expires_at > now()),
-        (SELECT COUNT(*) FROM authn.refresh_tokens WHERE namespace = p_namespace AND revoked_at IS NULL AND replaced_by IS NULL AND expires_at > now()),
-        (SELECT COUNT(*) FROM authn.api_keys WHERE namespace = p_namespace AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())),
-        (SELECT COUNT(DISTINCT user_id) FROM authn.credentials WHERE namespace = p_namespace AND disabled_at IS NULL AND consumed_at IS NULL);
+        u.total_users,
+        u.verified_users,
+        u.disabled_users,
+        s.cnt,
+        r.cnt,
+        a.cnt,
+        c.cnt
+    FROM
+        (SELECT COUNT(*) AS total_users,
+                COUNT(*) FILTER (WHERE email_verified_at IS NOT NULL) AS verified_users,
+                COUNT(*) FILTER (WHERE disabled_at IS NOT NULL) AS disabled_users
+         FROM authn.users WHERE namespace = p_namespace) u,
+        (SELECT COUNT(*) AS cnt FROM authn.sessions
+         WHERE namespace = p_namespace AND revoked_at IS NULL AND expires_at > now()) s,
+        (SELECT COUNT(*) AS cnt FROM authn.refresh_tokens
+         WHERE namespace = p_namespace AND revoked_at IS NULL AND replaced_by IS NULL AND expires_at > now()) r,
+        (SELECT COUNT(*) AS cnt FROM authn.api_keys
+         WHERE namespace = p_namespace AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())) a,
+        (SELECT COUNT(DISTINCT user_id) AS cnt FROM authn.credentials
+         WHERE namespace = p_namespace AND disabled_at IS NULL AND consumed_at IS NULL) c;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
 

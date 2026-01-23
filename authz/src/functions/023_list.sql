@@ -220,11 +220,66 @@ CREATE OR REPLACE FUNCTION authz.count_subjects(
 )
 RETURNS bigint
 AS $$
+    WITH RECURSIVE
+    -- Find resource and all ancestor resources (via parent relations)
+    resource_chain AS (
+        SELECT * FROM authz._expand_resource_ancestors(p_resource_type, p_resource_id, p_namespace)
+    ),
+    -- Find permissions that imply the requested permission
+    implied_by AS (
+        SELECT p_permission AS permission
+        UNION
+        SELECT h.permission
+        FROM implied_by ib
+        JOIN authz.permission_hierarchy h ON h.namespace IN ('global', p_namespace)
+            AND h.resource_type = p_resource_type
+            AND h.implies = ib.permission
+    ),
+    -- Expand from grantees down to leaf subjects
+    expanded_subjects AS (
+        -- Direct grantees on the resource or ancestors
+        SELECT
+            t.subject_type,
+            t.subject_id,
+            t.subject_relation,
+            1 AS depth
+        FROM authz.tuples t
+        JOIN implied_by ib ON t.relation = ib.permission
+        JOIN resource_chain rc ON t.resource_type = rc.resource_type
+            AND t.resource_id = rc.resource_id
+        WHERE t.namespace = p_namespace
+            AND (t.expires_at IS NULL OR t.expires_at > now())
+        UNION
+        -- Recursively find members of groups
+        SELECT
+            t.subject_type,
+            t.subject_id,
+            t.relation AS subject_relation,
+            es.depth + 1
+        FROM expanded_subjects es
+        JOIN authz.tuples t ON t.namespace = p_namespace
+            AND t.resource_type = es.subject_type
+            AND t.resource_id = es.subject_id
+            AND t.relation = COALESCE(es.subject_relation, 'member')
+            AND (t.expires_at IS NULL OR t.expires_at > now())
+        WHERE es.depth < authz._max_group_depth()
+    ),
+    -- Find leaf subjects (not groups with members)
+    leaf_subjects AS (
+        SELECT DISTINCT es.subject_type, es.subject_id
+        FROM expanded_subjects es
+        WHERE NOT EXISTS (
+            SELECT 1 FROM authz.tuples t
+            WHERE t.namespace = p_namespace
+              AND t.resource_type = es.subject_type
+              AND t.resource_id = es.subject_id
+              AND t.relation = 'member'
+        )
+    )
+    -- Count directly without ORDER BY or materialization
     SELECT COUNT(*)
-    FROM authz.list_subjects(
-        p_resource_type, p_resource_id, p_permission, p_namespace,
-        1000000, p_subject_type, NULL, NULL
-    );
+    FROM leaf_subjects ls
+    WHERE p_subject_type IS NULL OR ls.subject_type = p_subject_type;
 $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

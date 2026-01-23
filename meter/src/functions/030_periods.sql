@@ -219,35 +219,41 @@ CREATE FUNCTION meter.release_expired_reservations(
 )
 RETURNS int AS $$
 DECLARE
-    v_res RECORD;
-    v_count int := 0;
+    v_count int;
 BEGIN
-    FOR v_res IN
-        SELECT reservation_id, namespace, user_id, event_type, resource, unit, amount
+    -- Prevent concurrent calls for the same namespace
+    PERFORM pg_advisory_xact_lock(hashtext('meter.release_expired:' || COALESCE(p_namespace, '*')));
+
+    -- Update accounts in one statement using aggregated amounts per account
+    WITH expired_agg AS (
+        SELECT namespace, user_id, event_type, resource, unit, SUM(amount) AS total_amount
         FROM meter.reservations
         WHERE status = 'active'
           AND expires_at <= now()
           AND (p_namespace IS NULL OR namespace = p_namespace)
-        FOR UPDATE SKIP LOCKED
-    LOOP
-        -- Release hold from account (no balance change, no ledger entry)
-        UPDATE meter.accounts SET
-            reserved = reserved - v_res.amount,
-            updated_at = now()
-        WHERE namespace = v_res.namespace
-          AND user_id IS NOT DISTINCT FROM v_res.user_id
-          AND event_type = v_res.event_type
-          AND resource = v_res.resource
-          AND unit = v_res.unit;
+        GROUP BY namespace, user_id, event_type, resource, unit
+    )
+    UPDATE meter.accounts a SET
+        reserved = reserved - e.total_amount,
+        updated_at = now()
+    FROM expired_agg e
+    WHERE a.namespace = e.namespace
+      AND a.user_id IS NOT DISTINCT FROM e.user_id
+      AND a.event_type = e.event_type
+      AND a.resource = e.resource
+      AND a.unit = e.unit;
 
-        -- Mark reservation as expired
+    -- Mark all expired reservations in one statement
+    WITH expired AS (
         UPDATE meter.reservations SET
             status = 'expired',
             completed_at = now()
-        WHERE reservation_id = v_res.reservation_id;
-
-        v_count := v_count + 1;
-    END LOOP;
+        WHERE status = 'active'
+          AND expires_at <= now()
+          AND (p_namespace IS NULL OR namespace = p_namespace)
+        RETURNING 1
+    )
+    SELECT COUNT(*) INTO v_count FROM expired;
 
     RETURN v_count;
 END;
