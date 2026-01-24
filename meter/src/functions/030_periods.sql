@@ -23,6 +23,11 @@ CREATE FUNCTION meter.set_period_config(
 )
 RETURNS void AS $$
 BEGIN
+    PERFORM meter._validate_namespace(p_namespace);
+    PERFORM meter._validate_event_type(p_event_type);
+    PERFORM meter._validate_unit(p_unit);
+    PERFORM meter._validate_positive(p_period_allocation, 'period_allocation');
+
     UPDATE meter.accounts SET
         period_start = p_period_start,
         period_allocation = p_period_allocation,
@@ -74,6 +79,10 @@ DECLARE
     v_expire numeric;
     v_new_balance numeric;
 BEGIN
+    PERFORM meter._validate_namespace(p_namespace);
+    PERFORM meter._validate_event_type(p_event_type);
+    PERFORM meter._validate_unit(p_unit);
+
     -- Lock account
     SELECT * INTO v_account
     FROM meter.accounts
@@ -105,8 +114,8 @@ BEGIN
     IF v_expire > 0 THEN
         PERFORM meter._insert_ledger(
             p_namespace, p_user_id, p_event_type, p_resource, p_unit,
-            'expiration', -v_expire, v_account.balance - v_expire, now(),
-            'period_close:' || p_period_end, NULL, NULL,
+            'expiration', -v_expire, v_account.balance - v_expire, v_account.reserved,
+            now(), 'period_close:' || p_period_end, NULL, NULL,
             jsonb_build_object('period_end', p_period_end)
         );
     END IF;
@@ -155,6 +164,10 @@ DECLARE
     v_new_balance numeric;
     v_entry_id bigint;
 BEGIN
+    PERFORM meter._validate_namespace(p_namespace);
+    PERFORM meter._validate_event_type(p_event_type);
+    PERFORM meter._validate_unit(p_unit);
+
     -- Get account
     SELECT * INTO v_account
     FROM meter.accounts
@@ -185,8 +198,8 @@ BEGIN
     -- Create allocation entry
     v_entry_id := meter._insert_ledger(
         p_namespace, p_user_id, p_event_type, p_resource, p_unit,
-        'allocation', v_allocation, v_new_balance, now(),
-        'period_open:' || p_period_start, NULL, NULL,
+        'allocation', v_allocation, v_new_balance, v_account.reserved,
+        now(), 'period_open:' || p_period_start, NULL, NULL,
         jsonb_build_object('period_start', p_period_start)
     );
 

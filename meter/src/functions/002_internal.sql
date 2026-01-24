@@ -103,6 +103,7 @@ CREATE FUNCTION meter._insert_ledger(
     p_entry_type text,
     p_amount numeric,
     p_balance_after numeric,
+    p_reserved_after numeric,
     p_event_time timestamptz,
     p_idempotency_key text DEFAULT NULL,
     p_reservation_id text DEFAULT NULL,
@@ -118,12 +119,12 @@ BEGIN
 
     INSERT INTO meter.ledger (
         namespace, user_id, event_type, resource, unit,
-        entry_type, amount, balance_after, event_time,
+        entry_type, amount, balance_after, reserved_after, event_time,
         idempotency_key, reservation_id, reference_id,
         actor_id, on_behalf_of, reason, request_id, metadata
     ) VALUES (
         p_namespace, p_user_id, p_event_type, COALESCE(p_resource, ''), p_unit,
-        p_entry_type, p_amount, p_balance_after, p_event_time,
+        p_entry_type, p_amount, p_balance_after, p_reserved_after, p_event_time,
         p_idempotency_key, p_reservation_id, p_reference_id,
         v_ctx.actor_id, v_ctx.on_behalf_of, v_ctx.reason, v_ctx.request_id, p_metadata
     )

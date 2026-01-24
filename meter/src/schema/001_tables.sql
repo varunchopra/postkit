@@ -88,6 +88,7 @@ CREATE TABLE meter.ledger (
     entry_type text NOT NULL,
     amount numeric NOT NULL,            -- signed: + credit, - debit
     balance_after numeric NOT NULL,     -- running balance after this entry
+    reserved_after numeric,             -- account's reserved amount after this entry
 
     -- Timing
     event_time timestamptz NOT NULL,    -- when usage occurred
@@ -146,6 +147,7 @@ CREATE TABLE meter.reservations (
 
     amount numeric NOT NULL,
     balance_at_create numeric NOT NULL,  -- account balance when reservation was created
+    reserved_at_create numeric,          -- account's reserved when reservation was created
 
     -- Lifecycle tracking
     status text NOT NULL DEFAULT 'active',

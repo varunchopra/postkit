@@ -222,7 +222,7 @@ Close a billing period, handle expiration and carry-over
 SELECT * FROM meter.close_period('alice', 'llm_call', 'tokens', NULL, '2025-01-31');
 ```
 
-*Source: meter/src/functions/030_periods.sql:48*
+*Source: meter/src/functions/030_periods.sql:53*
 
 ---
 
@@ -250,7 +250,7 @@ Open a new billing period with fresh allocation
 SELECT meter.open_period('alice', 'llm_call', 'tokens', NULL, '2025-02-01');
 ```
 
-*Source: meter/src/functions/030_periods.sql:128*
+*Source: meter/src/functions/030_periods.sql:137*
 
 ---
 
@@ -272,7 +272,7 @@ Mark expired reservations as 'expired' and release their holds. Distinct from 'r
 SELECT meter.release_expired_reservations();
 ```
 
-*Source: meter/src/functions/030_periods.sql:208*
+*Source: meter/src/functions/030_periods.sql:221*
 
 ---
 
@@ -542,7 +542,7 @@ SELECT * FROM meter.commit('res_abc123', 2347);
 SELECT consumed - reserved_amount AS overage FROM meter.commit('res_abc123', 500);
 ```
 
-*Source: meter/src/functions/012_reserve.sql:129*
+*Source: meter/src/functions/012_reserve.sql:124*
 
 ---
 
@@ -596,7 +596,7 @@ Release a reservation without consuming. Does not affect balance or create ledge
 SELECT meter.release('res_abc123');
 ```
 
-*Source: meter/src/functions/012_reserve.sql:232*
+*Source: meter/src/functions/012_reserve.sql:228*
 
 ---
 

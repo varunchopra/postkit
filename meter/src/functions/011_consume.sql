@@ -58,19 +58,14 @@ BEGIN
     IF p_idempotency_key IS NOT NULL THEN
         PERFORM meter._idempotency_lock(p_namespace, p_idempotency_key);
 
-        SELECT l.id, l.balance_after INTO v_existing
+        SELECT l.id, l.balance_after, l.reserved_after INTO v_existing
         FROM meter.ledger l
         WHERE l.namespace = p_namespace AND l.idempotency_key = p_idempotency_key;
 
         IF FOUND THEN
             RETURN QUERY SELECT true, v_existing.balance_after,
-                v_existing.balance_after - COALESCE((
-                    SELECT a.reserved FROM meter.accounts a
-                    WHERE a.namespace = p_namespace AND a.user_id = p_user_id
-                      AND a.event_type = p_event_type
-                      AND a.resource = COALESCE(p_resource, '')
-                      AND a.unit = p_unit
-                ), 0), v_existing.id;
+                v_existing.balance_after - COALESCE(v_existing.reserved_after, 0),
+                v_existing.id;
             RETURN;
         END IF;
     END IF;
@@ -92,8 +87,8 @@ BEGIN
     -- Insert ledger entry (negative amount)
     v_entry_id := meter._insert_ledger(
         p_namespace, p_user_id, p_event_type, p_resource, p_unit,
-        'consumption', -p_amount, v_new_balance, v_event_time,
-        p_idempotency_key, NULL, NULL, p_metadata
+        'consumption', -p_amount, v_new_balance, v_account.reserved,
+        v_event_time, p_idempotency_key, NULL, NULL, p_metadata
     );
 
     -- Update account

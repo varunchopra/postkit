@@ -760,3 +760,69 @@ class TestIdempotencyWithInterveningTransactions:
         )
         assert result2["entry_id"] == result1["entry_id"]
         assert result2["balance"] == 1500  # Historical, NOT 1300
+
+
+class TestIdempotencyAvailableValue:
+    """Regression tests: idempotent retries must return historical available."""
+
+    def test_consume_idempotent_retry_returns_historical_available(self, meter):
+        """Consume retry must return historical available, not mixed state."""
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+
+        # Create a reservation so reserved > 0
+        meter.reserve("alice", "llm_call", 200, "tokens")
+        # State: balance=1000, reserved=200, available=800
+
+        # First consume with idempotency key
+        result1 = meter.consume(
+            "alice", "llm_call", 100, "tokens", idempotency_key="consume-avail-1"
+        )
+        # State after: balance=900, reserved=200, available=700
+        assert result1["balance"] == 900
+        assert result1["available"] == 700
+
+        # Create another reservation (changes reserved)
+        meter.reserve("alice", "llm_call", 300, "tokens")
+        # State: balance=900, reserved=500, available=400
+
+        current = meter.get_balance("alice", "llm_call", "tokens")
+        assert current["reserved"] == 500
+
+        # Retry - MUST return HISTORICAL available (700), not mixed state (400)
+        result2 = meter.consume(
+            "alice", "llm_call", 100, "tokens", idempotency_key="consume-avail-1"
+        )
+        assert result2["entry_id"] == result1["entry_id"]
+        assert result2["balance"] == 900  # Historical balance
+        assert result2["available"] == 700  # Historical available, NOT 400
+
+    def test_reserve_idempotent_retry_returns_historical_available(self, meter):
+        """Reserve retry must return historical available, not mixed state."""
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+
+        # Create initial reservation
+        meter.reserve("alice", "llm_call", 200, "tokens")
+        # State: balance=1000, reserved=200, available=800
+
+        # Reserve with idempotency key
+        result1 = meter.reserve(
+            "alice", "llm_call", 100, "tokens", idempotency_key="reserve-avail-1"
+        )
+        # State after: balance=1000, reserved=300, available=700
+        assert result1["balance"] == 1000
+        assert result1["available"] == 700
+
+        # Create another reservation (changes reserved)
+        meter.reserve("alice", "llm_call", 400, "tokens")
+        # State: balance=1000, reserved=700, available=300
+
+        current = meter.get_balance("alice", "llm_call", "tokens")
+        assert current["reserved"] == 700
+
+        # Retry - MUST return HISTORICAL available (700), not mixed state (300)
+        result2 = meter.reserve(
+            "alice", "llm_call", 100, "tokens", idempotency_key="reserve-avail-1"
+        )
+        assert result2["reservation_id"] == result1["reservation_id"]
+        assert result2["balance"] == 1000  # Historical balance
+        assert result2["available"] == 700  # Historical available, NOT 300

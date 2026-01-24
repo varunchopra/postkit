@@ -63,8 +63,8 @@ BEGIN
     -- Insert ledger entry
     v_entry_id := meter._insert_ledger(
         p_namespace, p_user_id, p_event_type, p_resource, p_unit,
-        'allocation', p_amount, v_new_balance, v_event_time,
-        p_idempotency_key, NULL, NULL, p_metadata
+        'allocation', p_amount, v_new_balance, v_account.reserved,
+        v_event_time, p_idempotency_key, NULL, NULL, p_metadata
     );
 
     -- Update account

@@ -1,5 +1,7 @@
 """Namespace validation tests for meter module."""
 
+from datetime import date
+
 import pytest
 from postkit.meter import MeterError, MeterValidationError
 
@@ -91,3 +93,23 @@ class TestValidationErrorType:
     def test_meter_validation_error_is_meter_error(self):
         """MeterValidationError is a subclass of MeterError for backwards compatibility."""
         assert issubclass(MeterValidationError, MeterError)
+
+
+class TestPeriodFunctionValidation:
+    """Period functions call the same validators as allocate."""
+
+    def test_set_period_config_validates_inputs(self, meter):
+        with pytest.raises(MeterValidationError):
+            meter.set_period_config("user", "", "unit", None, date(2025, 1, 1), 1000)
+
+    def test_close_period_validates_inputs(self, meter):
+        with pytest.raises(MeterValidationError):
+            meter.close_period("user", "", "unit", None, date(2025, 1, 31))
+
+    def test_open_period_validates_inputs(self, meter):
+        with pytest.raises(MeterValidationError):
+            meter.open_period("user", "", "unit", None, date(2025, 2, 1), 1000)
+
+    def test_set_period_config_validates_allocation(self, meter):
+        with pytest.raises(MeterValidationError):
+            meter.set_period_config("user", "event", "unit", None, date(2025, 1, 1), 0)

@@ -73,13 +73,7 @@ BEGIN
                 v_existing.status = 'active',
                 v_existing.reservation_id,
                 v_existing.balance_at_create,
-                v_existing.balance_at_create - COALESCE((
-                    SELECT a.reserved FROM meter.accounts a
-                    WHERE a.namespace = p_namespace AND a.user_id = p_user_id
-                      AND a.event_type = p_event_type
-                      AND a.resource = COALESCE(p_resource, '')
-                      AND a.unit = p_unit
-                ), 0),
+                v_existing.balance_at_create - COALESCE(v_existing.reserved_at_create, 0),
                 v_existing.expires_at;
             RETURN;
         END IF;
@@ -100,15 +94,16 @@ BEGIN
     v_reservation_id := 'res_' || replace(gen_random_uuid()::text, '-', '');
 
     -- Track reservation (NO ledger entry - reservations are holds, not balance changes)
+    -- Store reserved_at_create as value AFTER this reservation (for idempotent retry)
     INSERT INTO meter.reservations (
         reservation_id, namespace, user_id, event_type, resource, unit,
-        amount, balance_at_create, expires_at, status,
+        amount, balance_at_create, reserved_at_create, expires_at, status,
         idempotency_key, actor_id, request_id, metadata
     )
     SELECT
         v_reservation_id, p_namespace, p_user_id, p_event_type,
         COALESCE(p_resource, ''), p_unit,
-        p_amount, v_account.balance, v_expires_at, 'active',
+        p_amount, v_account.balance, v_account.reserved + p_amount, v_expires_at, 'active',
         p_idempotency_key, ctx.actor_id, ctx.request_id, p_metadata
     FROM meter._get_actor_context() ctx;
 
@@ -201,7 +196,8 @@ BEGIN
     IF p_actual_amount > 0 THEN
         v_entry_id := meter._insert_ledger(
             p_namespace, v_res.user_id, v_res.event_type, v_res.resource, v_res.unit,
-            'consumption', -p_actual_amount, v_new_balance, now(),
+            'consumption', -p_actual_amount, v_new_balance,
+            v_account.reserved - v_res.amount, now(),
             NULL, p_reservation_id, NULL, p_metadata
         );
     END IF;
