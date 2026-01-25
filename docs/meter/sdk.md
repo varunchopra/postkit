@@ -86,7 +86,7 @@ Calling close_period multiple times is safe but will recalculate based on curren
 **Returns:** Dict with expired (amount removed), carried_over (amount preserved),
 and new_balance (balance after expiration)
 
-*Source: sdk/src/postkit/meter/client.py:476*
+*Source: sdk/src/postkit/meter/client.py:474*
 
 ---
 
@@ -155,7 +155,7 @@ Not supported - meter module does not have audit events.
 
 The meter module uses a ledger-based design where all transactions are recorded in the ledger table. Use get_ledger() for transaction history instead.
 
-*Source: sdk/src/postkit/meter/client.py:625*
+*Source: sdk/src/postkit/meter/client.py:623*
 
 ---
 
@@ -189,10 +189,8 @@ if balance["available"] >= estimated_tokens:
     result = call_llm(prompt)
     meter.consume(user_id, "llm_call", result.tokens_used, "tokens", "claude-sonnet")
 else:
-    # Show quota exceeded message
-    raise QuotaExceededError(
-        f"Need {estimated_tokens} tokens but only {balance['available']} available"
-    )
+    # Insufficient quota - handle based on your application's needs
+    return {"error": "quota_exceeded", "available": balance["available"]}
 
 # Display remaining quota in UI
 balance = meter.get_balance(user_id, "api_request", "requests")
@@ -222,7 +220,7 @@ Get ledger entries for an account.
 
 **Returns:** List of ledger entry dicts
 
-*Source: sdk/src/postkit/meter/client.py:390*
+*Source: sdk/src/postkit/meter/client.py:388*
 
 ---
 
@@ -236,7 +234,7 @@ Get namespace statistics.
 
 **Returns:** Dict with counts and totals
 
-*Source: sdk/src/postkit/meter/client.py:606*
+*Source: sdk/src/postkit/meter/client.py:604*
 
 ---
 
@@ -256,7 +254,7 @@ Get aggregated consumption for a user.
 **Returns:** List of dicts with 'event_type', 'resource', 'unit',
 'total_consumed', 'event_count'
 
-*Source: sdk/src/postkit/meter/client.py:367*
+*Source: sdk/src/postkit/meter/client.py:365*
 
 ---
 
@@ -274,7 +272,7 @@ Get all balances for a user across all event types and resources.
 **Returns:** List of dicts with 'event_type', 'resource', 'unit', 'balance',
 'reserved', 'available'
 
-*Source: sdk/src/postkit/meter/client.py:351*
+*Source: sdk/src/postkit/meter/client.py:349*
 
 ---
 
@@ -302,7 +300,7 @@ NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key wit
 
 **Returns:** New balance after allocation
 
-*Source: sdk/src/postkit/meter/client.py:513*
+*Source: sdk/src/postkit/meter/client.py:511*
 
 ---
 
@@ -321,7 +319,7 @@ Checks two invariants:
 **Returns:** List of dicts with 'user_id', 'event_type', 'resource', 'unit',
 'issue_type', 'expected', 'actual', 'discrepancy'
 
-*Source: sdk/src/postkit/meter/client.py:589*
+*Source: sdk/src/postkit/meter/client.py:587*
 
 ---
 
@@ -358,7 +356,7 @@ No ledger entries are created because reservations are holds on existing balance
 
 **Returns:** Count of reservations that were expired and released.
 
-*Source: sdk/src/postkit/meter/client.py:565*
+*Source: sdk/src/postkit/meter/client.py:563*
 
 ---
 
@@ -434,6 +432,6 @@ Period dates use the DATE type (not TIMESTAMP). Timezone handling is the caller'
 - `period_allocation`: Amount to allocate each period (must be positive)
 - `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over
 
-*Source: sdk/src/postkit/meter/client.py:430*
+*Source: sdk/src/postkit/meter/client.py:428*
 
 ---

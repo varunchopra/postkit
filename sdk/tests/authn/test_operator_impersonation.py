@@ -585,6 +585,40 @@ class TestGetOperatorImpersonationContext:
         )
         assert context_after["is_operator_impersonating"] is False
 
+    def test_returns_false_when_target_disabled_direct(self, make_authn):
+        """Context returns false when target disabled_at is set directly.
+
+        This tests defense-in-depth: even if sessions aren't revoked,
+        the disabled_at check catches the disabled user. This mirrors
+        test_returns_false_when_target_disabled_direct in test_impersonation.py.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        imp = platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        # Set disabled_at directly WITHOUT revoking sessions.
+        # This simulates direct DB update, migration, or race condition.
+        customer.cursor.execute(
+            "UPDATE authn.users SET disabled_at = now() WHERE id = %s::uuid",
+            (target_id,),
+        )
+
+        context = platform.get_operator_impersonation_context(
+            str(imp["impersonation_session_id"])
+        )
+        assert context["is_operator_impersonating"] is False
+
 
 class TestListOperatorImpersonationsForTarget:
     """Tests for authn.list_operator_impersonations_for_target()."""
@@ -687,6 +721,83 @@ class TestListOperatorImpersonationsForTarget:
         assert len(history) == 1
         assert history[0]["target_user_email"] == "target1@customer.com"
 
+    def test_is_active_false_when_target_disabled_direct(self, make_authn):
+        """is_active is false when target disabled_at is set directly.
+
+        Tests defense-in-depth: even if sessions aren't revoked, the disabled_at
+        check makes is_active return false.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        # Set disabled_at directly WITHOUT calling disable_user().
+        customer.cursor.execute(
+            "UPDATE authn.users SET disabled_at = now() WHERE id = %s::uuid",
+            (target_id,),
+        )
+
+        history = platform.list_operator_impersonations_for_target("customer")
+        assert len(history) == 1
+        assert history[0]["is_active"] is False
+
+    def test_is_active_false_when_target_deleted(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        customer.delete_user(target_id)
+
+        history = platform.list_operator_impersonations_for_target("customer")
+        assert len(history) == 1
+        assert history[0]["target_user_email"] == "target@customer.com"
+        assert history[0]["is_active"] is False
+
+    def test_is_active_false_when_operator_deleted(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        platform.delete_user(operator_id)
+
+        history = platform.list_operator_impersonations_for_target("customer")
+        assert len(history) == 1
+        assert history[0]["operator_email"] == "operator@platform.com"
+        assert history[0]["is_active"] is False
+
 
 class TestListOperatorImpersonationsByOperator:
     """Tests for authn.list_operator_impersonations_by_operator()."""
@@ -726,6 +837,64 @@ class TestListOperatorImpersonationsByOperator:
         target_namespaces = {h["target_namespace"] for h in history}
         assert target_namespaces == {"customer1", "customer2"}
 
+    def test_is_active_false_when_target_disabled_direct(self, make_authn):
+        """is_active is false when target disabled_at is set directly.
+
+        Tests defense-in-depth: even if sessions aren't revoked, the disabled_at
+        check makes is_active return false.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        # Set disabled_at directly WITHOUT calling disable_user().
+        customer.cursor.execute(
+            "UPDATE authn.users SET disabled_at = now() WHERE id = %s::uuid",
+            (target_id,),
+        )
+
+        history = platform.list_operator_impersonations_by_operator(
+            operator_id, "platform"
+        )
+        assert len(history) == 1
+        assert history[0]["is_active"] is False
+
+    def test_is_active_false_when_operator_deleted(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        platform.delete_user(operator_id)
+
+        history = platform.list_operator_impersonations_by_operator(
+            operator_id, "platform"
+        )
+        assert len(history) == 1
+        assert history[0]["target_user_email"] == "target@customer.com"
+        assert history[0]["is_active"] is False
+
 
 class TestListActiveOperatorImpersonations:
     """Tests for authn.list_active_operator_impersonations()."""
@@ -763,6 +932,66 @@ class TestListActiveOperatorImpersonations:
 
         assert len(active) == 1
         assert active[0]["target_user_email"] == "target2@customer.com"
+
+    def test_excludes_impersonations_with_disabled_operator_direct(self, make_authn):
+        """Does not list impersonations where operator disabled_at is set directly.
+
+        Tests defense-in-depth: even if sessions aren't revoked, the disabled_at
+        check excludes impersonations by disabled operators.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        # Set disabled_at directly WITHOUT calling disable_user().
+        platform.cursor.execute(
+            "UPDATE authn.users SET disabled_at = now() WHERE id = %s::uuid",
+            (operator_id,),
+        )
+
+        active = platform.list_active_operator_impersonations()
+        assert len(active) == 0
+
+    def test_excludes_impersonations_with_disabled_target_direct(self, make_authn):
+        """Does not list impersonations where target disabled_at is set directly.
+
+        Tests defense-in-depth: even if sessions aren't revoked, the disabled_at
+        check excludes impersonations of disabled targets.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+        )
+
+        # Set disabled_at directly WITHOUT calling disable_user().
+        customer.cursor.execute(
+            "UPDATE authn.users SET disabled_at = now() WHERE id = %s::uuid",
+            (target_id,),
+        )
+
+        active = platform.list_active_operator_impersonations()
+        assert len(active) == 0
 
 
 class TestGetOperatorAuditEvents:

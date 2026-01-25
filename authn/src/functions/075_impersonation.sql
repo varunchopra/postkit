@@ -410,8 +410,10 @@ CREATE OR REPLACE FUNCTION authn._end_impersonations_for_user(
 RETURNS int AS $$
 DECLARE
     v_count int;
+    v_session_ids uuid[];
 BEGIN
-    -- End impersonations and revoke their sessions in one operation
+    -- End impersonations and collect their session IDs.
+    -- Use CTE RETURNING + SELECT to capture the impersonation count correctly.
     WITH ended AS (
         UPDATE authn.impersonation_sessions
         SET ended_at = now()
@@ -420,12 +422,18 @@ BEGIN
           AND ended_at IS NULL
         RETURNING impersonation_session_id
     )
-    UPDATE authn.sessions
-    SET revoked_at = now()
-    WHERE id IN (SELECT impersonation_session_id FROM ended WHERE impersonation_session_id IS NOT NULL)
-      AND revoked_at IS NULL;
+    SELECT COUNT(*), ARRAY_AGG(impersonation_session_id) FILTER (WHERE impersonation_session_id IS NOT NULL)
+    INTO v_count, v_session_ids
+    FROM ended;
 
-    GET DIAGNOSTICS v_count = ROW_COUNT;
+    -- Revoke the associated sessions.
+    IF v_session_ids IS NOT NULL AND array_length(v_session_ids, 1) > 0 THEN
+        UPDATE authn.sessions
+        SET revoked_at = now()
+        WHERE id = ANY(v_session_ids)
+          AND revoked_at IS NULL;
+    END IF;
+
     RETURN v_count;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;

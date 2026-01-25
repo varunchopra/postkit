@@ -334,10 +334,8 @@ class MeterClient(BaseClient):
                 result = call_llm(prompt)
                 meter.consume(user_id, "llm_call", result.tokens_used, "tokens", "claude-sonnet")
             else:
-                # Show quota exceeded message
-                raise QuotaExceededError(
-                    f"Need {estimated_tokens} tokens but only {balance['available']} available"
-                )
+                # Insufficient quota - handle based on your application's needs
+                return {"error": "quota_exceeded", "available": balance["available"]}
 
             # Display remaining quota in UI
             balance = meter.get_balance(user_id, "api_request", "requests")

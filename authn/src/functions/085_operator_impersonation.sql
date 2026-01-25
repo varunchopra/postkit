@@ -445,11 +445,13 @@ BEGIN
     FROM authn.operator_impersonation_sessions ois
     JOIN authn.sessions s ON s.id = ois.impersonation_session_id
     JOIN authn.users operator ON operator.id = ois.operator_id AND operator.namespace = ois.operator_namespace
+    JOIN authn.users target ON target.id = ois.target_user_id AND target.namespace = ois.target_namespace
     WHERE ois.impersonation_session_id = p_session_id
       AND ois.ended_at IS NULL
       AND ois.expires_at > now()
       AND s.revoked_at IS NULL
-      AND operator.disabled_at IS NULL;
+      AND operator.disabled_at IS NULL
+      AND target.disabled_at IS NULL;
 
     -- If no rows returned, return a single row with is_operator_impersonating=false
     IF NOT FOUND THEN
@@ -520,9 +522,13 @@ BEGIN
         ois.started_at,
         ois.expires_at,
         ois.ended_at,
-        (ois.ended_at IS NULL AND ois.expires_at > now() AND s.id IS NOT NULL AND s.revoked_at IS NULL) AS is_active
+        (ois.ended_at IS NULL AND ois.expires_at > now() AND s.id IS NOT NULL AND s.revoked_at IS NULL
+         AND op.id IS NOT NULL AND op.disabled_at IS NULL
+         AND tgt.id IS NOT NULL AND tgt.disabled_at IS NULL) AS is_active
     FROM authn.operator_impersonation_sessions ois
     LEFT JOIN authn.sessions s ON s.id = ois.impersonation_session_id
+    LEFT JOIN authn.users op ON op.id = ois.operator_id AND op.namespace = ois.operator_namespace
+    LEFT JOIN authn.users tgt ON tgt.id = ois.target_user_id AND tgt.namespace = ois.target_namespace
     WHERE ois.target_namespace = p_target_namespace
       AND (p_target_user_id IS NULL OR ois.target_user_id = p_target_user_id)
     ORDER BY ois.started_at DESC
@@ -576,9 +582,13 @@ BEGIN
         ois.started_at,
         ois.expires_at,
         ois.ended_at,
-        (ois.ended_at IS NULL AND ois.expires_at > now() AND s.id IS NOT NULL AND s.revoked_at IS NULL) AS is_active
+        (ois.ended_at IS NULL AND ois.expires_at > now() AND s.id IS NOT NULL AND s.revoked_at IS NULL
+         AND op.id IS NOT NULL AND op.disabled_at IS NULL
+         AND tgt.id IS NOT NULL AND tgt.disabled_at IS NULL) AS is_active
     FROM authn.operator_impersonation_sessions ois
     LEFT JOIN authn.sessions s ON s.id = ois.impersonation_session_id
+    LEFT JOIN authn.users op ON op.id = ois.operator_id AND op.namespace = ois.operator_namespace
+    LEFT JOIN authn.users tgt ON tgt.id = ois.target_user_id AND tgt.namespace = ois.target_namespace
     WHERE ois.operator_id = p_operator_id
       AND ois.operator_namespace = p_operator_namespace
     ORDER BY ois.started_at DESC
@@ -633,9 +643,13 @@ BEGIN
         ois.impersonation_session_id
     FROM authn.operator_impersonation_sessions ois
     JOIN authn.sessions s ON s.id = ois.impersonation_session_id
+    JOIN authn.users operator ON operator.id = ois.operator_id AND operator.namespace = ois.operator_namespace
+    JOIN authn.users target ON target.id = ois.target_user_id AND target.namespace = ois.target_namespace
     WHERE ois.ended_at IS NULL
       AND ois.expires_at > now()
       AND s.revoked_at IS NULL
+      AND operator.disabled_at IS NULL
+      AND target.disabled_at IS NULL
     ORDER BY ois.started_at DESC
     LIMIT p_limit;
 END;
@@ -761,3 +775,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION authn._end_operator_impersonations_for_operator FROM PUBLIC;
+
+-- NOTE: There is no _end_operator_impersonations_for_target by design. Tenant actions
+-- should not modify platform-initiated records. Defense-in-depth checks block
+-- impersonations of disabled targets at query time; records are preserved for audit.

@@ -439,3 +439,51 @@ class TestDisableUserInvalidatesTokens:
         authn.create_token(user_id, "new_hash", "password_reset")
         result = authn.consume_token("new_hash", "password_reset")
         assert result is not None
+
+
+class TestEndImpersonationsCount:
+    """Verify _end_impersonations_for_user returns correct count in audit."""
+
+    def test_returns_impersonation_count_not_session_count(self, authn):
+        """Audit log should show count of impersonations ended."""
+        admin_id = authn.create_user("admin@example.com", "hash1")
+        target1_id = authn.create_user("target1@example.com", "hash2")
+        target2_id = authn.create_user("target2@example.com", "hash3")
+        admin_session = authn.create_session(admin_id, "admin_token")
+
+        # Create two impersonations as actor
+        authn.start_impersonation(
+            admin_session, target1_id, "Support #1", token_hash="imp_token1"
+        )
+        authn.start_impersonation(
+            admin_session, target2_id, "Support #2", token_hash="imp_token2"
+        )
+
+        authn.disable_user(admin_id)
+
+        # Verify audit log has correct count
+        events = authn.get_audit_events(event_type="user_disabled")
+        assert len(events) == 1
+        assert events[0]["new_values"]["impersonations_ended"] == 2
+
+    def test_count_includes_impersonations_where_user_is_target(self, authn):
+        """Count includes impersonations where disabled user is the target."""
+        admin1_id = authn.create_user("admin1@example.com", "hash1")
+        admin2_id = authn.create_user("admin2@example.com", "hash2")
+        target_id = authn.create_user("target@example.com", "hash3")
+        admin1_session = authn.create_session(admin1_id, "admin1_token")
+        admin2_session = authn.create_session(admin2_id, "admin2_token")
+
+        # Two admins impersonating same target
+        authn.start_impersonation(
+            admin1_session, target_id, "Support #1", token_hash="imp_token1"
+        )
+        authn.start_impersonation(
+            admin2_session, target_id, "Support #2", token_hash="imp_token2"
+        )
+
+        authn.disable_user(target_id)
+
+        events = authn.get_audit_events(event_type="user_disabled")
+        assert len(events) == 1
+        assert events[0]["new_values"]["impersonations_ended"] == 2
