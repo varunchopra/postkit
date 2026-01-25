@@ -44,8 +44,7 @@ bulk_grant(permission: str, *, resource: Entity, subjects: list[Entity]) -> int
 
 Grant permission to many subjects at once.
 
-Subjects are grouped by type and inserted efficiently. Supports
-mixed subject types in a single call.
+Subjects are grouped by type and inserted efficiently. Supports mixed subject types in a single call.
 
 **Parameters:**
 - `permission`: The permission to grant
@@ -75,8 +74,7 @@ bulk_grant_resources(permission: str, *, resource_type: str, resource_ids: list[
 
 Grant permission to a subject on many resources at once.
 
-Optimized for bulk operations: uses single recompute instead of
-per-resource triggers.
+Optimized for bulk operations: uses single recompute instead of per-resource triggers.
 
 Returns count of tuples inserted.
 
@@ -152,8 +150,7 @@ check_any(subject: Entity, permissions: list[str], resource: Entity) -> bool
 
 Check if a subject has any of the specified permissions.
 
-Useful for "can edit OR admin" style checks. More efficient than
-multiple check() calls.
+Useful for "can edit OR admin" style checks. More efficient than multiple check() calls.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple
@@ -174,8 +171,7 @@ cleanup_expired() -> dict
 
 Remove expired grants.
 
-This is optional for storage management - expired entries are
-automatically filtered at query time.
+This is optional for storage management - expired entries are automatically filtered at query time.
 
 **Returns:** Dictionary with count of deleted tuples
 
@@ -245,8 +241,7 @@ clear_viewer() -> None
 
 Clear the viewer context.
 
-Should be called at end of request to prevent context leakage
-between requests in connection pools.
+Should be called at end of request to prevent context leakage between requests in connection pools.
 
 *Source: sdk/src/postkit/authz/client.py:101*
 
@@ -480,12 +475,9 @@ list_external_resources(subject: Entity, resource_type: str, permission: str) ->
 
 List resources shared with a subject from other namespaces.
 
-Returns resources where the subject is the recipient of a grant from
-a different namespace. The viewer context is automatically set to the
-subject if not already matching, enabling cross-namespace visibility.
+Returns resources where the subject is the recipient of a grant from a different namespace. The viewer context is automatically set to the subject if not already matching, enabling cross-namespace visibility.
 
-Note: If set_viewer() was previously called with a different subject,
-this method updates the viewer context to match the subject parameter.
+Note: If set_viewer() was previously called with a different subject, this method updates the viewer context to match the subject parameter.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("user", "alice"))
@@ -513,8 +505,7 @@ list_grants(subject: Entity, *, resource_type: str | None = None) -> list[dict]
 
 List all grants for a subject.
 
-Useful for inspecting what permissions an entity has,
-such as viewing API key scopes or auditing service access.
+Useful for inspecting what permissions an entity has, such as viewing API key scopes or auditing service access.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("api_key", "key-123"))
@@ -638,8 +629,7 @@ revoke_all_grants(subject: Entity, *, resource_type: str | None = None) -> int
 
 Revoke all grants for a subject (e.g., when deleting an API key).
 
-This is useful for cleanup when removing an entity that may have
-accumulated many permissions across different resources.
+This is useful for cleanup when removing an entity that may have accumulated many permissions across different resources.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("api_key", "key-123"))
@@ -767,9 +757,7 @@ set_viewer(subject: Entity) -> None
 
 Set the viewer context for cross-namespace queries.
 
-This enables the recipient_visibility RLS policy, allowing subjects
-to see grants where they are the recipient across ALL namespaces.
-Required for "Shared with me" / external resources functionality.
+This enables the recipient_visibility RLS policy, allowing subjects to see grants where they are the recipient across ALL namespaces. Required for "Shared with me" / external resources functionality.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("user", "alice"))

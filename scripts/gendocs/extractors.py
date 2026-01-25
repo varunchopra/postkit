@@ -94,28 +94,60 @@ def _extract_params_from_args(args_text: str) -> dict[str, str]:
 
 
 def _parse_docstring(docstring: str | None) -> ParsedDocstring:
-    """Parse a Google-style docstring."""
+    """Parse a Google-style docstring.
+
+    Uses indentation to distinguish prose from structured content. Lines at the
+    paragraph's base indent level are joined as prose. Lines indented beyond
+    base (or starting with list markers) are preserved on their own lines.
+    """
     if not docstring:
         return ParsedDocstring()
 
-    lines = docstring.strip().split("\n")
+    # Use cleandoc to normalize indentation before parsing.
+    # This handles the docstring artifact where the first line has no indent
+    # but continuation lines are indented to match the function body.
+    lines = inspect.cleandoc(docstring).split("\n")
     result = ParsedDocstring()
 
-    # Collect all text before the first section header (Args/Returns/Example/Raises)
-    brief_lines = []
+    # Collect lines before the first section header, tracking indent.
+    # Each entry is (text, indent) where indent is the original leading spaces.
+    paragraphs: list[list[tuple[str, int]]] = []
+    current_para: list[tuple[str, int]] = []
     i = 0
     while i < len(lines) and not re.match(
         r"^\s*(Args|Returns|Example|Raises):", lines[i]
     ):
-        line = lines[i].strip()
-        if line:
-            brief_lines.append(line)
-        elif brief_lines:
-            # Preserve paragraph breaks as newlines
-            brief_lines.append("")
+        raw = lines[i]
+        stripped = raw.lstrip()
+        indent = len(raw) - len(stripped)
+        text = stripped.rstrip()
+        if text:
+            current_para.append((text, indent))
+        elif current_para:
+            paragraphs.append(current_para)
+            current_para = []
         i += 1
-    # Join and clean up trailing blank lines
-    result.brief = "\n".join(brief_lines).strip()
+    if current_para:
+        paragraphs.append(current_para)
+
+    def join_paragraph(para_lines: list[tuple[str, int]]) -> str:
+        """Join paragraph lines. Indentation beyond base = structure, else prose."""
+        if not para_lines:
+            return ""
+        base_indent = para_lines[0][1]
+        result_lines = [para_lines[0][0]]
+        for text, indent in para_lines[1:]:
+            # Preserve structure if: indented beyond base, or starts with list marker.
+            is_structured = indent > base_indent or bool(
+                re.match(r"^[-*•]|\d+\.", text)
+            )
+            if is_structured:
+                result_lines.append(text)
+            else:
+                result_lines[-1] += " " + text
+        return "\n".join(result_lines)
+
+    result.brief = "\n\n".join(join_paragraph(p) for p in paragraphs)
 
     # Find sections
     text = "\n".join(lines)

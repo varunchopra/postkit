@@ -21,6 +21,61 @@ def test_multiline_brief():
     assert result.brief == "First line of description continues here."
 
 
+def test_multiparagraph_brief():
+    """Multi-paragraph briefs preserve paragraph breaks."""
+    doc = """
+    First paragraph here.
+
+    Second paragraph with more details.
+
+    Args:
+        x: A parameter
+    """
+    result = _parse_docstring(doc)
+    assert (
+        result.brief == "First paragraph here.\n\nSecond paragraph with more details."
+    )
+
+
+def test_brief_with_list():
+    """List items in brief are preserved on separate lines."""
+    doc = """
+    Returns None if:
+    - Token not found
+    - Token expired
+    - Already used
+
+    Args:
+        x: A parameter
+    """
+    result = _parse_docstring(doc)
+    assert (
+        result.brief
+        == "Returns None if:\n- Token not found\n- Token expired\n- Already used"
+    )
+
+
+def test_brief_with_indented_definitions():
+    """Indented definition lists are preserved based on indentation."""
+    doc = """
+    Register a schema for validation.
+
+    Pattern types:
+        Prefix (trailing /): for collections
+        Exact (no trailing /): for unique items
+
+    Args:
+        x: A parameter
+    """
+    result = _parse_docstring(doc)
+    assert result.brief == (
+        "Register a schema for validation.\n\n"
+        "Pattern types:\n"
+        "Prefix (trailing /): for collections\n"
+        "Exact (no trailing /): for unique items"
+    )
+
+
 def test_params():
     doc = """
     Do something.

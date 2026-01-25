@@ -330,8 +330,7 @@ merge(key: str, changes: dict) -> int
 
 Merge changes into config, creating new version.
 
-Performs a shallow merge - top-level keys in changes overwrite
-existing keys, other keys are preserved.
+Performs a shallow merge - top-level keys in changes overwrite existing keys, other keys are preserved.
 
 Validates the merged result against schema if one exists.
 

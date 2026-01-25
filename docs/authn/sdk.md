@@ -93,8 +93,7 @@ consume_token(token_hash: str, token_type: str) -> dict | None
 
 Consume a one-time token.
 
-Returns user info if valid, None otherwise.
-Token is marked as used after this call.
+Returns user info if valid, None otherwise. Token is marked as used after this call.
 
 *Source: sdk/src/postkit/authn/client.py:894*
 
@@ -401,8 +400,7 @@ get_credentials(email: str) -> dict | None
 
 Get credentials for login verification.
 
-Returns user_id, password_hash, and disabled_at for caller to verify.
-This is the ONLY method that returns password_hash.
+Returns user_id, password_hash, and disabled_at for caller to verify. This is the ONLY method that returns password_hash.
 
 *Source: sdk/src/postkit/authn/client.py:220*
 
@@ -416,8 +414,7 @@ get_impersonation_context(session_id: str) -> dict
 
 Check if a session is an impersonation session.
 
-Note: validate_session() already returns this info and auto-sets audit context,
-so this method is rarely needed. Use it for explicit lookups.
+Note: validate_session() already returns this info and auto-sets audit context, so this method is rarely needed. Use it for explicit lookups.
 
 **Parameters:**
 - `session_id`: Session ID to check
@@ -637,8 +634,7 @@ list_active_operator_impersonations(limit: int = 100) -> list[dict]
 
 List all active operator impersonations.
 
-For platform admin dashboard to see who is impersonating whom
-across all namespaces.
+For platform admin dashboard to see who is impersonating whom across all namespaces.
 
 **Parameters:**
 - `limit`: Maximum records to return
@@ -879,8 +875,7 @@ revoke_other_sessions(user_id: str, except_session_id: str) -> int
 
 Revoke all sessions except the specified one ("sign out other devices").
 
-Use this when a user wants to log out of all other devices while staying
-logged in on the current device.
+Use this when a user wants to log out of all other devices while staying logged in on the current device.
 
 **Parameters:**
 - `user_id`: User whose sessions to revoke
@@ -1001,8 +996,7 @@ start_impersonation(actor_session_id: str, target_user_id: str, reason: str, tok
 
 Start impersonating a user.
 
-Creates a new session that acts as the target user, with full audit trail.
-The calling application MUST verify authorization before calling this method.
+Creates a new session that acts as the target user, with full audit trail. The calling application MUST verify authorization before calling this method.
 
 **Parameters:**
 - `actor_session_id`: Session ID of the admin starting impersonation (cannot be an impersonation session - chaining is prevented)
@@ -1025,9 +1019,7 @@ start_operator_impersonation(operator_session_id: str, target_user_id: str, targ
 
 Start cross-namespace operator impersonation.
 
-Creates a new session in the target namespace that acts as the target user,
-with full audit trail. The calling application MUST verify the operator
-is authorized before calling this method.
+Creates a new session in the target namespace that acts as the target user, with full audit trail. The calling application MUST verify the operator is authorized before calling this method.
 
 **Parameters:**
 - `operator_session_id`: Session ID of the operator starting impersonation (cannot be an impersonation session - chaining is prevented)
@@ -1076,8 +1068,7 @@ update_sign_count(credential_id: str, new_count: int) -> bool
 
 Update WebAuthn sign count. Returns False if clone detected.
 
-SECURITY: A False return indicates potential authenticator cloning.
-The caller should log a security alert and potentially disable the credential.
+SECURITY: A False return indicates potential authenticator cloning. The caller should log a security alert and potentially disable the credential.
 
 **Parameters:**
 - `credential_id`: WebAuthn credential to update
@@ -1097,8 +1088,7 @@ validate_api_key(key_hash: str) -> dict | None
 
 Validate an API key.
 
-Returns key info if valid, None otherwise.
-Updates last_used_at on successful validation.
+Returns key info if valid, None otherwise. Updates last_used_at on successful validation.
 
 **Returns:** Dict with user_id, key_id, name, expires_at or None if invalid
 
@@ -1131,14 +1121,9 @@ validate_session(token_hash: str) -> dict | None
 
 Validate a session token.
 
-Returns user info if valid, None otherwise.
-Does not log to audit (hot path).
+Returns user info if valid, None otherwise. Does not log to audit (hot path).
 
-If the session is a same-namespace impersonation session, the response
-includes impersonation context (is_impersonating, impersonator_id,
-impersonator_email, impersonation_reason) and the audit actor context
-is automatically set. Does not detect cross-namespace operator
-impersonation; call get_operator_impersonation_context() for that.
+If the session is a same-namespace impersonation session, the response includes impersonation context (is_impersonating, impersonator_id, impersonator_email, impersonation_reason) and the audit actor context is automatically set. Does not detect cross-namespace operator impersonation; call get_operator_impersonation_context() for that.
 
 **Returns:** Dict with user_id, email, session_id, is_impersonating,
 impersonator_id, impersonator_email, impersonation_reason
