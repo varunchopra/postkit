@@ -1177,7 +1177,7 @@ Extend session absolute timeout (for "remember me", not idle timeout)
 SELECT authn.extend_session(token_hash, '30 days'); -- "remember me"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:156*
+*Source: authn/src/functions/020_sessions.sql:158*
 
 ---
 
@@ -1196,7 +1196,7 @@ List active sessions for "manage devices" UI
 SELECT * FROM authn.list_sessions(user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:318*
+*Source: authn/src/functions/020_sessions.sql:320*
 
 ---
 
@@ -1215,7 +1215,7 @@ Log out all sessions for a user (password change, security concern)
 SELECT authn.revoke_all_sessions(user_id); -- "Log out everywhere"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:241*
+*Source: authn/src/functions/020_sessions.sql:243*
 
 ---
 
@@ -1238,7 +1238,7 @@ Log out all sessions except the current one ("sign out other devices")
 SELECT authn.revoke_other_sessions(user_id, current_session_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:276*
+*Source: authn/src/functions/020_sessions.sql:278*
 
 ---
 
@@ -1255,7 +1255,7 @@ Log out a specific session
 SELECT authn.revoke_session(token_hash); -- User clicks "log out"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:203*
+*Source: authn/src/functions/020_sessions.sql:205*
 
 ---
 
@@ -1278,7 +1278,7 @@ Revoke a specific session by ID (for "manage devices" UI)
 SELECT authn.revoke_session_by_id(session_id, user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:354*
+*Source: authn/src/functions/020_sessions.sql:356*
 
 ---
 
@@ -1290,7 +1290,7 @@ authn.validate_session(p_token_hash: text, p_namespace: text) -> table(user_id: 
 
 Check if session is valid and get user info (hot path, no logging)
 
-**Returns:** user_id, email, session_id if valid. Empty if expired/revoked/disabled. Also returns impersonation context if this is an impersonation session. When impersonation is detected, automatically sets audit actor context. DESIGN NOTE: This function has a deliberate side effect for impersonation sessions. When an impersonation session is detected, it automatically calls set_actor() to configure the audit context. This is intentional for several reasons: 1. Convenience: Applications don't need to know about impersonation internals 2. Safety: Ensures all actions during impersonation are properly attributed in audit logs 3. Transparency: The impersonation context is always returned so apps can display it The function is marked VOLATILE due to this side effect. The side effect only triggers on the rare impersonation path (typically <0.01% of calls). For pure validation without side effects, check is_impersonating in the result and manage actor context manually. SECURITY NOTE: Token hash comparison uses PostgreSQL's = operator, which is not constant-time. Timing attacks are not practical here because: 1. Attacker must guess the SHA-256 hash (2^256 space), not the original token 2. Index lookup timing variance far exceeds string comparison variance 3. Network jitter (~1-10ms) drowns out comparison timing (~nanoseconds) 4. Even with perfect timing, reconstructing 256 bits via timing would require billions of precisely-timed queries Constant-time comparison would add overhead without meaningful security benefit. TRANSACTION NOTE: The auto-set actor context uses transaction-local settings (set_config with is_local=true). In autocommit mode, this context is lost when the implicit transaction commits. Callers using autocommit should use the returned impersonation context to set actor state at the application layer if needed for subsequent operations within the same request.
+**Returns:** user_id, email, session_id if valid. Empty if expired/revoked/disabled. Also returns same-namespace impersonation context if this is an impersonation session (from impersonation_sessions table). Does not detect cross-namespace operator impersonation; use get_operator_impersonation_context() for that. When impersonation is detected, automatically sets audit actor context. DESIGN NOTE: This function has a deliberate side effect for impersonation sessions. When an impersonation session is detected, it automatically calls set_actor() to configure the audit context. This is intentional for several reasons: 1. Convenience: Applications don't need to know about impersonation internals 2. Safety: Ensures all actions during impersonation are properly attributed in audit logs 3. Transparency: The impersonation context is always returned so apps can display it The function is marked VOLATILE due to this side effect. The side effect only triggers on the rare impersonation path (typically <0.01% of calls). For pure validation without side effects, check is_impersonating in the result and manage actor context manually. SECURITY NOTE: Token hash comparison uses PostgreSQL's = operator, which is not constant-time. Timing attacks are not practical here because: 1. Attacker must guess the SHA-256 hash (2^256 space), not the original token 2. Index lookup timing variance far exceeds string comparison variance 3. Network jitter (~1-10ms) drowns out comparison timing (~nanoseconds) 4. Even with perfect timing, reconstructing 256 bits via timing would require billions of precisely-timed queries Constant-time comparison would add overhead without meaningful security benefit. TRANSACTION NOTE: The auto-set actor context uses transaction-local settings (set_config with is_local=true). In autocommit mode, this context is lost when the implicit transaction commits. Callers using autocommit should use the returned impersonation context to set actor state at the application layer if needed for subsequent operations within the same request.
 
 **Example:**
 ```sql

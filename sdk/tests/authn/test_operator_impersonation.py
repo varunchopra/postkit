@@ -828,3 +828,47 @@ class TestGetOperatorAuditEvents:
 
         assert len(started_events) == 1
         assert len(ended_events) == 1
+
+
+class TestValidateSessionWithOperatorImpersonation:
+    """Tests documenting validate_session behavior with operator impersonation.
+
+    validate_session() intentionally does NOT return operator impersonation context.
+    This is by design: cross-namespace operations require explicit handling via
+    get_operator_impersonation_context().
+    """
+
+    def test_returns_is_impersonating_false_for_operator_impersonation(
+        self, make_authn
+    ):
+        """validate_session returns is_impersonating=false for operator impersonation.
+
+        This is intentional design, not a bug. Operator impersonation is cross-namespace
+        and requires explicit detection via get_operator_impersonation_context().
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Support ticket #123",
+        )
+
+        # validate_session intentionally does NOT return operator impersonation context
+        result = customer.validate_session("imp_token")
+
+        assert result is not None
+        assert result["is_impersonating"] is False  # Intentional - by design!
+        assert result["impersonator_id"] is None
+
+        # Applications must use get_operator_impersonation_context for cross-namespace
+        context = platform.get_operator_impersonation_context(str(result["session_id"]))
+        assert context["is_operator_impersonating"] is True
+        assert str(context["operator_id"]) == operator_id

@@ -272,9 +272,11 @@ class AuthnClient(BaseClient):
         Returns user info if valid, None otherwise.
         Does not log to audit (hot path).
 
-        If the session is an impersonation session, the response includes
-        impersonation context (is_impersonating, impersonator_id, impersonator_email,
-        impersonation_reason) and the audit actor context is automatically set.
+        If the session is a same-namespace impersonation session, the response
+        includes impersonation context (is_impersonating, impersonator_id,
+        impersonator_email, impersonation_reason) and the audit actor context
+        is automatically set. Does not detect cross-namespace operator
+        impersonation; call get_operator_impersonation_context() for that.
 
         Returns:
             Dict with user_id, email, session_id, is_impersonating,

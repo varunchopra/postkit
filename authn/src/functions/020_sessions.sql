@@ -50,7 +50,9 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 -- @function authn.validate_session
 -- @brief Check if session is valid and get user info (hot path, no logging)
 -- @returns user_id, email, session_id if valid. Empty if expired/revoked/disabled.
---   Also returns impersonation context if this is an impersonation session.
+--   Also returns same-namespace impersonation context if this is an impersonation
+--   session (from impersonation_sessions table). Does not detect cross-namespace
+--   operator impersonation; use get_operator_impersonation_context() for that.
 --   When impersonation is detected, automatically sets audit actor context.
 --
 -- DESIGN NOTE: This function has a deliberate side effect for impersonation sessions.
