@@ -505,8 +505,11 @@ class AuthzClient(BaseClient):
         List resources shared with a subject from other namespaces.
 
         Returns resources where the subject is the recipient of a grant from
-        a different namespace. Requires set_viewer() to enable cross-namespace
-        visibility.
+        a different namespace. The viewer context is automatically set to the
+        subject if not already matching, enabling cross-namespace visibility.
+
+        Note: If set_viewer() was previously called with a different subject,
+        this method updates the viewer context to match the subject parameter.
 
         Args:
             subject: The subject as (type, id) tuple (e.g., ("user", "alice"))
@@ -514,10 +517,11 @@ class AuthzClient(BaseClient):
             permission: Minimum permission level (uses global hierarchy)
 
         Returns:
-            List of dicts: namespace, resource_id, relation, created_at, expires_at
+            List of dicts with: namespace, resource_id, relation, created_at,
+            expires_at
 
         Example:
-            authz.set_viewer(("user", "alice"))
+            # Viewer is automatically set; explicit call not required.
             shared = authz.list_external_resources(("user", "alice"), "note", "view")
         """
         subject_type, subject_id = subject

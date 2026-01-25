@@ -93,6 +93,9 @@ consume_token(token_hash: str, token_type: str) -> dict | None
 
 Consume a one-time token.
 
+Returns user info if valid, None otherwise.
+Token is marked as used after this call.
+
 *Source: sdk/src/postkit/authn/client.py:892*
 
 ---
@@ -124,6 +127,8 @@ create_refresh_token(session_id: str, token_hash: str, expires_in: timedelta | N
 ```
 
 Create a refresh token for a session.
+
+Call this after create_session() to enable token rotation.
 
 **Parameters:**
 - `session_id`: Session ID to associate with
@@ -275,6 +280,8 @@ end_impersonation(impersonation_id: str) -> bool
 
 End an impersonation session early.
 
+Revokes the impersonation session and marks the impersonation as ended.
+
 **Parameters:**
 - `impersonation_id`: The impersonation to end
 
@@ -291,6 +298,8 @@ end_operator_impersonation(impersonation_id: str) -> bool
 ```
 
 End an operator impersonation session early.
+
+Revokes the impersonation session and marks the impersonation as ended.
 
 **Parameters:**
 - `impersonation_id`: The impersonation to end
@@ -322,6 +331,8 @@ get_api_key(key_id: str, user_id: str) -> dict | None
 ```
 
 Get an API key by ID if owned by user.
+
+Use this for O(1) ownership verification instead of listing all keys.
 
 **Parameters:**
 - `key_id`: The API key ID to look up
@@ -390,6 +401,9 @@ get_credentials(email: str) -> dict | None
 
 Get credentials for login verification.
 
+Returns user_id, password_hash, and disabled_at for caller to verify.
+This is the ONLY method that returns password_hash.
+
 *Source: sdk/src/postkit/authn/client.py:220*
 
 ---
@@ -401,6 +415,9 @@ get_impersonation_context(session_id: str) -> dict
 ```
 
 Check if a session is an impersonation session.
+
+Note: validate_session() already returns this info and auto-sets audit context,
+so this method is rarely needed. Use it for explicit lookups.
 
 **Parameters:**
 - `session_id`: Session ID to check
@@ -604,6 +621,8 @@ list_active_impersonations() -> list[dict]
 
 List all active impersonations in the namespace.
 
+For admin dashboard to see who is impersonating whom.
+
 **Returns:** List of active impersonation records with actor/target info
 
 *Source: sdk/src/postkit/authn/client.py:453*
@@ -617,6 +636,9 @@ list_active_operator_impersonations(limit: int = 100) -> list[dict]
 ```
 
 List all active operator impersonations.
+
+For platform admin dashboard to see who is impersonating whom
+across all namespaces.
 
 **Parameters:**
 - `limit`: Maximum records to return
@@ -685,6 +707,8 @@ list_operator_impersonations_for_target(target_namespace: str, limit: int = 100,
 
 List operator impersonation history affecting a target namespace.
 
+For tenant admins to see who from the platform accessed their users.
+
 **Parameters:**
 - `target_namespace`: Namespace to query
 - `limit`: Maximum records to return
@@ -703,6 +727,8 @@ list_refresh_tokens(user_id: str) -> list[dict]
 ```
 
 List active refresh tokens for a user.
+
+Does not return token_hash. For "manage devices" UI.
 
 *Source: sdk/src/postkit/authn/client.py:774*
 
@@ -853,6 +879,9 @@ revoke_other_sessions(user_id: str, except_session_id: str) -> int
 
 Revoke all sessions except the specified one ("sign out other devices").
 
+Use this when a user wants to log out of all other devices while staying
+logged in on the current device.
+
 **Parameters:**
 - `user_id`: User whose sessions to revoke
 - `except_session_id`: Session ID to preserve (the current session)
@@ -915,6 +944,13 @@ rotate_refresh_token(old_token_hash: str, new_token_hash: str, expires_in: timed
 
 Rotate a refresh token (invalidate old, issue new).
 
+Returns None if:
+- Token not found
+- Token expired
+- Token already rotated (reuse attack - entire family revoked!)
+- Associated session revoked/expired
+- User disabled
+
 **Parameters:**
 - `old_token_hash`: Hash of token being rotated
 - `new_token_hash`: Hash of new token to issue
@@ -965,6 +1001,9 @@ start_impersonation(actor_session_id: str, target_user_id: str, reason: str, tok
 
 Start impersonating a user.
 
+Creates a new session that acts as the target user, with full audit trail.
+The calling application MUST verify authorization before calling this method.
+
 **Parameters:**
 - `actor_session_id`: Session ID of the admin starting impersonation (cannot be an impersonation session - chaining is prevented)
 - `target_user_id`: User ID to impersonate
@@ -985,6 +1024,10 @@ start_operator_impersonation(operator_session_id: str, target_user_id: str, targ
 ```
 
 Start cross-namespace operator impersonation.
+
+Creates a new session in the target namespace that acts as the target user,
+with full audit trail. The calling application MUST verify the operator
+is authorized before calling this method.
 
 **Parameters:**
 - `operator_session_id`: Session ID of the operator starting impersonation (cannot be an impersonation session - chaining is prevented)
@@ -1033,6 +1076,9 @@ update_sign_count(credential_id: str, new_count: int) -> bool
 
 Update WebAuthn sign count. Returns False if clone detected.
 
+SECURITY: A False return indicates potential authenticator cloning.
+The caller should log a security alert and potentially disable the credential.
+
 **Parameters:**
 - `credential_id`: WebAuthn credential to update
 - `new_count`: New sign count from authenticator
@@ -1051,6 +1097,9 @@ validate_api_key(key_hash: str) -> dict | None
 
 Validate an API key.
 
+Returns key info if valid, None otherwise.
+Updates last_used_at on successful validation.
+
 **Returns:** Dict with user_id, key_id, name, expires_at or None if invalid
 
 *Source: sdk/src/postkit/authn/client.py:811*
@@ -1064,6 +1113,8 @@ validate_refresh_token(token_hash: str) -> dict | None
 ```
 
 Validate a refresh token without rotating (read-only check).
+
+Use for inspection/debugging, not for actual token refresh.
 
 **Returns:** Dict with user_id, session_id, family_id, generation,
 expires_at, is_current - or None if invalid
@@ -1080,6 +1131,13 @@ validate_session(token_hash: str) -> dict | None
 
 Validate a session token.
 
+Returns user info if valid, None otherwise.
+Does not log to audit (hot path).
+
+If the session is an impersonation session, the response includes
+impersonation context (is_impersonating, impersonator_id, impersonator_email,
+impersonation_reason) and the audit actor context is automatically set.
+
 **Returns:** Dict with user_id, email, session_id, is_impersonating,
 impersonator_id, impersonator_email, impersonation_reason
 - or None if session invalid/expired/revoked.
@@ -1095,6 +1153,8 @@ verify_email(token_hash: str) -> dict | None
 ```
 
 Verify email using a token.
+
+Convenience method that consumes email_verify token and sets email_verified_at.
 
 *Source: sdk/src/postkit/authn/client.py:905*
 

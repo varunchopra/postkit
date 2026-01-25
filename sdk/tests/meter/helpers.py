@@ -114,3 +114,15 @@ class MeterTestHelpers:
             (self.namespace, user_id, event_type, resource or "", unit),
         )
         return float(self.cursor.fetchone()[0])
+
+    def set_reservation_expired(self, reservation_id: str) -> None:
+        """Force a reservation to be expired for testing.
+
+        Sets expires_at to one hour in the past, making it eligible for
+        release_expired_reservations() cleanup.
+        """
+        self.cursor.execute(
+            "UPDATE meter.reservations SET expires_at = now() - interval '1 hour' "
+            "WHERE reservation_id = %s AND namespace = %s",
+            (reservation_id, self.namespace),
+        )

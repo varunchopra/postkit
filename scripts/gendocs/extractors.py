@@ -101,18 +101,21 @@ def _parse_docstring(docstring: str | None) -> ParsedDocstring:
     lines = docstring.strip().split("\n")
     result = ParsedDocstring()
 
-    # First non-empty line is brief
+    # Collect all text before the first section header (Args/Returns/Example/Raises)
     brief_lines = []
     i = 0
     while i < len(lines) and not re.match(
         r"^\s*(Args|Returns|Example|Raises):", lines[i]
     ):
-        if lines[i].strip():
-            brief_lines.append(lines[i].strip())
+        line = lines[i].strip()
+        if line:
+            brief_lines.append(line)
         elif brief_lines:
-            break
+            # Preserve paragraph breaks as newlines
+            brief_lines.append("")
         i += 1
-    result.brief = " ".join(brief_lines)
+    # Join and clean up trailing blank lines
+    result.brief = "\n".join(brief_lines).strip()
 
     # Find sections
     text = "\n".join(lines)

@@ -68,7 +68,17 @@ Clear actor context.
 close_period(user_id: str, event_type: str, unit: str, resource: str | None, period_end: date) -> dict
 ```
 
-Close a billing period, handle expiration and carry-over.
+Close a billing period, handling expiration and carry-over.
+
+This is a ONE-WAY OPERATION. Expired balance is permanently removed from
+the account via an 'expiration' ledger entry. There is no "unclose".
+
+The carry-over calculation uses AVAILABLE balance (balance minus reserved),
+not total balance. Active reservations are protected from expiration.
+
+Calling close_period multiple times is safe but will recalculate based on
+current balance, which may produce different results if balance changed.
+For non-existent accounts, returns zeros without error.
 
 **Parameters:**
 - `user_id`: User ID
@@ -77,9 +87,10 @@ Close a billing period, handle expiration and carry-over.
 - `resource`: Optional resource identifier
 - `period_end`: Last day of the period being closed
 
-**Returns:** Dict with 'expired', 'carried_over', 'new_balance'
+**Returns:** Dict with expired (amount removed), carried_over (amount preserved),
+and new_balance (balance after expiration)
 
-*Source: sdk/src/postkit/meter/client.py:466*
+*Source: sdk/src/postkit/meter/client.py:476*
 
 ---
 
@@ -90,6 +101,10 @@ commit(reservation_id: str, actual_amount: float | int | Decimal, metadata: dict
 ```
 
 Commit a reservation with actual consumption.
+
+Meter measures. It does not enforce. If actual consumption exceeds
+reserved amount, the overage is recorded accurately. Caller decides
+policy (reject, allow, draw from parent pool, alert, etc.).
 
 **Parameters:**
 - `reservation_id`: Reservation to commit
@@ -144,7 +159,11 @@ get_audit_events(*args, **kwargs) -> list[dict]
 
 Not supported - meter module does not have audit events.
 
-*Source: sdk/src/postkit/meter/client.py:577*
+The meter module uses a ledger-based design where all transactions
+are recorded in the ledger table. Use get_ledger() for transaction
+history instead.
+
+*Source: sdk/src/postkit/meter/client.py:625*
 
 ---
 
@@ -155,6 +174,9 @@ get_balance(user_id: str, event_type: str, unit: str, resource: str | None = Non
 ```
 
 Get current balance for an account.
+
+Use this to check if a user can afford an operation before starting,
+or to display remaining quota in the UI.
 
 **Parameters:**
 - `user_id`: User ID
@@ -223,7 +245,7 @@ Get namespace statistics.
 
 **Returns:** Dict with counts and totals
 
-*Source: sdk/src/postkit/meter/client.py:558*
+*Source: sdk/src/postkit/meter/client.py:606*
 
 ---
 
@@ -273,17 +295,27 @@ open_period(user_id: str, event_type: str, unit: str, resource: str | None, peri
 
 Open a new billing period with allocation.
 
+Adds the allocation to the current balance (which includes any carry-over
+from a previous close_period call). Creates an 'allocation' ledger entry.
+
+The account must already exist (created via allocate() or set_period_config()).
+This is intentional: open_period is for recurring allocations, not initial
+account setup.
+
+NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key
+with allocate() if you need idempotent period allocations.
+
 **Parameters:**
 - `user_id`: User ID
 - `event_type`: Event type
 - `unit`: Unit of measurement
 - `resource`: Optional resource identifier
-- `period_start`: First day of new period
+- `period_start`: First day of the new period
 - `allocation`: Amount to allocate (uses period_allocation if None)
 
-**Returns:** New balance
+**Returns:** New balance after allocation
 
-*Source: sdk/src/postkit/meter/client.py:492*
+*Source: sdk/src/postkit/meter/client.py:513*
 
 ---
 
@@ -295,10 +327,14 @@ reconcile() -> list[dict]
 
 Check for discrepancies in account invariants.
 
+Checks two invariants:
+1. balance_mismatch: account.balance != SUM(ledger.amount)
+2. reserved_mismatch: account.reserved != SUM(active_reservations.amount)
+
 **Returns:** List of dicts with 'user_id', 'event_type', 'resource', 'unit',
 'issue_type', 'expected', 'actual', 'discrepancy'
 
-*Source: sdk/src/postkit/meter/client.py:541*
+*Source: sdk/src/postkit/meter/client.py:589*
 
 ---
 
@@ -327,9 +363,21 @@ release_expired_reservations() -> int
 
 Release all expired reservations for this namespace.
 
-**Returns:** Count of reservations released
+Finds all reservations where expires_at has passed and status is 'active',
+marks them as 'expired' (distinct from 'released' to distinguish automatic
+expiry from manual release), and reduces the corresponding account's
+reserved amount.
 
-*Source: sdk/src/postkit/meter/client.py:529*
+This is a maintenance operation typically run on a schedule (e.g., every
+minute via cron). Uses advisory locks to prevent concurrent execution for
+the same namespace.
+
+No ledger entries are created because reservations are holds on existing
+balance, not balance changes themselves.
+
+**Returns:** Count of reservations that were expired and released.
+
+*Source: sdk/src/postkit/meter/client.py:565*
 
 ---
 
@@ -340,6 +388,10 @@ reserve(user_id: str, event_type: str, amount: float | int | Decimal, unit: str,
 ```
 
 Reserve quota for pending operation (streaming, uncertain consumption).
+
+Reservations are HOLDS, not balance changes. They don't create ledger
+entries. The hold is tracked in accounts.reserved and the reservations
+table. Only actual consumption (via commit) affects balance.
 
 **Parameters:**
 - `user_id`: User ID (required)
@@ -390,14 +442,22 @@ set_period_config(user_id: str, event_type: str, unit: str, resource: str | None
 
 Configure period settings for an account.
 
+Sets up recurring allocation parameters for period-based billing. If the
+account does not exist, it is created with zero balance. If it exists,
+only the period fields are updated; existing balance is preserved.
+
+Period dates use the DATE type (not TIMESTAMP). Timezone handling is the
+caller's responsibility; dates represent calendar day boundaries in your
+application's billing context.
+
 **Parameters:**
 - `user_id`: User ID
-- `event_type`: Event type
-- `unit`: Unit of measurement
-- `resource`: Optional resource identifier
-- `period_start`: First day of the period
-- `period_allocation`: Amount granted each period
-- `carry_over_limit`: Max unused to roll forward (None = no limit)
+- `event_type`: Event type ('llm_call', 'api_request', etc.)
+- `unit`: Unit of measurement ('tokens', 'requests', etc.)
+- `resource`: Optional resource identifier ('claude-sonnet', etc.)
+- `period_start`: First day of the billing period
+- `period_allocation`: Amount to allocate each period (must be positive)
+- `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over
 
 *Source: sdk/src/postkit/meter/client.py:430*
 

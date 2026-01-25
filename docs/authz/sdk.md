@@ -10,6 +10,12 @@ add_hierarchy_rule(resource_type: str, permission: str, implies: str)
 
 Add a single hierarchy rule (for complex/branching hierarchies).
 
+Hierarchies are stored in the client's namespace:
+- Use namespace="global" for app-wide defaults (all tenants inherit)
+- Use tenant namespace (e.g., "org:xxx") for org-specific customizations
+
+Permission checks look at BOTH global AND tenant hierarchies.
+
 **Parameters:**
 - `resource_type`: The resource type
 - `permission`: The higher permission
@@ -26,7 +32,7 @@ org_authz = AuthzClient(cursor, namespace="org:acme")
 org_authz.add_hierarchy_rule("doc", "legal_approver", "view")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:754*
+*Source: sdk/src/postkit/authz/client.py:758*
 
 ---
 
@@ -37,6 +43,9 @@ bulk_grant(permission: str, *, resource: Entity, subjects: list[Entity]) -> int
 ```
 
 Grant permission to many subjects at once.
+
+Subjects are grouped by type and inserted efficiently. Supports
+mixed subject types in a single call.
 
 **Parameters:**
 - `permission`: The permission to grant
@@ -54,7 +63,7 @@ authz.bulk_grant("read", resource=("doc", "1"), subjects=[
 ])
 ```
 
-*Source: sdk/src/postkit/authz/client.py:949*
+*Source: sdk/src/postkit/authz/client.py:953*
 
 ---
 
@@ -66,6 +75,11 @@ bulk_grant_resources(permission: str, *, resource_type: str, resource_ids: list[
 
 Grant permission to a subject on many resources at once.
 
+Optimized for bulk operations: uses single recompute instead of
+per-resource triggers.
+
+Returns count of tuples inserted.
+
 **Example:**
 ```python
 authz.bulk_grant_resources(
@@ -76,7 +90,7 @@ authz.bulk_grant_resources(
 )
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1000*
+*Source: sdk/src/postkit/authz/client.py:1004*
 
 ---
 
@@ -87,6 +101,8 @@ check(subject: Entity, permission: str, resource: Entity) -> bool
 ```
 
 Check if a subject has a permission on a resource.
+
+This is the core authorization check - the question every service asks.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("user", "alice"))
@@ -115,6 +131,8 @@ check_all(subject: Entity, permissions: list[str], resource: Entity) -> bool
 
 Check if a subject has all of the specified permissions.
 
+Useful for operations requiring multiple permissions.
+
 **Parameters:**
 - `subject`: The subject as (type, id) tuple
 - `permissions`: List of permissions (subject needs all of them)
@@ -133,6 +151,9 @@ check_any(subject: Entity, permissions: list[str], resource: Entity) -> bool
 ```
 
 Check if a subject has any of the specified permissions.
+
+Useful for "can edit OR admin" style checks. More efficient than
+multiple check() calls.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple
@@ -153,6 +174,9 @@ cleanup_expired() -> dict
 
 Remove expired grants.
 
+This is optional for storage management - expired entries are
+automatically filtered at query time.
+
 **Returns:** Dictionary with count of deleted tuples
 
 **Example:**
@@ -161,7 +185,7 @@ result = authz.cleanup_expired()
 print(f"Removed {result['tuples_deleted']} expired grants")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1070*
+*Source: sdk/src/postkit/authz/client.py:1074*
 
 ---
 
@@ -197,7 +221,7 @@ Remove expiration from a grant (make it permanent).
 authz.clear_expiration("read", resource=("doc", "1"), subject=("user", "alice"))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1131*
+*Source: sdk/src/postkit/authz/client.py:1135*
 
 ---
 
@@ -209,7 +233,7 @@ clear_hierarchy(resource_type: str) -> int
 
 Clear all hierarchy rules for a resource type in the client's namespace.
 
-*Source: sdk/src/postkit/authz/client.py:792*
+*Source: sdk/src/postkit/authz/client.py:796*
 
 ---
 
@@ -220,6 +244,9 @@ clear_viewer() -> None
 ```
 
 Clear the viewer context.
+
+Should be called at end of request to prevent context leakage
+between requests in connection pools.
 
 *Source: sdk/src/postkit/authz/client.py:101*
 
@@ -232,6 +259,8 @@ count_subjects(permission: str, resource: Entity, *, subject_type: str | None = 
 ```
 
 Count subjects who have a permission on a resource.
+
+More efficient than len(list_subjects(...)) when you only need the count.
 
 **Parameters:**
 - `permission`: The permission to check
@@ -257,6 +286,8 @@ explain(subject: Entity, permission: str, resource: Entity) -> list[str]
 ```
 
 Explain why a subject has a permission.
+
+Returns the permission paths - useful for debugging and auditing.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple
@@ -298,7 +329,7 @@ new_expires = authz.extend_expiration("read", resource=("doc", "1"),
                                       extension=timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1167*
+*Source: sdk/src/postkit/authz/client.py:1171*
 
 ---
 
@@ -309,6 +340,8 @@ filter_authorized(subject: Entity, resource_type: str, permission: str, resource
 ```
 
 Batch-check which resources a subject can access.
+
+Use instead of calling check() in a loop - single query regardless of list size.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple
@@ -323,7 +356,7 @@ Batch-check which resources a subject can access.
 visible = authz.filter_authorized(("user", uid), "note", "view", note_ids)
 ```
 
-*Source: sdk/src/postkit/authz/client.py:699*
+*Source: sdk/src/postkit/authz/client.py:703*
 
 ---
 
@@ -355,7 +388,7 @@ if events:
     )
 ```
 
-*Source: sdk/src/postkit/authz/client.py:809*
+*Source: sdk/src/postkit/authz/client.py:813*
 
 ---
 
@@ -379,7 +412,7 @@ stats = authz.get_stats()
 print(f"Tuples: {stats['tuple_count']}, Users: {stats['unique_users']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:926*
+*Source: sdk/src/postkit/authz/client.py:930*
 
 ---
 
@@ -435,7 +468,7 @@ for grant in expiring:
     print(f"{grant['subject']} access to {grant['resource']} expires {grant['expires_at']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1040*
+*Source: sdk/src/postkit/authz/client.py:1044*
 
 ---
 
@@ -447,16 +480,24 @@ list_external_resources(subject: Entity, resource_type: str, permission: str) ->
 
 List resources shared with a subject from other namespaces.
 
+Returns resources where the subject is the recipient of a grant from
+a different namespace. The viewer context is automatically set to the
+subject if not already matching, enabling cross-namespace visibility.
+
+Note: If set_viewer() was previously called with a different subject,
+this method updates the viewer context to match the subject parameter.
+
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("user", "alice"))
 - `resource_type`: Resource type (e.g., "note")
 - `permission`: Minimum permission level (uses global hierarchy)
 
-**Returns:** List of dicts: namespace, resource_id, relation, created_at, expires_at
+**Returns:** List of dicts with: namespace, resource_id, relation, created_at,
+expires_at
 
 **Example:**
 ```python
-authz.set_viewer(("user", "alice"))
+# Viewer is automatically set; explicit call not required.
 shared = authz.list_external_resources(("user", "alice"), "note", "view")
 ```
 
@@ -471,6 +512,9 @@ list_grants(subject: Entity, *, resource_type: str | None = None) -> list[dict]
 ```
 
 List all grants for a subject.
+
+Useful for inspecting what permissions an entity has,
+such as viewing API key scopes or auditing service access.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("api_key", "key-123"))
@@ -489,7 +533,7 @@ for grant in grants:
 note_grants = authz.list_grants(("api_key", key_id), resource_type="note")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:569*
+*Source: sdk/src/postkit/authz/client.py:573*
 
 ---
 
@@ -555,7 +599,7 @@ remove_hierarchy_rule(resource_type: str, permission: str, implies: str)
 
 Remove a hierarchy rule from the client's namespace.
 
-*Source: sdk/src/postkit/authz/client.py:784*
+*Source: sdk/src/postkit/authz/client.py:788*
 
 ---
 
@@ -594,6 +638,9 @@ revoke_all_grants(subject: Entity, *, resource_type: str | None = None) -> int
 
 Revoke all grants for a subject (e.g., when deleting an API key).
 
+This is useful for cleanup when removing an entity that may have
+accumulated many permissions across different resources.
+
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("api_key", "key-123"))
 - `resource_type`: Optional filter to only revoke grants on specific resource type
@@ -610,7 +657,7 @@ print(f"Revoked {count} grants")
 count = authz.revoke_all_grants(("api_key", key_id), resource_type="note")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:612*
+*Source: sdk/src/postkit/authz/client.py:616*
 
 ---
 
@@ -634,7 +681,7 @@ authz.revoke_resource_grants(("note", note_id))
 db.execute("DELETE FROM notes WHERE id = %s", (note_id,))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:646*
+*Source: sdk/src/postkit/authz/client.py:650*
 
 ---
 
@@ -685,7 +732,7 @@ authz.set_expiration("read", resource=("doc", "1"), subject=("user", "alice"),
                     expires_at=datetime.now(timezone.utc) + timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1091*
+*Source: sdk/src/postkit/authz/client.py:1095*
 
 ---
 
@@ -697,6 +744,8 @@ set_hierarchy(resource_type: str, *permissions: str)
 
 Define permission hierarchy for a resource type.
 
+Each permission implies the next in the chain.
+
 **Parameters:**
 - `resource_type`: The resource type (e.g., "repo")
 
@@ -706,7 +755,7 @@ authz.set_hierarchy("repo", "admin", "write", "read")
 # Now admin implies write, write implies read
 ```
 
-*Source: sdk/src/postkit/authz/client.py:737*
+*Source: sdk/src/postkit/authz/client.py:741*
 
 ---
 
@@ -717,6 +766,10 @@ set_viewer(subject: Entity) -> None
 ```
 
 Set the viewer context for cross-namespace queries.
+
+This enables the recipient_visibility RLS policy, allowing subjects
+to see grants where they are the recipient across ALL namespaces.
+Required for "Shared with me" / external resources functionality.
 
 **Parameters:**
 - `subject`: The subject as (type, id) tuple (e.g., ("user", "alice"))
@@ -740,6 +793,8 @@ transfer_grant(permission: str, *, resource: Entity, from_subject: Entity, to_su
 
 Transfer a grant from one subject to another.
 
+Atomically grants to the new subject then revokes from the old subject.
+
 **Parameters:**
 - `permission`: The permission to transfer
 - `resource`: The resource as (type, id) tuple
@@ -748,7 +803,7 @@ Transfer a grant from one subject to another.
 
 **Returns:** True if revoke succeeded (grant always succeeds or raises)
 
-*Source: sdk/src/postkit/authz/client.py:672*
+*Source: sdk/src/postkit/authz/client.py:676*
 
 ---
 
@@ -760,6 +815,8 @@ verify() -> list[dict]
 
 Check for data integrity issues (e.g., group membership cycles).
 
+Returns list of issues (empty if healthy).
+
 **Example:**
 ```python
 issues = authz.verify()
@@ -767,6 +824,6 @@ for issue in issues:
     print(f"{issue['status']}: {issue['details']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:910*
+*Source: sdk/src/postkit/authz/client.py:914*
 
 ---

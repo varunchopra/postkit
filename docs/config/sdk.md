@@ -217,6 +217,11 @@ get_schema(key: str) -> dict | None
 
 Get the JSON Schema that applies to a config key.
 
+Matching precedence:
+1. Exact match wins over prefix
+2. Longer prefix wins over shorter
+3. No match = returns None (no validation required)
+
 **Parameters:**
 - `key`: Config key to find schema for
 
@@ -325,6 +330,11 @@ merge(key: str, changes: dict) -> int
 
 Merge changes into config, creating new version.
 
+Performs a shallow merge - top-level keys in changes overwrite
+existing keys, other keys are preserved.
+
+Validates the merged result against schema if one exists.
+
 **Parameters:**
 - `key`: Config key
 - `changes`: Dict of fields to merge
@@ -391,6 +401,8 @@ set(key: str, value: Any) -> int
 
 Create a new version and activate it.
 
+Validates against schema if one exists for this key pattern.
+
 **Parameters:**
 - `key`: Config key (e.g., 'prompts/support-bot', 'flags/checkout')
 - `value`: Config value (will be stored as JSONB)
@@ -434,6 +446,8 @@ set_default(key: str, value: Any) -> tuple[int, bool]
 
 Set a config value only if the key doesn't exist.
 
+Use for seeding defaults without overwriting user customizations.
+
 **Parameters:**
 - `key`: Config key (e.g., 'plans/free', 'flags/default-feature')
 - `value`: Default config value (will be stored as JSONB)
@@ -456,6 +470,18 @@ set_schema(key_pattern: str, schema: dict, description: str | None = None) -> No
 ```
 
 Register a JSON Schema for validating config values.
+
+Pattern types:
+Prefix (trailing /):  'flags/'               - Homogeneous collections
+Exact (no trailing /): 'integrations/webhook' - Unique schemas
+
+Use prefix for collections where all items share structure:
+- flags/*       : All have {enabled: bool, rollout?: number}
+- rate_limits/* : All have {max: number, window_seconds: number}
+
+Use exact for items with unique structure:
+- integrations/webhook : {url, secret, headers}
+- integrations/slack   : {workspace_id, channel, bot_token}
 
 **Parameters:**
 - `key_pattern`: Prefix ending in '/' or exact key

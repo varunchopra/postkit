@@ -80,7 +80,8 @@ def generate_module_readme(
             funcs = grouped[group]
             for f in sorted(funcs, key=lambda x: x.name):
                 slug = _slugify(f.name)
-                desc = (f.brief or "").replace("|", "\\|")
+                # Use first line only for table summary
+                desc = (f.brief or "").split("\n")[0].replace("|", "\\|")
                 lines.append(f"| [`{f.name}`](sdk.md#{slug}) | {desc} |")
 
         lines.append("")
@@ -107,7 +108,8 @@ def generate_module_readme(
                 funcs = grouped[group]
                 for f in sorted(funcs, key=lambda x: x.name):
                     slug = _slugify(f.name)
-                    desc = (f.brief or "").replace("|", "\\|")
+                    # Use first line only for table summary
+                    desc = (f.brief or "").split("\n")[0].replace("|", "\\|")
                     lines.append(f"| [`{f.name}`](sql.md#{slug}) | {desc} |")
 
             lines.append("")

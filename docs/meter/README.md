@@ -7,7 +7,7 @@
 | [`adjust`](sdk.md#adjust) | Create an adjustment entry (correction, refund, etc.). |
 | [`allocate`](sdk.md#allocate) | Add quota/credits to an account. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
-| [`close_period`](sdk.md#close_period) | Close a billing period, handle expiration and carry-over. |
+| [`close_period`](sdk.md#close_period) | Close a billing period, handling expiration and carry-over. |
 | [`commit`](sdk.md#commit) | Commit a reservation with actual consumption. |
 | [`consume`](sdk.md#consume) | Record consumption. |
 | [`get_audit_events`](sdk.md#get_audit_events) | Not supported - meter module does not have audit events. |
