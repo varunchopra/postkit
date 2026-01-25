@@ -563,7 +563,7 @@ Clear tenant context (fail-closed: queries return no rows). Call before returnin
 SELECT authz.clear_tenant();
 ```
 
-*Source: authz/src/functions/034_rls.sql:17*
+*Source: authz/src/functions/034_rls.sql:20*
 
 ---
 
@@ -573,14 +573,17 @@ SELECT authz.clear_tenant();
 authz.set_tenant(p_tenant_id: text) -> void
 ```
 
-Set tenant context for RLS (session-level, persists across transactions). For connection pools, call clear_tenant() before returning connections.
+Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled.
 
 **Parameters:**
 - `p_tenant_id`: Tenant ID
 
 **Example:**
 ```sql
+BEGIN;
 SELECT authz.set_tenant('acme-corp');
+SELECT * FROM authz.tuples;
+COMMIT;
 ```
 
 *Source: authz/src/functions/034_rls.sql:1*

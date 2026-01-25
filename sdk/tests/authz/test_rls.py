@@ -38,6 +38,7 @@ class TestRowLevelSecurity:
         )
 
         # Connect as the non-superuser (use same host/port as db_connection)
+        # Use autocommit=False because tenant context is transaction-local
         info = db_connection.info
         conn = psycopg.connect(
             host=info.host,
@@ -45,7 +46,7 @@ class TestRowLevelSecurity:
             dbname=info.dbname,
             user="rls_test_user",
             password="rls_test_pass",
-            autocommit=True,
+            autocommit=False,
         )
 
         yield conn
@@ -162,21 +163,19 @@ class TestRowLevelSecurity:
         cursor.execute("SELECT * FROM authz.audit_events WHERE namespace = 'tenant-a'")
         assert cursor.fetchall() == []
 
-    def test_set_tenant_persists_across_transactions(self, rls_connection):
-        """Tenant context is session-level."""
+    def test_set_tenant_clears_on_commit(self, rls_connection):
+        """Tenant context is transaction-local and clears on commit."""
         cursor = rls_connection.cursor()
 
-        # SDK sets tenant in __init__
         AuthzClient(cursor, "tenant-a")
 
         cursor.execute("SELECT current_setting('authz.tenant_id', true)")
         assert cursor.fetchone()[0] == "tenant-a"
 
-        # Commit doesn't affect session-level setting
         rls_connection.commit()
 
         cursor.execute("SELECT current_setting('authz.tenant_id', true)")
-        assert cursor.fetchone()[0] == "tenant-a"
+        assert cursor.fetchone()[0] == ""
 
     def test_superuser_bypasses_rls(self, db_connection):
         """Superusers can see all data regardless of tenant context."""
@@ -270,6 +269,7 @@ class TestRowLevelSecurity:
             AND subject_type = 'user' AND subject_id = 'alice'
             """
         )
+        rls_connection.commit()
 
         # Verify share is gone
         superuser_cursor.execute(
