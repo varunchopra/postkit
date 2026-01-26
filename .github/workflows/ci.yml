@@ -18,7 +18,7 @@ jobs:
       max-parallel: 1
       matrix:
         postgres: [14, 15, 16, 17, 18]
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
 
     services:
       postgres:
@@ -44,13 +44,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-  docs:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v4
-
+      - run: make lint
       - name: Check docs are up to date
         run: |
           make docs

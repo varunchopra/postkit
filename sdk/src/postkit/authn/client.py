@@ -126,34 +126,42 @@ class AuthnClient(BaseClient):
 
     def update_email(self, user_id: str, new_email: str) -> bool:
         """Update user's email. Clears email_verified_at."""
-        return self._fetch_val(
-            "SELECT authn.update_email(%s::uuid, %s, %s)",
-            (user_id, new_email, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.update_email(%s::uuid, %s, %s)",
+                (user_id, new_email, self.namespace),
+                write=True,
+            )
         )
 
     def disable_user(self, user_id: str) -> bool:
         """Disable user and revoke all their sessions."""
-        return self._fetch_val(
-            "SELECT authn.disable_user(%s::uuid, %s)",
-            (user_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.disable_user(%s::uuid, %s)",
+                (user_id, self.namespace),
+                write=True,
+            )
         )
 
     def enable_user(self, user_id: str) -> bool:
         """Re-enable a disabled user."""
-        return self._fetch_val(
-            "SELECT authn.enable_user(%s::uuid, %s)",
-            (user_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.enable_user(%s::uuid, %s)",
+                (user_id, self.namespace),
+                write=True,
+            )
         )
 
     def delete_user(self, user_id: str) -> bool:
         """Permanently delete a user and all associated data."""
-        return self._fetch_val(
-            "SELECT authn.delete_user(%s::uuid, %s)",
-            (user_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.delete_user(%s::uuid, %s)",
+                (user_id, self.namespace),
+                write=True,
+            )
         )
 
     def list_users(self, limit: int = 100, cursor: str | None = None) -> list[dict]:
@@ -231,10 +239,12 @@ class AuthnClient(BaseClient):
 
     def update_password(self, user_id: str, new_password_hash: str) -> bool:
         """Update user's password hash."""
-        return self._fetch_val(
-            "SELECT authn.update_password(%s::uuid, %s, %s)",
-            (user_id, new_password_hash, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.update_password(%s::uuid, %s, %s)",
+                (user_id, new_password_hash, self.namespace),
+                write=True,
+            )
         )
 
     def create_session(
@@ -306,10 +316,12 @@ class AuthnClient(BaseClient):
 
     def revoke_session(self, token_hash: str) -> bool:
         """Revoke a session."""
-        return self._fetch_val(
-            "SELECT authn.revoke_session(%s, %s)",
-            (token_hash, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.revoke_session(%s, %s)",
+                (token_hash, self.namespace),
+                write=True,
+            )
         )
 
     def revoke_session_by_id(self, session_id: str, user_id: str) -> bool:
@@ -322,19 +334,24 @@ class AuthnClient(BaseClient):
         Returns:
             True if revoked, False if not found or not owned by user
         """
-        return self._fetch_val(
-            "SELECT authn.revoke_session_by_id(%s::uuid, %s::uuid, %s)",
-            (session_id, user_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.revoke_session_by_id(%s::uuid, %s::uuid, %s)",
+                (session_id, user_id, self.namespace),
+                write=True,
+            )
         )
 
     def revoke_all_sessions(self, user_id: str) -> int:
         """Revoke all sessions for a user. Returns count revoked."""
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.revoke_all_sessions(%s::uuid, %s)",
             (user_id, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.revoke_all_sessions returned no value")
+        return int(result)
 
     def revoke_other_sessions(self, user_id: str, except_session_id: str) -> int:
         """
@@ -350,11 +367,14 @@ class AuthnClient(BaseClient):
         Returns:
             Count of sessions revoked (excludes the preserved session)
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.revoke_other_sessions(%s::uuid, %s::uuid, %s)",
             (user_id, except_session_id, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.revoke_other_sessions returned no value")
+        return int(result)
 
     def list_sessions(self, user_id: str) -> list[dict]:
         """List active sessions for a user. Does not return token_hash."""
@@ -425,10 +445,12 @@ class AuthnClient(BaseClient):
         Returns:
             True if ended, False if not found or already ended
         """
-        return self._fetch_val(
-            "SELECT authn.end_impersonation(%s::uuid, %s)",
-            (impersonation_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.end_impersonation(%s::uuid, %s)",
+                (impersonation_id, self.namespace),
+                write=True,
+            )
         )
 
     def get_impersonation_context(self, session_id: str) -> dict:
@@ -556,10 +578,12 @@ class AuthnClient(BaseClient):
         Returns:
             True if ended, False if not found or already ended
         """
-        return self._fetch_val(
-            "SELECT authn.end_operator_impersonation(%s::uuid)",
-            (impersonation_id,),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.end_operator_impersonation(%s::uuid)",
+                (impersonation_id,),
+                write=True,
+            )
         )
 
     def get_operator_impersonation_context(self, session_id: str) -> dict:
@@ -754,11 +778,14 @@ class AuthnClient(BaseClient):
         Returns:
             Count of tokens revoked
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.revoke_refresh_token_family(%s::uuid, %s)",
             (family_id, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.revoke_refresh_token_family returned no value")
+        return int(result)
 
     def revoke_all_refresh_tokens(self, user_id: str) -> int:
         """
@@ -767,11 +794,14 @@ class AuthnClient(BaseClient):
         Returns:
             Count of tokens revoked
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.revoke_all_refresh_tokens(%s::uuid, %s)",
             (user_id, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.revoke_all_refresh_tokens returned no value")
+        return int(result)
 
     def list_refresh_tokens(self, user_id: str) -> list[dict]:
         """
@@ -827,19 +857,24 @@ class AuthnClient(BaseClient):
 
     def revoke_api_key(self, key_id: str) -> bool:
         """Revoke an API key."""
-        return self._fetch_val(
-            "SELECT authn.revoke_api_key(%s::uuid, %s)",
-            (key_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.revoke_api_key(%s::uuid, %s)",
+                (key_id, self.namespace),
+                write=True,
+            )
         )
 
     def revoke_all_api_keys(self, user_id: str) -> int:
         """Revoke all API keys for a user. Returns count revoked."""
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.revoke_all_api_keys(%s::uuid, %s)",
             (user_id, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.revoke_all_api_keys returned no value")
+        return int(result)
 
     def list_api_keys(self, user_id: str) -> list[dict]:
         """List active API keys for a user. Does not return key_hash."""
@@ -918,11 +953,14 @@ class AuthnClient(BaseClient):
 
     def invalidate_tokens(self, user_id: str, token_type: str) -> int:
         """Invalidate all unused tokens of a type for a user."""
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.invalidate_tokens(%s::uuid, %s, %s)",
             (user_id, token_type, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.invalidate_tokens returned no value")
+        return int(result)
 
     # =========================================================================
     # CREDENTIALS (TOTP, WebAuthn, Recovery Codes)
@@ -1030,10 +1068,12 @@ class AuthnClient(BaseClient):
         Returns:
             True if consumed, False if already consumed/disabled
         """
-        return self._fetch_val(
-            "SELECT authn.consume_credential(%s::uuid, %s)",
-            (credential_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.consume_credential(%s::uuid, %s)",
+                (credential_id, self.namespace),
+                write=True,
+            )
         )
 
     def update_sign_count(self, credential_id: str, new_count: int) -> bool:
@@ -1050,10 +1090,12 @@ class AuthnClient(BaseClient):
         Returns:
             True if updated, False if new_count <= current (clone attack!)
         """
-        return self._fetch_val(
-            "SELECT authn.update_sign_count(%s::uuid, %s, %s)",
-            (credential_id, new_count, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.update_sign_count(%s::uuid, %s, %s)",
+                (credential_id, new_count, self.namespace),
+                write=True,
+            )
         )
 
     def disable_credential(self, credential_id: str, reason: str) -> bool:
@@ -1067,10 +1109,12 @@ class AuthnClient(BaseClient):
         Returns:
             True if disabled, False if not found/already disabled
         """
-        return self._fetch_val(
-            "SELECT authn.disable_credential(%s::uuid, %s, %s)",
-            (credential_id, reason, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.disable_credential(%s::uuid, %s, %s)",
+                (credential_id, reason, self.namespace),
+                write=True,
+            )
         )
 
     def remove_credential(self, credential_id: str) -> bool:
@@ -1083,10 +1127,12 @@ class AuthnClient(BaseClient):
         Returns:
             True if removed, False if not found
         """
-        return self._fetch_val(
-            "SELECT authn.remove_credential(%s::uuid, %s)",
-            (credential_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authn.remove_credential(%s::uuid, %s)",
+                (credential_id, self.namespace),
+                write=True,
+            )
         )
 
     def disable_all_credentials(self, user_id: str, reason: str) -> int:
@@ -1100,11 +1146,14 @@ class AuthnClient(BaseClient):
         Returns:
             Count of credentials disabled
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.disable_all_credentials(%s::uuid, %s, %s)",
             (user_id, reason, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.disable_all_credentials returned no value")
+        return int(result)
 
     def list_user_credentials(
         self,
@@ -1139,9 +1188,11 @@ class AuthnClient(BaseClient):
         Returns:
             True if user has at least one active credential of type
         """
-        return self._fetch_val(
-            "SELECT authn.has_credential(%s::uuid, %s, %s)",
-            (user_id, credential_type, self.namespace),
+        return bool(
+            self._fetch_val(
+                "SELECT authn.has_credential(%s::uuid, %s, %s)",
+                (user_id, credential_type, self.namespace),
+            )
         )
 
     def record_login_attempt(
@@ -1164,9 +1215,11 @@ class AuthnClient(BaseClient):
         max_attempts: int | None = None,
     ) -> bool:
         """Check if an email is locked out due to too many failed attempts."""
-        return self._fetch_val(
-            "SELECT authn.is_locked_out(%s, %s, %s, %s)",
-            (email, self.namespace, window, max_attempts),
+        return bool(
+            self._fetch_val(
+                "SELECT authn.is_locked_out(%s, %s, %s, %s)",
+                (email, self.namespace, window, max_attempts),
+            )
         )
 
     def get_recent_attempts(self, email: str, limit: int = 10) -> list[dict]:
@@ -1178,11 +1231,14 @@ class AuthnClient(BaseClient):
 
     def clear_attempts(self, email: str) -> int:
         """Clear login attempts for an email. Returns count deleted."""
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authn.clear_attempts(%s, %s)",
             (email, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthnError("authn.clear_attempts returned no value")
+        return int(result)
 
     def cleanup_expired(self, batch_size: int = 10000) -> dict:
         """Clean up expired sessions, tokens, impersonation records, and old login attempts.
@@ -1281,11 +1337,10 @@ class AuthnClient(BaseClient):
             if events:
                 more = authn.get_audit_events(limit=50, before=events[-1]["cursor"])
         """
-        return super().get_audit_events(
+        return self._get_audit_events(
             limit=limit,
             event_type=event_type,
             actor_id=actor_id,
+            filters={"resource_type": resource_type, "resource_id": resource_id},
             before=before,
-            resource_type=resource_type,
-            resource_id=resource_id,
         )

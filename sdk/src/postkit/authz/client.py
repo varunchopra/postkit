@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import psycopg
+from psycopg import sql
+
 from postkit.base import BaseClient, PostkitError
 
 __all__ = [
@@ -158,7 +161,7 @@ class AuthzClient(BaseClient):
         subject_type, subject_id = subject
 
         if subject_relation is not None:
-            return self._fetch_val(
+            result = self._fetch_val(
                 "SELECT authz.write_tuple(%s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
@@ -173,7 +176,7 @@ class AuthzClient(BaseClient):
                 write=True,
             )
         else:
-            return self._fetch_val(
+            result = self._fetch_val(
                 "SELECT authz.write(%s, %s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
@@ -186,6 +189,9 @@ class AuthzClient(BaseClient):
                 ),
                 write=True,
             )
+        if result is None:
+            raise AuthzError("authz.write returned no value")
+        return int(result)
 
     def revoke(
         self,
@@ -266,16 +272,18 @@ class AuthzClient(BaseClient):
         """
         subject_type, subject_id = subject
         resource_type, resource_id = resource
-        return self._fetch_val(
-            "SELECT authz.check(%s, %s, %s, %s, %s, %s)",
-            (
-                subject_type,
-                subject_id,
-                permission,
-                resource_type,
-                resource_id,
-                self.namespace,
-            ),
+        return bool(
+            self._fetch_val(
+                "SELECT authz.check(%s, %s, %s, %s, %s, %s)",
+                (
+                    subject_type,
+                    subject_id,
+                    permission,
+                    resource_type,
+                    resource_id,
+                    self.namespace,
+                ),
+            )
         )
 
     def check_any(
@@ -297,16 +305,18 @@ class AuthzClient(BaseClient):
         """
         subject_type, subject_id = subject
         resource_type, resource_id = resource
-        return self._fetch_val(
-            "SELECT authz.check_any(%s, %s, %s, %s, %s, %s)",
-            (
-                subject_type,
-                subject_id,
-                permissions,
-                resource_type,
-                resource_id,
-                self.namespace,
-            ),
+        return bool(
+            self._fetch_val(
+                "SELECT authz.check_any(%s, %s, %s, %s, %s, %s)",
+                (
+                    subject_type,
+                    subject_id,
+                    permissions,
+                    resource_type,
+                    resource_id,
+                    self.namespace,
+                ),
+            )
         )
 
     def check_all(
@@ -327,16 +337,18 @@ class AuthzClient(BaseClient):
         """
         subject_type, subject_id = subject
         resource_type, resource_id = resource
-        return self._fetch_val(
-            "SELECT authz.check_all(%s, %s, %s, %s, %s, %s)",
-            (
-                subject_type,
-                subject_id,
-                permissions,
-                resource_type,
-                resource_id,
-                self.namespace,
-            ),
+        return bool(
+            self._fetch_val(
+                "SELECT authz.check_all(%s, %s, %s, %s, %s, %s)",
+                (
+                    subject_type,
+                    subject_id,
+                    permissions,
+                    resource_type,
+                    resource_id,
+                    self.namespace,
+                ),
+            )
         )
 
     def explain(self, subject: Entity, permission: str, resource: Entity) -> list[str]:
@@ -443,10 +455,13 @@ class AuthzClient(BaseClient):
             user_count = authz.count_subjects("member", ("team", "eng"), subject_type="user")
         """
         resource_type, resource_id = resource
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authz.count_subjects(%s, %s, %s, %s, %s)",
             (resource_type, resource_id, permission, self.namespace, subject_type),
         )
+        if result is None:
+            raise AuthzError("authz.count_subjects returned no value")
+        return int(result)
 
     def list_resources(
         self,
@@ -641,11 +656,14 @@ class AuthzClient(BaseClient):
             count = authz.revoke_all_grants(("api_key", key_id), resource_type="note")
         """
         subject_type, subject_id = subject
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authz.revoke_subject_grants(%s, %s, %s, %s)",
             (subject_type, subject_id, self.namespace, resource_type),
             write=True,
         )
+        if result is None:
+            raise AuthzError("authz.revoke_subject_grants returned no value")
+        return int(result)
 
     def revoke_resource_grants(
         self,
@@ -667,11 +685,14 @@ class AuthzClient(BaseClient):
             db.execute("DELETE FROM notes WHERE id = %s", (note_id,))
         """
         resource_type, resource_id = resource
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authz.revoke_resource_grants(%s, %s, %s, %s)",
             (resource_type, resource_id, self.namespace, permission),
             write=True,
         )
+        if result is None:
+            raise AuthzError("authz.revoke_resource_grants returned no value")
+        return int(result)
 
     def transfer_grant(
         self,
@@ -795,11 +816,14 @@ class AuthzClient(BaseClient):
 
     def clear_hierarchy(self, resource_type: str) -> int:
         """Clear all hierarchy rules for a resource type in the client's namespace."""
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authz.clear_hierarchy(%s, %s)",
             (resource_type, self.namespace),
             write=True,
         )
+        if result is None:
+            raise AuthzError("authz.clear_hierarchy returned no value")
+        return int(result)
 
     # NOTE: This method uses keyword-only arguments (`*,`) unlike other clients.
     # This is intentional because:
@@ -842,35 +866,37 @@ class AuthzClient(BaseClient):
                     actor_id="admin@acme.com", limit=50, before=events[-1]["cursor"]
                 )
         """
-        conditions = ["namespace = %s"]
+        conditions: list[sql.Composable] = [sql.SQL("namespace = %s")]
         params: list = [self.namespace]
 
         if event_type is not None:
-            conditions.append("event_type = %s")
+            conditions.append(sql.SQL("event_type = %s"))
             params.append(event_type)
 
         if actor_id is not None:
-            conditions.append("actor_id = %s")
+            conditions.append(sql.SQL("actor_id = %s"))
             params.append(actor_id)
 
         if resource is not None:
-            conditions.append("resource_type = %s")
-            conditions.append("resource_id = %s")
+            conditions.append(sql.SQL("resource_type = %s"))
+            conditions.append(sql.SQL("resource_id = %s"))
             params.extend(resource)
 
         if subject is not None:
-            conditions.append("subject_type = %s")
-            conditions.append("subject_id = %s")
+            conditions.append(sql.SQL("subject_type = %s"))
+            conditions.append(sql.SQL("subject_id = %s"))
             params.extend(subject)
 
         if before is not None:
             cursor_time, cursor_id = self._decode_cursor(before)
-            conditions.append("(event_time, id) < (%s::timestamptz, %s::bigint)")
+            conditions.append(
+                sql.SQL("(event_time, id) < (%s::timestamptz, %s::bigint)")
+            )
             params.extend([cursor_time, cursor_id])
 
         params.append(limit)
 
-        sql = f"""
+        query = sql.SQL("""
             SELECT
                 id, event_id, event_type, event_time,
                 actor_id, request_id, reason, on_behalf_of,
@@ -879,12 +905,16 @@ class AuthzClient(BaseClient):
                 subject_type, subject_id, subject_relation,
                 tuple_id, expires_at
             FROM authz.audit_events
-            WHERE {" AND ".join(conditions)}
+            WHERE {conditions}
             ORDER BY event_time DESC, id DESC
             LIMIT %s
-        """
+        """).format(conditions=sql.SQL(" AND ").join(conditions))
 
-        rows = self._fetch_raw(sql, tuple(params))
+        try:
+            self.cursor.execute(query, tuple(params))
+            rows = self.cursor.fetchall()
+        except psycopg.Error as e:
+            self._handle_error(e)
 
         return [
             {
@@ -987,7 +1017,7 @@ class AuthzClient(BaseClient):
 
         total = 0
         for subject_type, subject_ids in by_type.items():
-            total += self._fetch_val(
+            result = self._fetch_val(
                 "SELECT authz.write_tuples_bulk(%s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
@@ -999,6 +1029,9 @@ class AuthzClient(BaseClient):
                 ),
                 write=True,
             )
+            if result is None:
+                raise AuthzError("authz.write_tuples_bulk returned no value")
+            total += int(result)
         return total
 
     def bulk_grant_resources(
@@ -1027,7 +1060,7 @@ class AuthzClient(BaseClient):
             )
         """
         subject_type, subject_id = subject
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authz.grant_to_resources_bulk(%s, %s, %s, %s, %s, %s, %s)",
             (
                 resource_type,
@@ -1040,6 +1073,9 @@ class AuthzClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise AuthzError("authz.grant_to_resources_bulk returned no value")
+        return int(result)
 
     def list_expiring(self, within: timedelta = timedelta(days=7)) -> list[dict]:
         """
@@ -1090,7 +1126,9 @@ class AuthzClient(BaseClient):
             (self.namespace,),
             write=True,
         )
-        return {"tuples_deleted": result}
+        if result is None:
+            raise AuthzError("authz.cleanup_expired returned no value")
+        return {"tuples_deleted": int(result)}
 
     def set_expiration(
         self,
@@ -1118,18 +1156,20 @@ class AuthzClient(BaseClient):
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
-        return self._fetch_val(
-            "SELECT authz.set_expiration(%s, %s, %s, %s, %s, %s, %s)",
-            (
-                resource_type,
-                resource_id,
-                permission,
-                subject_type,
-                subject_id,
-                expires_at,
-                self.namespace,
-            ),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authz.set_expiration(%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    resource_type,
+                    resource_id,
+                    permission,
+                    subject_type,
+                    subject_id,
+                    expires_at,
+                    self.namespace,
+                ),
+                write=True,
+            )
         )
 
     def clear_expiration(
@@ -1155,17 +1195,19 @@ class AuthzClient(BaseClient):
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
-        return self._fetch_val(
-            "SELECT authz.clear_expiration(%s, %s, %s, %s, %s, %s)",
-            (
-                resource_type,
-                resource_id,
-                permission,
-                subject_type,
-                subject_id,
-                self.namespace,
-            ),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT authz.clear_expiration(%s, %s, %s, %s, %s, %s)",
+                (
+                    resource_type,
+                    resource_id,
+                    permission,
+                    subject_type,
+                    subject_id,
+                    self.namespace,
+                ),
+                write=True,
+            )
         )
 
     def extend_expiration(
@@ -1195,7 +1237,7 @@ class AuthzClient(BaseClient):
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT authz.extend_expiration(%s, %s, %s, %s, %s, %s, %s)",
             (
                 resource_type,
@@ -1208,3 +1250,6 @@ class AuthzClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise AuthzError("authz.extend_expiration returned no value")
+        return result

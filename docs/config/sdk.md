@@ -16,7 +16,7 @@ Activate a specific version.
 
 **Returns:** True if version was found and activated
 
-*Source: sdk/src/postkit/config/client.py:287*
+*Source: sdk/src/postkit/config/client.py:293*
 
 ---
 
@@ -33,7 +33,7 @@ Delete old inactive versions, keeping N most recent per key.
 
 **Returns:** Count of versions deleted
 
-*Source: sdk/src/postkit/config/client.py:409*
+*Source: sdk/src/postkit/config/client.py:424*
 
 ---
 
@@ -45,7 +45,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:363*
+*Source: sdk/src/postkit/base.py:376*
 
 ---
 
@@ -62,7 +62,7 @@ Delete all versions of a config entry.
 
 **Returns:** Count of versions deleted
 
-*Source: sdk/src/postkit/config/client.py:354*
+*Source: sdk/src/postkit/config/client.py:362*
 
 ---
 
@@ -82,7 +82,7 @@ Delete a schema by its key pattern.
 Note:
     Requires admin connection that bypasses RLS.
 
-*Source: sdk/src/postkit/config/client.py:539*
+*Source: sdk/src/postkit/config/client.py:557*
 
 ---
 
@@ -100,7 +100,7 @@ Delete a specific version (cannot delete active version).
 
 **Returns:** True if deleted
 
-*Source: sdk/src/postkit/config/client.py:367*
+*Source: sdk/src/postkit/config/client.py:378*
 
 ---
 
@@ -117,7 +117,7 @@ Check if a config key exists.
 
 **Returns:** True if key exists and has an active version
 
-*Source: sdk/src/postkit/config/client.py:383*
+*Source: sdk/src/postkit/config/client.py:396*
 
 ---
 
@@ -135,7 +135,7 @@ Get config entry.
 
 **Returns:** Dict with 'value', 'version', 'created_at' or None if not found
 
-*Source: sdk/src/postkit/config/client.py:163*
+*Source: sdk/src/postkit/config/client.py:166*
 
 ---
 
@@ -164,7 +164,7 @@ if events:
     more = config.get_audit_events(limit=50, before=events[-1]["cursor"])
 ```
 
-*Source: sdk/src/postkit/config/client.py:424*
+*Source: sdk/src/postkit/config/client.py:442*
 
 ---
 
@@ -181,7 +181,7 @@ Get multiple config entries in one query.
 
 **Returns:** List of dicts with 'key', 'value', 'version', 'created_at'
 
-*Source: sdk/src/postkit/config/client.py:193*
+*Source: sdk/src/postkit/config/client.py:196*
 
 ---
 
@@ -205,7 +205,7 @@ config.get_path("flags/checkout", "rollout")
 config.get_path("settings/model", "params", "temperature")
 ```
 
-*Source: sdk/src/postkit/config/client.py:207*
+*Source: sdk/src/postkit/config/client.py:210*
 
 ---
 
@@ -230,7 +230,7 @@ Matching precedence:
 Note:
     All connections (admin and tenant) can read schemas.
 
-*Source: sdk/src/postkit/config/client.py:520*
+*Source: sdk/src/postkit/config/client.py:538*
 
 ---
 
@@ -244,7 +244,7 @@ Get namespace statistics.
 
 **Returns:** Dict with 'total_keys', 'total_versions', 'keys_by_prefix'
 
-*Source: sdk/src/postkit/config/client.py:394*
+*Source: sdk/src/postkit/config/client.py:409*
 
 ---
 
@@ -262,7 +262,7 @@ Get just the value (convenience method).
 
 **Returns:** The config value, or default if not found
 
-*Source: sdk/src/postkit/config/client.py:178*
+*Source: sdk/src/postkit/config/client.py:181*
 
 ---
 
@@ -280,14 +280,14 @@ Get version history for a key.
 
 **Returns:** List of dicts with 'version', 'value', 'is_active', 'created_at', 'created_by'
 
-*Source: sdk/src/postkit/config/client.py:339*
+*Source: sdk/src/postkit/config/client.py:347*
 
 ---
 
-### list
+### list_entries
 
 ```python
-list(prefix: str | None = None, limit: int = 100, cursor: str | None = None) -> list[dict]
+list_entries(prefix: str | None = None, limit: int = 100, cursor: str | None = None) -> list[dict]
 ```
 
 List active config entries.
@@ -299,7 +299,7 @@ List active config entries.
 
 **Returns:** List of dicts with 'key', 'value', 'version', 'created_at'
 
-*Source: sdk/src/postkit/config/client.py:318*
+*Source: sdk/src/postkit/config/client.py:326*
 
 ---
 
@@ -318,7 +318,7 @@ List all schemas, optionally filtered by prefix.
 **Returns:** List of dicts with 'key_pattern', 'schema', 'description',
 'created_at', 'updated_at'
 
-*Source: sdk/src/postkit/config/client.py:555*
+*Source: sdk/src/postkit/config/client.py:575*
 
 ---
 
@@ -346,7 +346,7 @@ config.merge("flags/checkout", {"rollout": 0.75})
 config.merge("prompts/bot", {"temperature": 0.8, "max_tokens": 2000})
 ```
 
-*Source: sdk/src/postkit/config/client.py:227*
+*Source: sdk/src/postkit/config/client.py:230*
 
 ---
 
@@ -363,7 +363,7 @@ Rollback to previous version.
 
 **Returns:** New active version number, or None if no previous version
 
-*Source: sdk/src/postkit/config/client.py:303*
+*Source: sdk/src/postkit/config/client.py:311*
 
 ---
 
@@ -388,7 +388,7 @@ config.search({"enabled": True})  # All enabled flags
 config.search({"model": "claude-sonnet-4-20250514"}, prefix="prompts/")
 ```
 
-*Source: sdk/src/postkit/config/client.py:265*
+*Source: sdk/src/postkit/config/client.py:271*
 
 ---
 
@@ -433,7 +433,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:334*
+*Source: sdk/src/postkit/base.py:347*
 
 ---
 
@@ -458,7 +458,7 @@ Use for seeding defaults without overwriting user customizations.
 version, created = config.set_default("plans/free", {"tokens": 10000})
 ```
 
-*Source: sdk/src/postkit/config/client.py:128*
+*Source: sdk/src/postkit/config/client.py:131*
 
 ---
 
@@ -487,6 +487,6 @@ Use exact for items with unique structure:
 - `schema`: JSON Schema document (Draft 7)
 - `description`: Human-readable description
 
-*Source: sdk/src/postkit/config/client.py:460*
+*Source: sdk/src/postkit/config/client.py:478*
 
 ---

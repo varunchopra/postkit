@@ -19,7 +19,7 @@
 | [`get_stats`](sdk.md#get_stats) | Get namespace statistics. |
 | [`get_value`](sdk.md#get_value) | Get just the value (convenience method). |
 | [`history`](sdk.md#history) | Get version history for a key. |
-| [`list`](sdk.md#list) | List active config entries. |
+| [`list_entries`](sdk.md#list_entries) | List active config entries. |
 | [`list_schemas`](sdk.md#list_schemas) | List all schemas, optionally filtered by prefix. |
 | [`merge`](sdk.md#merge) | Merge changes into config, creating new version. |
 | [`rollback`](sdk.md#rollback) | Rollback to previous version. |

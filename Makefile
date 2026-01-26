@@ -53,7 +53,7 @@ clean:
 
 lint:
 	@uvx ruff check .
-	@uvx ty check sdk/src/
+	@uvx --with 'psycopg[binary]' --with jsonschema ty check sdk/src/
 	@echo "$(GREEN)✓ Lint passed$(NC)"
 
 format:

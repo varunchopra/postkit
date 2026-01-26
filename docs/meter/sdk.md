@@ -22,7 +22,7 @@ Create an adjustment entry (correction, refund, etc.).
 
 **Returns:** Dict with 'balance' and 'entry_id'
 
-*Source: sdk/src/postkit/meter/client.py:263*
+*Source: sdk/src/postkit/meter/client.py:277*
 
 ---
 
@@ -58,7 +58,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:363*
+*Source: sdk/src/postkit/base.py:376*
 
 ---
 
@@ -86,7 +86,7 @@ Calling close_period multiple times is safe but will recalculate based on curren
 **Returns:** Dict with expired (amount removed), carried_over (amount preserved),
 and new_balance (balance after expiration)
 
-*Source: sdk/src/postkit/meter/client.py:474*
+*Source: sdk/src/postkit/meter/client.py:491*
 
 ---
 
@@ -116,7 +116,7 @@ if overage > 0:
     handle_overage(overage)  # caller's policy
 ```
 
-*Source: sdk/src/postkit/meter/client.py:209*
+*Source: sdk/src/postkit/meter/client.py:218*
 
 ---
 
@@ -141,7 +141,7 @@ Record consumption.
 
 **Returns:** Dict with 'success', 'balance', 'available', 'entry_id'
 
-*Source: sdk/src/postkit/meter/client.py:116*
+*Source: sdk/src/postkit/meter/client.py:119*
 
 ---
 
@@ -155,7 +155,7 @@ Not supported - meter module does not have audit events.
 
 The meter module uses a ledger-based design where all transactions are recorded in the ledger table. Use get_ledger() for transaction history instead.
 
-*Source: sdk/src/postkit/meter/client.py:623*
+*Source: sdk/src/postkit/meter/client.py:648*
 
 ---
 
@@ -197,7 +197,7 @@ balance = meter.get_balance(user_id, "api_request", "requests")
 print(f"API calls remaining: {balance['available']}")
 ```
 
-*Source: sdk/src/postkit/meter/client.py:305*
+*Source: sdk/src/postkit/meter/client.py:322*
 
 ---
 
@@ -220,7 +220,7 @@ Get ledger entries for an account.
 
 **Returns:** List of ledger entry dicts
 
-*Source: sdk/src/postkit/meter/client.py:388*
+*Source: sdk/src/postkit/meter/client.py:405*
 
 ---
 
@@ -234,7 +234,7 @@ Get namespace statistics.
 
 **Returns:** Dict with counts and totals
 
-*Source: sdk/src/postkit/meter/client.py:604*
+*Source: sdk/src/postkit/meter/client.py:629*
 
 ---
 
@@ -254,7 +254,7 @@ Get aggregated consumption for a user.
 **Returns:** List of dicts with 'event_type', 'resource', 'unit',
 'total_consumed', 'event_count'
 
-*Source: sdk/src/postkit/meter/client.py:365*
+*Source: sdk/src/postkit/meter/client.py:382*
 
 ---
 
@@ -272,7 +272,7 @@ Get all balances for a user across all event types and resources.
 **Returns:** List of dicts with 'event_type', 'resource', 'unit', 'balance',
 'reserved', 'available'
 
-*Source: sdk/src/postkit/meter/client.py:349*
+*Source: sdk/src/postkit/meter/client.py:366*
 
 ---
 
@@ -300,7 +300,7 @@ NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key wit
 
 **Returns:** New balance after allocation
 
-*Source: sdk/src/postkit/meter/client.py:511*
+*Source: sdk/src/postkit/meter/client.py:531*
 
 ---
 
@@ -319,7 +319,7 @@ Checks two invariants:
 **Returns:** List of dicts with 'user_id', 'event_type', 'resource', 'unit',
 'issue_type', 'expected', 'actual', 'discrepancy'
 
-*Source: sdk/src/postkit/meter/client.py:587*
+*Source: sdk/src/postkit/meter/client.py:612*
 
 ---
 
@@ -336,7 +336,7 @@ Release a reservation without consuming.
 
 **Returns:** True if released, False if not found
 
-*Source: sdk/src/postkit/meter/client.py:248*
+*Source: sdk/src/postkit/meter/client.py:260*
 
 ---
 
@@ -356,7 +356,7 @@ No ledger entries are created because reservations are holds on existing balance
 
 **Returns:** Count of reservations that were expired and released.
 
-*Source: sdk/src/postkit/meter/client.py:563*
+*Source: sdk/src/postkit/meter/client.py:585*
 
 ---
 
@@ -382,7 +382,7 @@ Reservations are HOLDS, not balance changes. They don't create ledger entries. T
 
 **Returns:** Dict with 'granted', 'reservation_id', 'balance', 'available', 'expires_at'
 
-*Source: sdk/src/postkit/meter/client.py:162*
+*Source: sdk/src/postkit/meter/client.py:168*
 
 ---
 
@@ -407,7 +407,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:334*
+*Source: sdk/src/postkit/base.py:347*
 
 ---
 
@@ -432,6 +432,6 @@ Period dates use the DATE type (not TIMESTAMP). Timezone handling is the caller'
 - `period_allocation`: Amount to allocate each period (must be positive)
 - `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over
 
-*Source: sdk/src/postkit/meter/client.py:428*
+*Source: sdk/src/postkit/meter/client.py:445*
 
 ---

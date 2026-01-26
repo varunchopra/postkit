@@ -403,16 +403,16 @@ class TestRollback:
         assert test_helpers.get_active_version("prompts/bot") == 1
 
 
-class TestList:
-    """Tests for config.list()"""
+class TestListEntries:
+    """Tests for config.list_entries()"""
 
     def test_lists_all_active_entries(self, config):
-        """list() returns all active entries."""
+        """list_entries() returns all active entries."""
         config.set("prompts/bot-a", {"template": "a"})
         config.set("prompts/bot-b", {"template": "b"})
         config.set("flags/feature", {"enabled": True})
 
-        results = config.list()
+        results = config.list_entries()
 
         keys = [r["key"] for r in results]
         assert "prompts/bot-a" in keys
@@ -420,12 +420,12 @@ class TestList:
         assert "flags/feature" in keys
 
     def test_filters_by_prefix(self, config):
-        """list() with prefix filters results."""
+        """list_entries() with prefix filters results."""
         config.set("prompts/bot-a", {"template": "a"})
         config.set("prompts/bot-b", {"template": "b"})
         config.set("flags/feature", {"enabled": True})
 
-        results = config.list(prefix="prompts/")
+        results = config.list_entries(prefix="prompts/")
 
         keys = [r["key"] for r in results]
         assert "prompts/bot-a" in keys
@@ -433,30 +433,30 @@ class TestList:
         assert "flags/feature" not in keys
 
     def test_pagination_with_cursor(self, config):
-        """list() supports cursor-based pagination."""
+        """list_entries() supports cursor-based pagination."""
         # Create entries with predictable order
         config.set("a/1", {"v": 1})
         config.set("a/2", {"v": 2})
         config.set("a/3", {"v": 3})
 
         # Get first page
-        page1 = config.list(limit=2)
+        page1 = config.list_entries(limit=2)
         assert len(page1) == 2
 
         # Get second page using cursor
         cursor = page1[-1]["key"]
-        page2 = config.list(limit=2, cursor=cursor)
+        page2 = config.list_entries(limit=2, cursor=cursor)
         assert len(page2) == 1
 
     def test_prefix_underscores_escaped(self, config):
-        """list() escapes SQL underscore wildcard in prefix."""
+        """list_entries() escapes SQL underscore wildcard in prefix."""
         # Underscore in SQL LIKE is a single-char wildcard
         # Ensure it's treated as a literal underscore
         config.set("test_exact", {"v": 1})
         config.set("testXother", {"v": 2})  # Would match test_ as wildcard
 
         # Prefix with _ should only match literal underscore, not any char
-        results = config.list(prefix="test_")
+        results = config.list_entries(prefix="test_")
         keys = [r["key"] for r in results]
         assert keys == ["test_exact"]
         assert "testXother" not in keys

@@ -18,7 +18,7 @@ class TestNamespaceIsolation:
         assert tenant_b.get_value("prompts/bot")["owner"] == "b"
 
     def test_list_only_shows_own_namespace(self, make_config):
-        """list() only returns entries from own namespace."""
+        """list_entries() only returns entries from own namespace."""
         tenant_a = make_config("tenant_a")
         tenant_b = make_config("tenant_b")
 
@@ -26,8 +26,8 @@ class TestNamespaceIsolation:
         tenant_a.set("prompts/a2", {"v": 2})
         tenant_b.set("prompts/b1", {"v": 1})
 
-        a_keys = [e["key"] for e in tenant_a.list()]
-        b_keys = [e["key"] for e in tenant_b.list()]
+        a_keys = [e["key"] for e in tenant_a.list_entries()]
+        b_keys = [e["key"] for e in tenant_b.list_entries()]
 
         assert "prompts/a1" in a_keys
         assert "prompts/a2" in a_keys

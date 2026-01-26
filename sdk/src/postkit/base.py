@@ -8,10 +8,11 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from decimal import Decimal
 from ipaddress import IPv4Address, IPv6Address
-from typing import Any, Callable, NoReturn, TypeVar
+from typing import Any, Callable, LiteralString, NoReturn, TypeVar
 from uuid import UUID
 
 import psycopg
+from psycopg import sql
 from psycopg.rows import dict_row, kwargs_row
 
 T = TypeVar("T")
@@ -142,7 +143,12 @@ class BaseClient(ABC):
         self._reason: str | None = None
         # Set tenant context for RLS
         try:
-            self.cursor.execute(f"SELECT {self._schema}.set_tenant(%s)", (namespace,))
+            self.cursor.execute(
+                sql.SQL("SELECT {}.set_tenant(%s)").format(
+                    sql.Identifier(self._schema)
+                ),
+                (namespace,),
+            )
         except psycopg.Error as e:
             self._handle_error(e)
 
@@ -160,9 +166,12 @@ class BaseClient(ABC):
         hint = e.diag.message_hint if hasattr(e, "diag") and e.diag else None
 
         # Check module-specific mapping first, then global, then fallback to _error_class
-        exc_class = self._module_sqlstate_map.get(
-            sqlstate, _SQLSTATE_EXCEPTIONS.get(sqlstate, self._error_class)
-        )
+        if sqlstate is None:
+            exc_class = self._error_class
+        else:
+            exc_class = self._module_sqlstate_map.get(
+                sqlstate, _SQLSTATE_EXCEPTIONS.get(sqlstate, self._error_class)
+            )
 
         raise exc_class(message, sqlstate, hint) from e
 
@@ -223,12 +232,12 @@ class BaseClient(ABC):
                 return executor()
 
     def _fetch_val(
-        self, sql: str, params: tuple[Any, ...], *, write: bool = False
+        self, query: LiteralString, params: tuple[Any, ...], *, write: bool = False
     ) -> Any | None:
         """Execute SQL and return single value from first row.
 
         Args:
-            sql: SQL query to execute
+            query: SQL query to execute (must be a literal string for safety)
             params: Query parameters
             write: If True, applies actor context for audit logging
 
@@ -238,7 +247,7 @@ class BaseClient(ABC):
 
         def execute() -> Any | None:
             try:
-                self.cursor.execute(sql, params)
+                self.cursor.execute(query, params)
                 row = self.cursor.fetchone()
                 return self._normalize_value(row[0]) if row else None
             except psycopg.Error as e:
@@ -247,12 +256,12 @@ class BaseClient(ABC):
         return self._with_actor(execute) if write else execute()
 
     def _fetch_one(
-        self, sql: str, params: tuple[Any, ...], *, write: bool = False
+        self, query: LiteralString, params: tuple[Any, ...], *, write: bool = False
     ) -> dict[str, Any] | None:
         """Execute SQL and return single row as dict.
 
         Args:
-            sql: SQL query to execute
+            query: SQL query to execute (must be a literal string for safety)
             params: Query parameters
             write: If True, applies actor context for audit logging
 
@@ -262,10 +271,11 @@ class BaseClient(ABC):
 
         def execute() -> dict[str, Any] | None:
             try:
-                self.cursor.execute(sql, params)
+                self.cursor.execute(query, params)
                 row = self.cursor.fetchone()
                 if row is None:
                     return None
+                assert self.cursor.description is not None
                 columns = [desc[0] for desc in self.cursor.description]
                 return {
                     col: self._normalize_value(val) for col, val in zip(columns, row)
@@ -276,12 +286,12 @@ class BaseClient(ABC):
         return self._with_actor(execute) if write else execute()
 
     def _fetch_all(
-        self, sql: str, params: tuple[Any, ...], *, write: bool = False
+        self, query: LiteralString, params: tuple[Any, ...], *, write: bool = False
     ) -> list[dict[str, Any]]:
         """Execute SQL and return all rows as list of dicts.
 
         Args:
-            sql: SQL query to execute
+            query: SQL query to execute (must be a literal string for safety)
             params: Query parameters
             write: If True, applies actor context for audit logging
 
@@ -291,7 +301,8 @@ class BaseClient(ABC):
 
         def execute() -> list[dict[str, Any]]:
             try:
-                self.cursor.execute(sql, params)
+                self.cursor.execute(query, params)
+                assert self.cursor.description is not None
                 columns = [desc[0] for desc in self.cursor.description]
                 rows = self.cursor.fetchall()
 
@@ -312,21 +323,23 @@ class BaseClient(ABC):
 
         return self._with_actor(execute) if write else execute()
 
-    def _fetch_raw(self, sql: str, params: tuple[Any, ...]) -> list[tuple[Any, ...]]:
+    def _fetch_raw(
+        self, query: LiteralString, params: tuple[Any, ...]
+    ) -> list[tuple[Any, ...]]:
         """Execute SQL and return all rows as raw tuples.
 
         Use this for special cases where you need raw tuple access
         (e.g., single-column results as list[str], or combining columns into tuples).
 
         Args:
-            sql: SQL query to execute
+            query: SQL query to execute (must be a literal string for safety)
             params: Query parameters
 
         Returns:
             List of rows as tuples
         """
         try:
-            self.cursor.execute(sql, params)
+            self.cursor.execute(query, params)
             return self.cursor.fetchall()
         except psycopg.Error as e:
             self._handle_error(e)
@@ -420,15 +433,15 @@ class BaseClient(ABC):
             List of audit event dictionaries. Each event includes a 'cursor' field
             that can be passed to 'before' for pagination.
         """
-        conditions = ["namespace = %s"]
+        conditions: list[sql.Composable] = [sql.SQL("namespace = %s")]
         params: list[Any] = [self.namespace]
 
         if event_type is not None:
-            conditions.append("event_type = %s")
+            conditions.append(sql.SQL("event_type = %s"))
             params.append(event_type)
 
         if actor_id is not None:
-            conditions.append("actor_id = %s")
+            conditions.append(sql.SQL("actor_id = %s"))
             params.append(actor_id)
 
         if filters:
@@ -437,64 +450,47 @@ class BaseClient(ABC):
                     # Defense-in-depth: validate column name is safe identifier
                     if not col.isidentifier():
                         raise ValueError(f"Invalid column name: {col}")
-                    conditions.append(f"{col} = %s")
+                    conditions.append(sql.SQL("{} = %s").format(sql.Identifier(col)))
                     params.append(val)
 
         if before is not None:
             cursor_time, cursor_id = self._decode_cursor(before)
-            conditions.append("(event_time, id) < (%s::timestamptz, %s::bigint)")
+            conditions.append(
+                sql.SQL("(event_time, id) < (%s::timestamptz, %s::bigint)")
+            )
             params.extend([cursor_time, cursor_id])
 
         params.append(limit)
 
-        sql = f"""
+        query = sql.SQL("""
             SELECT *
-            FROM {self._schema}.audit_events
-            WHERE {" AND ".join(conditions)}
+            FROM {schema}.audit_events
+            WHERE {conditions}
             ORDER BY event_time DESC, id DESC
             LIMIT %s
-        """
+        """).format(
+            schema=sql.Identifier(self._schema),
+            conditions=sql.SQL(" AND ").join(conditions),
+        )
 
-        events = self._fetch_all(sql, tuple(params))
+        try:
+            self.cursor.execute(query, tuple(params))
+            assert self.cursor.description is not None
+            columns = [desc[0] for desc in self.cursor.description]
+            rows = self.cursor.fetchall()
+        except psycopg.Error as e:
+            self._handle_error(e)
+
+        events = [
+            {col: self._normalize_value(val) for col, val in zip(columns, row)}
+            for row in rows
+        ]
 
         # Add opaque cursor to each event for pagination
         for event in events:
             event["cursor"] = self._encode_cursor(event["event_time"], event["id"])
 
         return events
-
-    def get_audit_events(
-        self,
-        limit: int = 100,
-        event_type: str | None = None,
-        actor_id: str | None = None,
-        before: str | None = None,
-        **extra_filters: Any,
-    ) -> list[dict[str, Any]]:
-        """Query audit events with optional filters.
-
-        Args:
-            limit: Maximum number of events to return (default 100)
-            event_type: Filter by event type
-            actor_id: Filter by actor ID (who made the change)
-            before: Opaque cursor from a previous response's event['cursor']
-            **extra_filters: Module-specific filters (e.g., resource_type, key)
-
-        Returns:
-            List of audit event dictionaries. Each event includes a 'cursor' field
-            that can be passed to 'before' for pagination.
-
-        Note:
-            Subclasses may override to add explicit parameters with type hints,
-            but should call super() to avoid reimplementing the logic.
-        """
-        return self._get_audit_events(
-            limit=limit,
-            event_type=event_type,
-            actor_id=actor_id,
-            filters=extra_filters if extra_filters else None,
-            before=before,
-        )
 
     def get_stats(self) -> dict:
         """Get namespace statistics. Subclasses should override with module-specific stats."""

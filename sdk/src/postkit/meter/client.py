@@ -97,7 +97,7 @@ class MeterClient(BaseClient):
         Returns:
             Dict with 'balance' and 'entry_id'
         """
-        return self._fetch_one(
+        result = self._fetch_one(
             "SELECT balance, entry_id FROM meter.allocate(%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
             (
                 user_id,
@@ -112,6 +112,9 @@ class MeterClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.allocate returned no row")
+        return result
 
     def consume(
         self,
@@ -141,7 +144,7 @@ class MeterClient(BaseClient):
         Returns:
             Dict with 'success', 'balance', 'available', 'entry_id'
         """
-        return self._fetch_one(
+        result = self._fetch_one(
             """SELECT success, balance, available, entry_id
                FROM meter.consume(%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)""",
             (
@@ -158,6 +161,9 @@ class MeterClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.consume returned no row")
+        return result
 
     def reserve(
         self,
@@ -189,7 +195,7 @@ class MeterClient(BaseClient):
         Returns:
             Dict with 'granted', 'reservation_id', 'balance', 'available', 'expires_at'
         """
-        return self._fetch_one(
+        result = self._fetch_one(
             """SELECT granted, reservation_id, balance, available, expires_at
                FROM meter.reserve(%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)""",
             (
@@ -205,6 +211,9 @@ class MeterClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.reserve returned no row")
+        return result
 
     def commit(
         self,
@@ -233,7 +242,7 @@ class MeterClient(BaseClient):
             if overage > 0:
                 handle_overage(overage)  # caller's policy
         """
-        return self._fetch_one(
+        result = self._fetch_one(
             """SELECT success, consumed, released, reserved_amount, balance, entry_id
                FROM meter.commit(%s, %s, %s::jsonb, %s)""",
             (
@@ -244,6 +253,9 @@ class MeterClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.commit returned no row")
+        return result
 
     def release(self, reservation_id: str) -> bool:
         """Release a reservation without consuming.
@@ -254,10 +266,12 @@ class MeterClient(BaseClient):
         Returns:
             True if released, False if not found
         """
-        return self._fetch_val(
-            "SELECT meter.release(%s, %s)",
-            (reservation_id, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT meter.release(%s, %s)",
+                (reservation_id, self.namespace),
+                write=True,
+            )
         )
 
     def adjust(
@@ -286,7 +300,7 @@ class MeterClient(BaseClient):
         Returns:
             Dict with 'balance' and 'entry_id'
         """
-        return self._fetch_one(
+        result = self._fetch_one(
             "SELECT balance, entry_id FROM meter.adjust(%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
             (
                 user_id,
@@ -301,6 +315,9 @@ class MeterClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.adjust returned no row")
+        return result
 
     def get_balance(
         self,
@@ -502,11 +519,14 @@ class MeterClient(BaseClient):
             Dict with expired (amount removed), carried_over (amount preserved),
             and new_balance (balance after expiration)
         """
-        return self._fetch_one(
+        result = self._fetch_one(
             "SELECT expired, carried_over, new_balance FROM meter.close_period(%s, %s, %s, %s, %s, %s)",
             (user_id, event_type, unit, resource, period_end, self.namespace),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.close_period returned no row")
+        return result
 
     def open_period(
         self,
@@ -558,6 +578,8 @@ class MeterClient(BaseClient):
             ),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.open_period returned no value")
         return float(result)
 
     def release_expired_reservations(self) -> int:
@@ -578,11 +600,14 @@ class MeterClient(BaseClient):
         Returns:
             Count of reservations that were expired and released.
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT meter.release_expired_reservations(%s)",
             (self.namespace,),
             write=True,
         )
+        if result is None:
+            raise MeterError("meter.release_expired_reservations returned no value")
+        return int(result)
 
     def reconcile(self) -> list[dict]:
         """Check for discrepancies in account invariants.

@@ -119,11 +119,14 @@ class ConfigClient(BaseClient):
                     f"Validation failed for '{key}': {result.errors}"
                 )
 
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT config.set(%s, %s::jsonb, %s)",
             (key, json.dumps(value), self.namespace),
             write=True,
         )
+        if result is None:
+            raise ConfigError("config.set returned no value")
+        return int(result)
 
     def set_default(self, key: str, value: Any) -> tuple[int, bool]:
         """Set a config value only if the key doesn't exist.
@@ -256,11 +259,14 @@ class ConfigClient(BaseClient):
                     f"Validation failed for '{key}': {result.errors}"
                 )
 
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT config.merge(%s, %s::jsonb, %s)",
             (key, json.dumps(changes), self.namespace),
             write=True,
         )
+        if result is None:
+            raise ConfigError("config.merge returned no value")
+        return int(result)
 
     def search(
         self, contains: dict, prefix: str | None = None, limit: int = 100
@@ -294,10 +300,12 @@ class ConfigClient(BaseClient):
         Returns:
             True if version was found and activated
         """
-        return self._fetch_val(
-            "SELECT config.activate(%s, %s, %s)",
-            (key, version, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT config.activate(%s, %s, %s)",
+                (key, version, self.namespace),
+                write=True,
+            )
         )
 
     def rollback(self, key: str) -> int | None:
@@ -315,7 +323,7 @@ class ConfigClient(BaseClient):
             write=True,
         )
 
-    def list(
+    def list_entries(
         self,
         prefix: str | None = None,
         limit: int = 100,
@@ -360,9 +368,12 @@ class ConfigClient(BaseClient):
         Returns:
             Count of versions deleted
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT config.delete(%s, %s)", (key, self.namespace), write=True
         )
+        if result is None:
+            raise ConfigError("config.delete returned no value")
+        return int(result)
 
     def delete_version(self, key: str, version: int) -> bool:
         """Delete a specific version (cannot delete active version).
@@ -374,10 +385,12 @@ class ConfigClient(BaseClient):
         Returns:
             True if deleted
         """
-        return self._fetch_val(
-            "SELECT config.delete_version(%s, %s, %s)",
-            (key, version, self.namespace),
-            write=True,
+        return bool(
+            self._fetch_val(
+                "SELECT config.delete_version(%s, %s, %s)",
+                (key, version, self.namespace),
+                write=True,
+            )
         )
 
     def exists(self, key: str) -> bool:
@@ -389,7 +402,9 @@ class ConfigClient(BaseClient):
         Returns:
             True if key exists and has an active version
         """
-        return self._fetch_val("SELECT config.exists(%s, %s)", (key, self.namespace))
+        return bool(
+            self._fetch_val("SELECT config.exists(%s, %s)", (key, self.namespace))
+        )
 
     def get_stats(self) -> dict:
         """Get namespace statistics.
@@ -415,11 +430,14 @@ class ConfigClient(BaseClient):
         Returns:
             Count of versions deleted
         """
-        return self._fetch_val(
+        result = self._fetch_val(
             "SELECT config.cleanup_old_versions(%s, %s)",
             (keep_versions, self.namespace),
             write=True,
         )
+        if result is None:
+            raise ConfigError("config.cleanup_old_versions returned no value")
+        return int(result)
 
     def get_audit_events(
         self,
@@ -447,12 +465,12 @@ class ConfigClient(BaseClient):
             if events:
                 more = config.get_audit_events(limit=50, before=events[-1]["cursor"])
         """
-        return super().get_audit_events(
+        return self._get_audit_events(
             limit=limit,
             event_type=event_type,
             actor_id=actor_id,
+            filters={"key": key},
             before=before,
-            key=key,
         )
 
     # Schema management
@@ -548,8 +566,10 @@ class ConfigClient(BaseClient):
         Note:
             Requires admin connection that bypasses RLS.
         """
-        return self._fetch_val(
-            "SELECT config.delete_schema(%s)", (key_pattern,), write=True
+        return bool(
+            self._fetch_val(
+                "SELECT config.delete_schema(%s)", (key_pattern,), write=True
+            )
         )
 
     def list_schemas(self, prefix: str | None = None, limit: int = 100) -> list[dict]:
