@@ -237,36 +237,36 @@ BEGIN
     -- Prevent concurrent calls for the same namespace
     PERFORM pg_advisory_xact_lock(hashtext('meter.release_expired:' || COALESCE(p_namespace, '*')));
 
-    -- Update accounts in one statement using aggregated amounts per account
-    WITH expired_agg AS (
-        SELECT namespace, user_id, event_type, resource, unit, SUM(amount) AS total_amount
-        FROM meter.reservations
-        WHERE status = 'active'
-          AND expires_at <= now()
-          AND (p_namespace IS NULL OR namespace = p_namespace)
-        GROUP BY namespace, user_id, event_type, resource, unit
-    )
-    UPDATE meter.accounts a SET
-        reserved = reserved - e.total_amount,
-        updated_at = now()
-    FROM expired_agg e
-    WHERE a.namespace = e.namespace
-      AND a.user_id IS NOT DISTINCT FROM e.user_id
-      AND a.event_type = e.event_type
-      AND a.resource = e.resource
-      AND a.unit = e.unit;
-
-    -- Mark all expired reservations in one statement
-    WITH expired AS (
+    -- Mark expired reservations and release holds in one atomic statement.
+    -- Lock ordering: reservations first (UPDATE in CTE), accounts second (outer UPDATE).
+    -- This matches commit()'s lock ordering to prevent deadlocks.
+    WITH expired_rows AS (
         UPDATE meter.reservations SET
             status = 'expired',
             completed_at = now()
         WHERE status = 'active'
           AND expires_at <= now()
           AND (p_namespace IS NULL OR namespace = p_namespace)
+        RETURNING namespace, user_id, event_type, resource, unit, amount
+    ),
+    expired_agg AS (
+        SELECT namespace, user_id, event_type, resource, unit, SUM(amount) AS total_amount
+        FROM expired_rows
+        GROUP BY namespace, user_id, event_type, resource, unit
+    ),
+    account_updates AS (
+        UPDATE meter.accounts a SET
+            reserved = reserved - e.total_amount,
+            updated_at = now()
+        FROM expired_agg e
+        WHERE a.namespace = e.namespace
+          AND a.user_id IS NOT DISTINCT FROM e.user_id
+          AND a.event_type = e.event_type
+          AND a.resource = e.resource
+          AND a.unit = e.unit
         RETURNING 1
     )
-    SELECT COUNT(*) INTO v_count FROM expired;
+    SELECT COUNT(*) INTO v_count FROM expired_rows;
 
     RETURN v_count;
 END;

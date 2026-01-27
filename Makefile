@@ -31,7 +31,8 @@ build:
 	@./scripts/build.sh authn > dist/authn.sql
 	@./scripts/build.sh config > dist/config.sql
 	@./scripts/build.sh meter > dist/meter.sql
-	@echo "$(GREEN)✓ Built dist/postkit.sql, dist/authz.sql, dist/authn.sql, dist/config.sql, dist/meter.sql$(NC)"
+	@./scripts/build.sh queue > dist/queue.sql
+	@echo "$(GREEN)✓ Built dist/*.sql$(NC)"
 
 test: db build
 ifdef TEST
