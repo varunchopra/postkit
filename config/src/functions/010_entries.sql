@@ -566,6 +566,10 @@ BEGIN
     PERFORM config._validate_namespace(p_namespace);
     PERFORM config._warn_namespace_mismatch(p_namespace);
 
+    IF p_limit > 1000 THEN
+        p_limit := 1000;
+    END IF;
+
     RETURN QUERY
     SELECT e.key, e.value, e.version, e.created_at
     FROM config.entries e

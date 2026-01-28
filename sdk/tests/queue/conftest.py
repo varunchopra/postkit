@@ -4,7 +4,7 @@ from pathlib import Path
 
 import psycopg
 import pytest
-from postkit.queue import Client as QueueClient
+from postkit.queue import QueueClient
 
 from tests.conftest import DATABASE_URL
 

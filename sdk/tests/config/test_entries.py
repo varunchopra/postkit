@@ -1,7 +1,7 @@
 """Tests for config entries (set, get, activate, rollback, etc.)."""
 
 import pytest
-from postkit.config import ConfigValidationError
+from postkit.config import ConfigErrorCode, ConfigValidationError
 
 
 class TestSet:
@@ -55,13 +55,13 @@ class TestSet:
         """Invalid key formats are rejected."""
         with pytest.raises(ConfigValidationError) as exc_info:
             config.set("/leading-slash", {"v": 1})
-        assert exc_info.value.error_code == "VAL_KEY_FORMAT"
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEY_FORMAT
 
     def test_validates_key_no_double_slash(self, config):
         """Double slashes are rejected."""
         with pytest.raises(ConfigValidationError) as exc_info:
             config.set("prompts//bot", {"v": 1})
-        assert exc_info.value.error_code == "VAL_KEY_SLASHES"
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEY_SLASHES
 
     def test_records_created_by(self, config, test_helpers):
         """created_by is populated from actor context."""
@@ -277,6 +277,15 @@ class TestSearch:
         keys = [r["key"] for r in results]
         assert keys == ["test_exact"]
         assert "testXother" not in keys
+
+    def test_search_respects_limit(self, config):
+        """search returns at most limit entries."""
+        for i in range(5):
+            config.set(f"flags/f{i}", {"enabled": True})
+
+        results = config.search({"enabled": True}, limit=2)
+
+        assert len(results) == 2
 
 
 class TestGetValue:
@@ -541,7 +550,7 @@ class TestDeleteVersion:
 
         with pytest.raises(ConfigValidationError) as exc_info:
             config.delete_version("prompts/bot", 2)
-        assert exc_info.value.error_code == "BIZ_DELETE_ACTIVE_VERSION"
+        assert exc_info.value.error_code == ConfigErrorCode.BIZ_DELETE_ACTIVE_VERSION
 
     def test_returns_false_for_missing_version(self, config):
         """delete_version() returns False for non-existent version."""

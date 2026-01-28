@@ -1,6 +1,10 @@
 """Tests for queue ack/nack/fail operations."""
 
+from datetime import timedelta
+
 import pytest
+from postkit.errors import QueueErrorCode
+from postkit.queue import QueueClient, QueueValidationError
 
 
 class TestAck:
@@ -97,7 +101,6 @@ class TestNack:
     def test_nack_increments_attempts(self, raw_cursor):
         """Each pull after nack increments the attempts counter."""
         cursor, namespace = raw_cursor
-        from postkit.queue import Client as QueueClient
 
         q = QueueClient(cursor, namespace)
         q.push("tasks", {"task": 1}, max_attempts=5)
@@ -115,7 +118,6 @@ class TestNack:
 
     def test_nack_with_custom_backoff(self, queue):
         """nack accepts custom backoff duration."""
-        from datetime import timedelta
 
         queue.push("tasks", {"task": 1}, max_attempts=3)
         job = queue.pull("tasks")
@@ -140,19 +142,19 @@ class TestNack:
 
     def test_nack_not_running_raises_error(self, queue):
         """nack raises error for non-running job."""
-        from postkit.queue import ValidationError
 
         job_id = queue.push("tasks", {"task": 1})
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.nack(job_id)
+        assert exc_info.value.error_code == QueueErrorCode.BIZ_JOB_NOT_RUNNING
 
     def test_nack_not_found_raises_error(self, queue):
         """nack raises error for nonexistent job."""
-        from postkit.queue import ValidationError
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.nack(999999)
+        assert exc_info.value.error_code == QueueErrorCode.DATA_JOB_NOT_FOUND
 
 
 class TestFail:
@@ -180,9 +182,6 @@ class TestFail:
     def test_fail_stores_error_message(self, queue, raw_cursor):
         """fail stores error message in dead_letters."""
         cursor, namespace = raw_cursor
-
-        # Use the same namespace
-        from postkit.queue import Client as QueueClient
 
         q = QueueClient(cursor, namespace)
         q.push("tasks", {"task": 1})

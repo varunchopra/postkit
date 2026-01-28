@@ -222,6 +222,31 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
 
 
+-- @function authn._validate_user_enabled
+-- @brief Verify user exists and is not disabled
+-- @param p_user_id User ID to check
+-- @param p_namespace Namespace the user belongs to
+CREATE OR REPLACE FUNCTION authn._validate_user_enabled(
+    p_user_id uuid,
+    p_namespace text
+)
+RETURNS void
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM authn.users u
+        WHERE u.id = p_user_id
+          AND u.namespace = p_namespace
+          AND u.disabled_at IS NULL
+    ) THEN
+        RAISE EXCEPTION 'User not found or disabled'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:USER_DISABLED';
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
+
+
 -- @function authn._warn_namespace_mismatch
 -- @brief Warns if namespace doesn't match RLS tenant context
 -- @param p_namespace The namespace being queried

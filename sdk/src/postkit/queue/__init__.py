@@ -1,7 +1,6 @@
 """Postkit Queue SDK - Postgres-native job queues."""
 
-from postkit.queue.client import QueueClient as Client
-from postkit.queue.client import QueueError as Error
-from postkit.queue.client import QueueValidationError as ValidationError
+from postkit.errors import QueueErrorCode
+from postkit.queue.client import QueueClient, QueueError, QueueValidationError
 
-__all__ = ["Client", "Error", "ValidationError"]
+__all__ = ["QueueClient", "QueueError", "QueueErrorCode", "QueueValidationError"]

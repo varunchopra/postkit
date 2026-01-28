@@ -12,7 +12,7 @@ Tests for:
 from datetime import date
 
 import pytest
-from postkit.meter import MeterError
+from postkit.meter import MeterError, MeterErrorCode
 
 
 class TestSetPeriodConfig:
@@ -452,7 +452,7 @@ class TestOpenPeriod:
                 period_start=date(2025, 2, 1),
                 allocation=10000,
             )
-        assert exc_info.value.error_code == "DATA_ACCOUNT_NOT_FOUND"
+        assert exc_info.value.error_code == MeterErrorCode.DATA_ACCOUNT_NOT_FOUND
 
     def test_opens_period_no_allocation_raises(self, meter):
         """Opening period without allocation (explicit or default) raises."""
@@ -468,7 +468,7 @@ class TestOpenPeriod:
                 period_start=date(2025, 2, 1),
                 allocation=None,
             )
-        assert exc_info.value.error_code == "VAL_ALLOCATION_REQUIRED"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_ALLOCATION_REQUIRED
 
 
 class TestPeriodLifecycle:

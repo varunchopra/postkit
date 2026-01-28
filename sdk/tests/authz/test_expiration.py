@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from postkit.authz import AuthzError
+from postkit.authz import AuthzError, AuthzErrorCode
 from postkit.base import CheckViolationError
 
 
@@ -126,7 +126,7 @@ class TestExpiringPermissions:
                 subject=("user", "alice"),
                 expires_at=past,
             )
-        assert exc_info.value.error_code == "VAL_EXPIRATION_FUTURE"
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_EXPIRATION_FUTURE
 
     def test_update_expiration_via_grant(self, authz):
         """Can extend or shorten expiration by granting again."""
@@ -345,7 +345,7 @@ class TestSetExpiration:
                 subject=("user", "alice"),
                 extension=timedelta(days=30),
             )
-        assert exc_info.value.error_code == "DATA_GRANT_NOT_FOUND"
+        assert exc_info.value.error_code == AuthzErrorCode.DATA_GRANT_NOT_FOUND
 
     def test_extend_expiration_no_expiration(self, authz):
         """extend_expiration raises if grant has no expiration."""
@@ -358,7 +358,7 @@ class TestSetExpiration:
                 subject=("user", "alice"),
                 extension=timedelta(days=30),
             )
-        assert exc_info.value.error_code == "BIZ_GRANT_NO_EXPIRATION"
+        assert exc_info.value.error_code == AuthzErrorCode.BIZ_GRANT_NO_EXPIRATION
 
 
 class TestExpirationWithBatchOperations:

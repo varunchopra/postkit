@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from postkit.authn import AuthnValidationError
+from postkit.authn import AuthnErrorCode, AuthnValidationError
 
 
 class TestStartImpersonation:
@@ -47,13 +47,13 @@ class TestStartImpersonation:
             authn.start_impersonation(
                 admin_session, target_id, "", token_hash="imp_token1"
             )
-        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_REASON_REQUIRED
 
         with pytest.raises(AuthnValidationError) as exc_info:
             authn.start_impersonation(
                 admin_session, target_id, "   ", token_hash="imp_token2"
             )
-        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_REASON_REQUIRED
 
     def test_prevents_self_impersonation(self, authn):
         """Cannot impersonate yourself."""
@@ -64,7 +64,7 @@ class TestStartImpersonation:
             authn.start_impersonation(
                 session_id, user_id, "Testing self", token_hash="imp_token"
             )
-        assert exc_info.value.error_code == "BIZ_IMPERSONATE_SELF"
+        assert exc_info.value.error_code == AuthnErrorCode.BIZ_IMPERSONATE_SELF
 
     def test_prevents_impersonation_chaining(self, authn):
         """Cannot start impersonation from a regular impersonation session."""
@@ -87,7 +87,7 @@ class TestStartImpersonation:
                 "Chained impersonation",
                 token_hash="imp_token_c",
             )
-        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
+        assert exc_info.value.error_code == AuthnErrorCode.BIZ_IMPERSONATE_CHAIN
 
     def test_prevents_cross_type_chaining_operator_to_regular(self, make_authn):
         """Cannot start regular impersonation from an operator impersonation session.
@@ -123,7 +123,7 @@ class TestStartImpersonation:
                 "Cross-type chained impersonation",
                 token_hash="imp_token_c",
             )
-        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
+        assert exc_info.value.error_code == AuthnErrorCode.BIZ_IMPERSONATE_CHAIN
 
     def test_rejects_invalid_actor_session(self, authn):
         """Cannot start impersonation with invalid session."""
@@ -134,7 +134,7 @@ class TestStartImpersonation:
             authn.start_impersonation(
                 fake_session, target_id, "Invalid session", token_hash="imp_token"
             )
-        assert exc_info.value.error_code == "SESSION_ACTOR_INVALID"
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_ACTOR_INVALID
 
     def test_rejects_disabled_target_user(self, authn):
         """Cannot impersonate a disabled user."""
@@ -148,7 +148,7 @@ class TestStartImpersonation:
             authn.start_impersonation(
                 admin_session, target_id, "Disabled user", token_hash="imp_token"
             )
-        assert exc_info.value.error_code == "SESSION_TARGET_INVALID"
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_TARGET_INVALID
 
     def test_custom_duration(self, authn):
         """Can specify custom duration within limits."""
@@ -183,7 +183,7 @@ class TestStartImpersonation:
                 token_hash="imp_token",
                 duration=timedelta(days=1),
             )
-        assert exc_info.value.error_code == "LIMIT_DURATION_EXCEEDED"
+        assert exc_info.value.error_code == AuthnErrorCode.LIMIT_DURATION_EXCEEDED
 
     def test_rejects_zero_duration(self, authn):
         """Cannot use zero duration."""
@@ -199,7 +199,7 @@ class TestStartImpersonation:
                 token_hash="imp_token",
                 duration=timedelta(0),
             )
-        assert exc_info.value.error_code == "VAL_DURATION_POSITIVE"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_DURATION_POSITIVE
 
     def test_rejects_negative_duration(self, authn):
         """Cannot use negative duration."""
@@ -215,7 +215,7 @@ class TestStartImpersonation:
                 token_hash="imp_token",
                 duration=timedelta(minutes=-30),
             )
-        assert exc_info.value.error_code == "VAL_DURATION_POSITIVE"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_DURATION_POSITIVE
 
     def test_rejects_revoked_actor_session(self, authn):
         """Cannot start impersonation with a revoked session."""
@@ -229,7 +229,7 @@ class TestStartImpersonation:
             authn.start_impersonation(
                 admin_session, target_id, "Revoked session", token_hash="imp_token"
             )
-        assert exc_info.value.error_code == "SESSION_ACTOR_INVALID"
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_ACTOR_INVALID
 
     def test_rejects_disabled_actor_user(self, authn):
         """Cannot start impersonation if actor user is disabled."""
@@ -243,7 +243,7 @@ class TestStartImpersonation:
             authn.start_impersonation(
                 admin_session, target_id, "Disabled actor", token_hash="imp_token"
             )
-        assert exc_info.value.error_code == "SESSION_ACTOR_INVALID"
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_ACTOR_INVALID
 
     def test_creates_audit_event(self, authn):
         """Impersonation start is logged to audit."""

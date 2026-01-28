@@ -5,9 +5,11 @@ from postkit.authn.client import (
     AuthnError,
     AuthnValidationError,
 )
+from postkit.errors import AuthnErrorCode
 
 __all__ = [
     "AuthnClient",
     "AuthnError",
+    "AuthnErrorCode",
     "AuthnValidationError",
 ]

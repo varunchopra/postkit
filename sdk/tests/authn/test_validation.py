@@ -2,7 +2,7 @@
 
 import psycopg
 import pytest
-from postkit.authn import AuthnError, AuthnValidationError
+from postkit.authn import AuthnError, AuthnErrorCode, AuthnValidationError
 
 
 class TestEmailValidation:
@@ -256,25 +256,25 @@ class TestValidationErrorType:
         """Null validation raises AuthnValidationError (SQLSTATE 22004)."""
         with pytest.raises(AuthnValidationError) as exc_info:
             make_authn(None)
-        assert exc_info.value.error_code == "VAL_NAMESPACE_NULL"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_NULL
 
     def test_empty_validation_raises_authn_validation_error(self, make_authn):
         """Empty string validation raises AuthnValidationError (SQLSTATE 22026)."""
         with pytest.raises(AuthnValidationError) as exc_info:
             make_authn("")
-        assert exc_info.value.error_code == "VAL_NAMESPACE_EMPTY"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_EMPTY
 
     def test_length_validation_raises_authn_validation_error(self, make_authn):
         """Length exceeded validation raises AuthnValidationError (SQLSTATE 22001)."""
         with pytest.raises(AuthnValidationError) as exc_info:
             make_authn("a" * 1025)
-        assert exc_info.value.error_code == "VAL_NAMESPACE_TOO_LONG"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_TOO_LONG
 
     def test_format_validation_raises_authn_validation_error(self, make_authn):
         """Format validation raises AuthnValidationError (SQLSTATE 22023)."""
         with pytest.raises(AuthnValidationError) as exc_info:
             make_authn("has\ttab")
-        assert exc_info.value.error_code == "VAL_NAMESPACE_INVALID_CHARS"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_INVALID_CHARS
 
     def test_authn_validation_error_is_authn_error(self):
         """AuthnValidationError is a subclass of AuthnError for backwards compatibility."""

@@ -3,12 +3,12 @@
 These constants provide autocomplete and typo-proofing when checking error codes.
 
 Usage:
-    from postkit.errors import AuthnCodes
+    from postkit.authn import AuthnErrorCode
 
     try:
         authn.start_impersonation(...)
     except AuthnValidationError as e:
-        if e.error_code == AuthnCodes.IMPERSONATE_SELF:
+        if e.error_code == AuthnErrorCode.BIZ_IMPERSONATE_SELF:
             # handle self-impersonation attempt
             pass
 
@@ -18,10 +18,11 @@ Error code prefixes:
     DATA_    - Data state errors (missing, already exists)
     SESSION_ - Session state failures
     LIMIT_   - Limits/quotas exceeded
+    CRED_    - Credential state errors
 """
 
 
-class AuthnCodes:
+class AuthnErrorCode:
     """Error codes for the authn module."""
 
     # Validation errors (VAL_)
@@ -44,8 +45,8 @@ class AuthnCodes:
     VAL_SECRET_TOO_LONG = "VAL_SECRET_TOO_LONG"
     VAL_TOKEN_TYPE_NULL = "VAL_TOKEN_TYPE_NULL"
     VAL_TOKEN_TYPE_INVALID = "VAL_TOKEN_TYPE_INVALID"
-    VAL_MFA_TYPE_NULL = "VAL_MFA_TYPE_NULL"
-    VAL_MFA_TYPE_INVALID = "VAL_MFA_TYPE_INVALID"
+    VAL_CREDENTIAL_TYPE_NULL = "VAL_CREDENTIAL_TYPE_NULL"
+    VAL_CREDENTIAL_TYPE_INVALID = "VAL_CREDENTIAL_TYPE_INVALID"
     VAL_UUID_NULL = "VAL_UUID_NULL"
     VAL_UUID_INVALID = "VAL_UUID_INVALID"
     VAL_IP_ADDRESS_INVALID = "VAL_IP_ADDRESS_INVALID"
@@ -64,11 +65,18 @@ class AuthnCodes:
     BIZ_IMPERSONATE_SELF = "BIZ_IMPERSONATE_SELF"
     BIZ_IMPERSONATE_CHAIN = "BIZ_IMPERSONATE_CHAIN"
 
+    # Credential state errors (CRED_)
+    CRED_NO_MATERIAL = "CRED_NO_MATERIAL"
+    CRED_DISABLE_NO_REASON = "CRED_DISABLE_NO_REASON"
+
+    # User state errors
+    USER_DISABLED = "USER_DISABLED"
+
     # Limit errors (LIMIT_)
     LIMIT_DURATION_EXCEEDED = "LIMIT_DURATION_EXCEEDED"
 
 
-class AuthzCodes:
+class AuthzErrorCode:
     """Error codes for the authz module."""
 
     # Validation errors (VAL_)
@@ -106,7 +114,7 @@ class AuthzCodes:
     DATA_GRANT_NOT_FOUND = "DATA_GRANT_NOT_FOUND"
 
 
-class ConfigCodes:
+class ConfigErrorCode:
     """Error codes for the config module."""
 
     # Validation errors (VAL_)
@@ -134,7 +142,7 @@ class ConfigCodes:
     BIZ_DELETE_ACTIVE_VERSION = "BIZ_DELETE_ACTIVE_VERSION"
 
 
-class MeterCodes:
+class MeterErrorCode:
     """Error codes for the meter module."""
 
     # Validation errors (VAL_)
@@ -165,7 +173,7 @@ class MeterCodes:
     DATA_ACCOUNT_NOT_FOUND = "DATA_ACCOUNT_NOT_FOUND"
 
 
-class QueueCodes:
+class QueueErrorCode:
     """Error codes for the queue module."""
 
     # Validation errors (VAL_)
@@ -192,10 +200,6 @@ class QueueCodes:
 
     # Business logic errors (BIZ_)
     BIZ_JOB_NOT_RUNNING = "BIZ_JOB_NOT_RUNNING"
-    BIZ_DUPLICATE_UNIQUE_KEY = "BIZ_DUPLICATE_UNIQUE_KEY"
-    BIZ_SCHEDULE_EXISTS = "BIZ_SCHEDULE_EXISTS"
 
     # Data state errors (DATA_)
     DATA_JOB_NOT_FOUND = "DATA_JOB_NOT_FOUND"
-    DATA_SCHEDULE_NOT_FOUND = "DATA_SCHEDULE_NOT_FOUND"
-    DATA_DEAD_LETTER_NOT_FOUND = "DATA_DEAD_LETTER_NOT_FOUND"

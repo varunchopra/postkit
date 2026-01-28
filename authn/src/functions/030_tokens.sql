@@ -23,18 +23,7 @@ BEGIN
     PERFORM authn._validate_hash(p_token_hash, 'token_hash', false);
     PERFORM authn._validate_token_type(p_token_type);
     PERFORM authn._validate_namespace(p_namespace);
-
-    -- Verify user exists and is not disabled
-    IF NOT EXISTS (
-        SELECT 1 FROM authn.users u
-        WHERE u.id = p_user_id
-          AND u.namespace = p_namespace
-          AND u.disabled_at IS NULL
-    ) THEN
-        RAISE EXCEPTION 'User not found or disabled'
-            USING ERRCODE = 'invalid_parameter_value',
-                  HINT = 'postkit:authn:USER_DISABLED';
-    END IF;
+    PERFORM authn._validate_user_enabled(p_user_id, p_namespace);
 
     -- Use default expiry for token type if not specified
     v_expires_at := now() + COALESCE(p_expires_in, authn._token_expiry(p_token_type));

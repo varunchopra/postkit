@@ -3,7 +3,7 @@
 from datetime import date
 
 import pytest
-from postkit.meter import MeterError, MeterValidationError
+from postkit.meter import MeterError, MeterErrorCode, MeterValidationError
 
 
 class TestNamespaceValidation:
@@ -17,32 +17,39 @@ class TestNamespaceValidation:
             client.allocate("user-1", "api.calls", 100, "credits")
 
     def test_rejects_null(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter(None)
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_NULL
 
     def test_rejects_empty(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter("")
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_EMPTY
 
     def test_rejects_whitespace_only(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter("   ")
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_EMPTY
 
     def test_rejects_leading_whitespace(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter(" leading")
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_WHITESPACE
 
     def test_rejects_trailing_whitespace(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter("trailing ")
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_WHITESPACE
 
     def test_rejects_control_characters(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter("has\ttab")
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_INVALID_CHARS
 
     def test_rejects_over_max_length(self, make_meter):
-        with pytest.raises(MeterError):
+        with pytest.raises(MeterError) as exc_info:
             make_meter("a" * 1025)
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_TOO_LONG
 
 
 class TestFieldLimits:
@@ -53,14 +60,14 @@ class TestFieldLimits:
         meter.allocate("user", "a" * 256, 100, "unit")  # at limit
         with pytest.raises(MeterError) as exc_info:
             meter.allocate("user", "a" * 257, 100, "unit")
-        assert exc_info.value.error_code == "VAL_EVENT_TYPE_TOO_LONG"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_TOO_LONG
 
     def test_rejects_overly_long_unit(self, meter):
         """unit has a length limit."""
         meter.allocate("user", "event", 100, "a" * 64)  # at limit
         with pytest.raises(MeterError) as exc_info:
             meter.allocate("user", "event", 100, "a" * 65)
-        assert exc_info.value.error_code == "VAL_UNIT_TOO_LONG"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_UNIT_TOO_LONG
 
 
 class TestValidationErrorType:
@@ -70,25 +77,25 @@ class TestValidationErrorType:
         """Null validation raises MeterValidationError (SQLSTATE 22004)."""
         with pytest.raises(MeterValidationError) as exc_info:
             make_meter(None)
-        assert exc_info.value.error_code == "VAL_NAMESPACE_NULL"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_NULL
 
     def test_empty_validation_raises_meter_validation_error(self, make_meter):
         """Empty string validation raises MeterValidationError (SQLSTATE 22026)."""
         with pytest.raises(MeterValidationError) as exc_info:
             make_meter("")
-        assert exc_info.value.error_code == "VAL_NAMESPACE_EMPTY"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_EMPTY
 
     def test_length_validation_raises_meter_validation_error(self, meter):
         """Length exceeded validation raises MeterValidationError (SQLSTATE 22001)."""
         with pytest.raises(MeterValidationError) as exc_info:
             meter.allocate("user", "a" * 257, 100, "unit")  # event_type too long
-        assert exc_info.value.error_code == "VAL_EVENT_TYPE_TOO_LONG"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_TOO_LONG
 
     def test_format_validation_raises_meter_validation_error(self, make_meter):
         """Format validation raises MeterValidationError (SQLSTATE 22023)."""
         with pytest.raises(MeterValidationError) as exc_info:
             make_meter("has\ttab")
-        assert exc_info.value.error_code == "VAL_NAMESPACE_INVALID_CHARS"
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_INVALID_CHARS
 
     def test_meter_validation_error_is_meter_error(self):
         """MeterValidationError is a subclass of MeterError for backwards compatibility."""
@@ -99,17 +106,21 @@ class TestPeriodFunctionValidation:
     """Period functions call the same validators as allocate."""
 
     def test_set_period_config_validates_inputs(self, meter):
-        with pytest.raises(MeterValidationError):
+        with pytest.raises(MeterValidationError) as exc_info:
             meter.set_period_config("user", "", "unit", None, date(2025, 1, 1), 1000)
+        assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_EMPTY
 
     def test_close_period_validates_inputs(self, meter):
-        with pytest.raises(MeterValidationError):
+        with pytest.raises(MeterValidationError) as exc_info:
             meter.close_period("user", "", "unit", None, date(2025, 1, 31))
+        assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_EMPTY
 
     def test_open_period_validates_inputs(self, meter):
-        with pytest.raises(MeterValidationError):
+        with pytest.raises(MeterValidationError) as exc_info:
             meter.open_period("user", "", "unit", None, date(2025, 2, 1), 1000)
+        assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_EMPTY
 
     def test_set_period_config_validates_allocation(self, meter):
-        with pytest.raises(MeterValidationError):
+        with pytest.raises(MeterValidationError) as exc_info:
             meter.set_period_config("user", "event", "unit", None, date(2025, 1, 1), 0)
+        assert exc_info.value.error_code == MeterErrorCode.VAL_NOT_POSITIVE

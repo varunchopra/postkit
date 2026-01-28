@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from postkit.authn import AuthnValidationError
+from postkit.authn import AuthnErrorCode, AuthnValidationError
 
 
 class TestStartOperatorImpersonation:
@@ -76,7 +76,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token1",
                 reason="",
             )
-        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_REASON_REQUIRED
 
         with pytest.raises(AuthnValidationError) as exc_info:
             platform.start_operator_impersonation(
@@ -86,7 +86,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token2",
                 reason="   ",
             )
-        assert exc_info.value.error_code == "VAL_REASON_REQUIRED"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_REASON_REQUIRED
 
     def test_prevents_self_impersonation_cross_namespace(self, make_authn):
         """Cannot impersonate yourself even across namespaces."""
@@ -104,7 +104,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token",
                 reason="Testing self",
             )
-        assert exc_info.value.error_code == "BIZ_IMPERSONATE_SELF"
+        assert exc_info.value.error_code == AuthnErrorCode.BIZ_IMPERSONATE_SELF
 
     def test_prevents_impersonation_chaining(self, make_authn):
         """Cannot start operator impersonation from an operator impersonation session."""
@@ -136,7 +136,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token_c",
                 reason="Chained impersonation",
             )
-        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
+        assert exc_info.value.error_code == AuthnErrorCode.BIZ_IMPERSONATE_CHAIN
 
     def test_prevents_cross_type_chaining_regular_to_operator(self, make_authn):
         """Cannot start operator impersonation from a regular impersonation session.
@@ -169,7 +169,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token_c",
                 reason="Cross-type chained impersonation",
             )
-        assert exc_info.value.error_code == "BIZ_IMPERSONATE_CHAIN"
+        assert exc_info.value.error_code == AuthnErrorCode.BIZ_IMPERSONATE_CHAIN
 
     def test_rejects_invalid_operator_session(self, make_authn):
         """Cannot start operator impersonation with invalid session."""
@@ -185,7 +185,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token",
                 reason="Invalid session",
             )
-        assert exc_info.value.error_code == "SESSION_OPERATOR_INVALID"
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_OPERATOR_INVALID
 
     def test_rejects_disabled_target_user(self, make_authn):
         """Cannot impersonate a disabled user."""
@@ -206,7 +206,7 @@ class TestStartOperatorImpersonation:
                 token_hash="imp_token",
                 reason="Disabled user",
             )
-        assert exc_info.value.error_code == "SESSION_TARGET_INVALID"
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_TARGET_INVALID
 
     def test_custom_duration(self, make_authn):
         """Can specify custom duration within limits."""
@@ -251,7 +251,7 @@ class TestStartOperatorImpersonation:
                 reason="Too long",
                 duration=timedelta(hours=5),
             )
-        assert exc_info.value.error_code == "LIMIT_DURATION_EXCEEDED"
+        assert exc_info.value.error_code == AuthnErrorCode.LIMIT_DURATION_EXCEEDED
 
     def test_rejects_zero_duration(self, make_authn):
         """Cannot use zero duration."""
@@ -272,7 +272,7 @@ class TestStartOperatorImpersonation:
                 reason="Zero duration",
                 duration=timedelta(0),
             )
-        assert exc_info.value.error_code == "VAL_DURATION_POSITIVE"
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_DURATION_POSITIVE
 
     def test_stores_ticket_reference(self, make_authn):
         """Ticket reference is stored in impersonation record."""

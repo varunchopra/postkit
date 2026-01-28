@@ -48,7 +48,7 @@ Get a single API key by ID if owned by user (for ownership verification)
 SELECT * FROM authn.get_api_key('key-uuid', 'user-uuid');
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:219*
+*Source: authn/src/functions/025_api_keys.sql:220*
 
 ---
 
@@ -70,7 +70,7 @@ List API keys for a user (for management UI)
 SELECT * FROM authn.list_api_keys(user_id);
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:182*
+*Source: authn/src/functions/025_api_keys.sql:183*
 
 ---
 
@@ -92,7 +92,7 @@ Revoke all API keys for a user
 SELECT authn.revoke_all_api_keys(user_id); -- Security concern, revoke all
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:146*
+*Source: authn/src/functions/025_api_keys.sql:147*
 
 ---
 
@@ -114,7 +114,7 @@ Revoke an API key
 SELECT authn.revoke_api_key('key-uuid-here');
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:107*
+*Source: authn/src/functions/025_api_keys.sql:108*
 
 ---
 
@@ -136,7 +136,7 @@ Validate an API key and get owner info (hot path)
 SELECT * FROM authn.validate_api_key('a1b2c3...key_hash');
 ```
 
-*Source: authn/src/functions/025_api_keys.sql:48*
+*Source: authn/src/functions/025_api_keys.sql:49*
 
 ---
 
@@ -295,7 +295,7 @@ Consume a one-time credential (e.g., recovery code)
 SELECT authn.consume_credential(recovery_code_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:188*
+*Source: authn/src/functions/040_credentials.sql:178*
 
 ---
 
@@ -318,7 +318,7 @@ Bulk disable all credentials for a user (incident response)
 SELECT authn.disable_all_credentials(user_id, 'User reported device stolen');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:476*
+*Source: authn/src/functions/040_credentials.sql:466*
 
 ---
 
@@ -341,7 +341,7 @@ Soft-disable a credential (preserves for forensics)
 SELECT authn.disable_credential(credential_id, 'Reported as compromised');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:289*
+*Source: authn/src/functions/040_credentials.sql:279*
 
 ---
 
@@ -365,7 +365,7 @@ Lookup a credential by its lookup_key (requires user context for security)
 SELECT * FROM authn.get_credential_by_lookup(user_id, hash, 'recovery_code');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:119*
+*Source: authn/src/functions/040_credentials.sql:109*
 
 ---
 
@@ -407,7 +407,7 @@ Get active credentials for verification (returns secrets)
 SELECT * FROM authn.get_credentials(user_id, 'totp');
 ```
 
-*Source: authn/src/functions/040_credentials.sql:79*
+*Source: authn/src/functions/040_credentials.sql:69*
 
 ---
 
@@ -430,7 +430,7 @@ Check if user has active credential of a specific type
 IF authn.has_credential(user_id, 'totp') THEN prompt_for_code(); END IF;
 ```
 
-*Source: authn/src/functions/040_credentials.sql:446*
+*Source: authn/src/functions/040_credentials.sql:436*
 
 ---
 
@@ -454,7 +454,7 @@ List credentials for settings UI (no secrets exposed)
 SELECT * FROM authn.list_credentials(user_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:395*
+*Source: authn/src/functions/040_credentials.sql:385*
 
 ---
 
@@ -474,7 +474,7 @@ Record credential usage (updates last_used_at)
 SELECT authn.record_credential_use(credential_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:161*
+*Source: authn/src/functions/040_credentials.sql:151*
 
 ---
 
@@ -496,7 +496,7 @@ Hard-delete a credential (user self-service)
 SELECT authn.remove_credential(credential_id);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:344*
+*Source: authn/src/functions/040_credentials.sql:334*
 
 ---
 
@@ -539,7 +539,7 @@ Update WebAuthn sign count (clone detection)
 SELECT authn.update_sign_count(webauthn_credential_id, 42);
 ```
 
-*Source: authn/src/functions/040_credentials.sql:231*
+*Source: authn/src/functions/040_credentials.sql:221*
 
 ---
 
@@ -1177,7 +1177,7 @@ Extend session absolute timeout (for "remember me", not idle timeout)
 SELECT authn.extend_session(token_hash, '30 days'); -- "remember me"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:158*
+*Source: authn/src/functions/020_sessions.sql:159*
 
 ---
 
@@ -1196,7 +1196,7 @@ List active sessions for "manage devices" UI
 SELECT * FROM authn.list_sessions(user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:320*
+*Source: authn/src/functions/020_sessions.sql:321*
 
 ---
 
@@ -1215,7 +1215,7 @@ Log out all sessions for a user (password change, security concern)
 SELECT authn.revoke_all_sessions(user_id); -- "Log out everywhere"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:243*
+*Source: authn/src/functions/020_sessions.sql:244*
 
 ---
 
@@ -1238,7 +1238,7 @@ Log out all sessions except the current one ("sign out other devices")
 SELECT authn.revoke_other_sessions(user_id, current_session_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:278*
+*Source: authn/src/functions/020_sessions.sql:279*
 
 ---
 
@@ -1255,7 +1255,7 @@ Log out a specific session
 SELECT authn.revoke_session(token_hash); -- User clicks "log out"
 ```
 
-*Source: authn/src/functions/020_sessions.sql:205*
+*Source: authn/src/functions/020_sessions.sql:206*
 
 ---
 
@@ -1278,7 +1278,7 @@ Revoke a specific session by ID (for "manage devices" UI)
 SELECT authn.revoke_session_by_id(session_id, user_id);
 ```
 
-*Source: authn/src/functions/020_sessions.sql:356*
+*Source: authn/src/functions/020_sessions.sql:357*
 
 ---
 
@@ -1297,7 +1297,7 @@ Check if session is valid and get user info (hot path, no logging)
 SELECT * FROM authn.validate_session('a1b2c3...token_hash');
 ```
 
-*Source: authn/src/functions/020_sessions.sql:48*
+*Source: authn/src/functions/020_sessions.sql:49*
 
 ---
 
@@ -1318,7 +1318,7 @@ Use a one-time token (marks as used, can't be reused)
 SELECT * FROM authn.consume_token('a1b2c3...token_hash', 'password_reset');
 ```
 
-*Source: authn/src/functions/030_tokens.sql:58*
+*Source: authn/src/functions/030_tokens.sql:47*
 
 ---
 
@@ -1362,7 +1362,7 @@ Invalidate unused tokens (e.g., after password change, invalidate reset tokens)
 SELECT authn.invalidate_tokens(user_id, 'password_reset');
 ```
 
-*Source: authn/src/functions/030_tokens.sql:153*
+*Source: authn/src/functions/030_tokens.sql:142*
 
 ---
 
@@ -1381,7 +1381,7 @@ Verify email address using token from email link
 SELECT * FROM authn.verify_email('a1b2c3...token_hash');
 ```
 
-*Source: authn/src/functions/030_tokens.sql:111*
+*Source: authn/src/functions/030_tokens.sql:100*
 
 ---
 

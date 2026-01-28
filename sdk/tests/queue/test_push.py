@@ -3,6 +3,8 @@
 from datetime import timedelta
 
 import pytest
+from postkit.errors import QueueErrorCode
+from postkit.queue import QueueValidationError
 
 
 class TestPush:
@@ -122,24 +124,25 @@ class TestPushValidation:
 
     def test_push_rejects_empty_queue_name(self, queue):
         """Empty queue name raises validation error."""
-        from postkit.queue import ValidationError
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.push("", {"data": 1})
+        assert exc_info.value.error_code == QueueErrorCode.VAL_QUEUE_EMPTY
 
     def test_push_rejects_invalid_queue_name(self, queue):
         """Invalid queue name format raises validation error."""
-        from postkit.queue import ValidationError
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.push("123-starts-with-number", {"data": 1})
+        assert exc_info.value.error_code == QueueErrorCode.VAL_QUEUE_FORMAT
 
     def test_push_rejects_priority_out_of_range(self, queue):
         """Priority outside -1000 to 1000 raises validation error."""
-        from postkit.queue import ValidationError
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.push("test", {"data": 1}, priority=2000)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_PRIORITY_RANGE
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.push("test", {"data": 1}, priority=-2000)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_PRIORITY_RANGE

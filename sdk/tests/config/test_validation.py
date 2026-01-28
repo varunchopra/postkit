@@ -2,6 +2,7 @@
 
 import pytest
 from postkit.config.client import ConfigError, ConfigValidationError
+from postkit.errors import ConfigErrorCode
 
 
 class TestNamespaceValidation:
@@ -16,32 +17,39 @@ class TestNamespaceValidation:
             assert client.get("test.key") is not None
 
     def test_rejects_null(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config(None)
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_NULL
 
     def test_rejects_empty(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config("")
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_EMPTY
 
     def test_rejects_whitespace_only(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config("   ")
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_EMPTY
 
     def test_rejects_leading_whitespace(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config(" leading")
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_WHITESPACE
 
     def test_rejects_trailing_whitespace(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config("trailing ")
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_WHITESPACE
 
     def test_rejects_control_characters(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config("has\ttab")
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_INVALID_CHARS
 
     def test_rejects_over_max_length(self, make_config):
-        with pytest.raises(ConfigError):
+        with pytest.raises(ConfigError) as exc_info:
             make_config("a" * 1025)
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_NAMESPACE_TOO_LONG
 
 
 class TestValidationErrorType:

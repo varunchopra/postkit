@@ -24,6 +24,7 @@ DECLARE
 BEGIN
     PERFORM authn._validate_hash(p_token_hash, 'token_hash', false);
     PERFORM authn._validate_namespace(p_namespace);
+    PERFORM authn._validate_user_enabled(p_user_id, p_namespace);
 
     -- Use default duration if not specified
     v_expires_at := now() + COALESCE(p_expires_in, authn._session_duration());

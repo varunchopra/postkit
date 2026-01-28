@@ -6,6 +6,7 @@ ensuring consistent security boundary enforcement across all auth functions.
 
 import pytest
 from postkit.authn import AuthnError
+from postkit.errors import AuthnErrorCode
 
 
 class TestCreateTokenDisabledUser:
@@ -16,8 +17,9 @@ class TestCreateTokenDisabledUser:
         user_id = authn.create_user("alice@example.com", "hash")
         authn.disable_user(user_id)
 
-        with pytest.raises(AuthnError):
+        with pytest.raises(AuthnError) as exc_info:
             authn.create_token(user_id, "token_hash", "password_reset")
+        assert exc_info.value.error_code == AuthnErrorCode.USER_DISABLED
 
     def test_create_token_succeeds_for_enabled_user(self, authn):
         """create_token works for enabled users (non-breaking change)."""
@@ -86,8 +88,9 @@ class TestCreateRefreshTokenDisabledUser:
         session_id = authn.create_session(user_id, "session_hash")
         authn.disable_user(user_id)
 
-        with pytest.raises(AuthnError):
+        with pytest.raises(AuthnError) as exc_info:
             authn.create_refresh_token(session_id, "refresh_hash")
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_INVALID
 
     def test_create_refresh_token_succeeds_for_enabled_user(self, authn):
         """create_refresh_token works for enabled users (non-breaking change)."""
@@ -120,6 +123,25 @@ class TestExtendSessionDisabledUser:
         assert result is not None
 
 
+class TestCreateSessionDisabledUser:
+    """Tests for create_session rejecting disabled users."""
+
+    def test_create_session_fails_for_disabled_user(self, authn):
+        """create_session raises error when user is disabled."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        authn.disable_user(user_id)
+
+        with pytest.raises(AuthnError) as exc_info:
+            authn.create_session(user_id, "session_hash")
+        assert exc_info.value.error_code == AuthnErrorCode.USER_DISABLED
+
+    def test_create_session_succeeds_for_enabled_user(self, authn):
+        """create_session works for enabled users (non-breaking change)."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        session_id = authn.create_session(user_id, "session_hash")
+        assert session_id is not None
+
+
 class TestAddCredentialDisabledUser:
     """Tests for add_credential rejecting disabled users."""
 
@@ -128,8 +150,9 @@ class TestAddCredentialDisabledUser:
         user_id = authn.create_user("alice@example.com", "hash")
         authn.disable_user(user_id)
 
-        with pytest.raises(AuthnError):
+        with pytest.raises(AuthnError) as exc_info:
             authn.add_credential(user_id, "totp", secret_data="JBSWY3DPEHPK3PXP")
+        assert exc_info.value.error_code == AuthnErrorCode.USER_DISABLED
 
     def test_add_credential_succeeds_for_enabled_user(self, authn):
         """add_credential works for enabled users (non-breaking change)."""
@@ -139,6 +162,25 @@ class TestAddCredentialDisabledUser:
             user_id, "totp", secret_data="JBSWY3DPEHPK3PXP"
         )
         assert credential_id is not None
+
+
+class TestCreateApiKeyDisabledUser:
+    """Tests for create_api_key rejecting disabled users."""
+
+    def test_create_api_key_fails_for_disabled_user(self, authn):
+        """create_api_key raises error when user is disabled."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        authn.disable_user(user_id)
+
+        with pytest.raises(AuthnError) as exc_info:
+            authn.create_api_key(user_id, "key_hash", name="Test Key")
+        assert exc_info.value.error_code == AuthnErrorCode.USER_DISABLED
+
+    def test_create_api_key_succeeds_for_enabled_user(self, authn):
+        """create_api_key works for enabled users (non-breaking change)."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        key_id = authn.create_api_key(user_id, "key_hash", name="Test Key")
+        assert key_id is not None
 
 
 class TestReenabledUser:

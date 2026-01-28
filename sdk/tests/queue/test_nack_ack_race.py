@@ -9,7 +9,7 @@ entries when two fail() calls race on the same job.
 import threading
 
 import psycopg
-from postkit.queue import Client as QueueClient
+from postkit.queue import QueueClient
 
 from tests.conftest import DATABASE_URL
 

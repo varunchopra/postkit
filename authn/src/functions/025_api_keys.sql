@@ -23,6 +23,7 @@ DECLARE
 BEGIN
     PERFORM authn._validate_hash(p_key_hash, 'key_hash', false);
     PERFORM authn._validate_namespace(p_namespace);
+    PERFORM authn._validate_user_enabled(p_user_id, p_namespace);
 
     -- Calculate expiration (NULL means never expires)
     IF p_expires_in IS NOT NULL THEN
