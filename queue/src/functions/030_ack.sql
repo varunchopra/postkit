@@ -1,6 +1,3 @@
--- =============================================================================
--- ACK/NACK/FAIL FUNCTIONS FOR POSTKIT/QUEUE
--- =============================================================================
 -- @group Completion
 
 -- @function queue.ack
@@ -163,7 +160,7 @@ BEGIN
                       HINT = 'postkit:queue:BIZ_JOB_NOT_RUNNING';
         ELSE
             RAISE EXCEPTION 'Job % not found', p_job_id
-                USING ERRCODE = 'invalid_parameter_value',
+                USING ERRCODE = 'no_data_found',
                       HINT = 'postkit:queue:DATA_JOB_NOT_FOUND';
         END IF;
     END IF;
@@ -239,6 +236,9 @@ BEGIN
     FOR UPDATE;
 
     IF NOT FOUND THEN
+        -- Intentionally silent. nack() raises because a retry on a non-running
+        -- job is a caller bug, but fail() is a cleanup call where the caller
+        -- does not care why it was not running.
         RETURN false;
     END IF;
 

@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 from postkit.errors import QueueErrorCode
-from postkit.queue import QueueClient, QueueValidationError
+from postkit.queue import QueueClient, QueueError, QueueValidationError
 
 
 class TestAck:
@@ -152,7 +152,7 @@ class TestNack:
     def test_nack_not_found_raises_error(self, queue):
         """nack raises error for nonexistent job."""
 
-        with pytest.raises(QueueValidationError) as exc_info:
+        with pytest.raises(QueueError) as exc_info:
             queue.nack(999999)
         assert exc_info.value.error_code == QueueErrorCode.DATA_JOB_NOT_FOUND
 

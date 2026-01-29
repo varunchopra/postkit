@@ -2,6 +2,10 @@
 
 from datetime import timedelta
 
+import pytest
+from postkit.errors import QueueErrorCode
+from postkit.queue import QueueValidationError
+
 
 class TestPull:
     """Test basic pull functionality."""
@@ -176,3 +180,25 @@ class TestVisibilityTimeout:
         """extend_visibility returns False for nonexistent job."""
         result = queue.extend_visibility(999999, timedelta(minutes=10))
         assert result is False
+
+    def test_extend_visibility_rejects_negative_extension(self, queue):
+        """Negative extension is rejected to prevent shrinking the timeout."""
+        queue.push("tasks", {"task": 1})
+        job = queue.pull("tasks")
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.extend_visibility(job["id"], timedelta(seconds=-30))
+        assert exc_info.value.error_code == QueueErrorCode.VAL_EXTENSION_POSITIVE
+
+        queue.ack(job["id"])
+
+    def test_extend_visibility_rejects_zero_extension(self, queue):
+        """Zero extension raises validation error."""
+        queue.push("tasks", {"task": 1})
+        job = queue.pull("tasks")
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.extend_visibility(job["id"], timedelta(0))
+        assert exc_info.value.error_code == QueueErrorCode.VAL_EXTENSION_POSITIVE
+
+        queue.ack(job["id"])

@@ -1,7 +1,10 @@
--- =============================================================================
--- RLS AND ACTOR CONTEXT FUNCTIONS FOR POSTKIT/QUEUE
--- =============================================================================
 -- @group Context
+
+-- The context functions below omit SECURITY INVOKER. This is intentional and
+-- consistent with authn, authz, config, and meter modules. These functions
+-- only call set_config() which is always available to the session owner, and
+-- SECURITY INVOKER would not change behavior since RLS policies are evaluated
+-- on the calling session regardless.
 
 -- @function queue.set_tenant
 -- @brief Set the tenant context for RLS policies.

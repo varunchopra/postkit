@@ -108,6 +108,9 @@ CREATE TABLE queue.dead_letters (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     namespace text NOT NULL,
     queue text NOT NULL,
+    -- No FK to jobs(id): ack() can DELETE jobs when archive_completed is false,
+    -- which would violate the constraint for dead letters whose original job
+    -- was retried and then acked.
     original_job_id bigint NOT NULL,
 
     -- Original job data
@@ -142,8 +145,6 @@ CREATE INDEX dead_letters_queue_idx ON queue.dead_letters (namespace, queue, fai
 -- =============================================================================
 -- Recurring job definitions. External scheduler calls tick_schedules() periodically.
 -- Supports either cron expression OR interval, not both.
--- TODO: No SQL functions or SDK support exists yet. Needs create_schedule(),
--- delete_schedule(), tick_schedules(), and corresponding SDK methods.
 
 CREATE TABLE queue.schedules (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

@@ -100,14 +100,12 @@ class QueueClient(BaseClient):
         Returns:
             Job ID, or None if deduplicated (unique_key already exists)
         """
-        delay_str = _format_interval(delay) if delay else None
-
         result = self._fetch_val(
             """SELECT queue.push(
                 p_namespace := %s,
                 p_queue := %s,
                 p_payload := %s::jsonb,
-                p_delay := %s::interval,
+                p_delay := %s,
                 p_priority := %s,
                 p_max_attempts := %s,
                 p_unique_key := %s,
@@ -118,7 +116,7 @@ class QueueClient(BaseClient):
                 self.namespace,
                 queue,
                 json.dumps(payload),
-                delay_str,
+                delay,
                 priority,
                 max_attempts,
                 unique_key,
@@ -192,22 +190,18 @@ class QueueClient(BaseClient):
         Returns:
             Job dict with id, queue, payload, attempts, etc., or None if empty
         """
-        timeout_str = (
-            _format_interval(visibility_timeout) if visibility_timeout else None
-        )
-
         result = self._fetch_one(
             """SELECT * FROM queue.pull(
                 p_namespace := %s,
                 p_queue := %s,
                 p_worker_id := %s,
-                p_visibility_timeout := %s::interval
+                p_visibility_timeout := %s
             )""",
             (
                 self.namespace,
                 queue,
                 worker_id,
-                timeout_str,
+                visibility_timeout,
             ),
             write=True,
         )
@@ -232,24 +226,20 @@ class QueueClient(BaseClient):
         Returns:
             List of job dicts
         """
-        timeout_str = (
-            _format_interval(visibility_timeout) if visibility_timeout else None
-        )
-
         result = self._fetch_all(
             """SELECT * FROM queue.pull_batch(
                 p_namespace := %s,
                 p_queue := %s,
                 p_limit := %s,
                 p_worker_id := %s,
-                p_visibility_timeout := %s::interval
+                p_visibility_timeout := %s
             )""",
             (
                 self.namespace,
                 queue,
                 limit,
                 worker_id,
-                timeout_str,
+                visibility_timeout,
             ),
             write=True,
         )
@@ -275,22 +265,18 @@ class QueueClient(BaseClient):
         Example:
             job = queue.pull_any(["critical", "default", "bulk"])
         """
-        timeout_str = (
-            _format_interval(visibility_timeout) if visibility_timeout else None
-        )
-
         result = self._fetch_one(
             """SELECT * FROM queue.pull_any(
                 p_namespace := %s,
                 p_queues := %s,
                 p_worker_id := %s,
-                p_visibility_timeout := %s::interval
+                p_visibility_timeout := %s
             )""",
             (
                 self.namespace,
                 queues,
                 worker_id,
-                timeout_str,
+                visibility_timeout,
             ),
             write=True,
         )
@@ -310,18 +296,16 @@ class QueueClient(BaseClient):
         Returns:
             True if extended, False if job not found or not running
         """
-        extension_str = _format_interval(extension)
-
         result = self._fetch_val(
             """SELECT queue.extend_visibility(
                 p_namespace := %s,
                 p_job_id := %s,
-                p_extension := %s::interval
+                p_extension := %s
             )""",
             (
                 self.namespace,
                 job_id,
-                extension_str,
+                extension,
             ),
             write=True,
         )
@@ -386,20 +370,18 @@ class QueueClient(BaseClient):
         Returns:
             True if returned to queue, False if max attempts exceeded (moved to DLQ)
         """
-        backoff_str = _format_interval(backoff) if backoff else None
-
         result = self._fetch_val(
             """SELECT queue.nack(
                 p_namespace := %s,
                 p_job_id := %s,
                 p_error := %s,
-                p_backoff := %s::interval
+                p_backoff := %s
             )""",
             (
                 self.namespace,
                 job_id,
                 error,
-                backoff_str,
+                backoff,
             ),
             write=True,
         )
@@ -446,25 +428,204 @@ class QueueClient(BaseClient):
             Dict with total_jobs, pending, running, completed, dead counts
         """
         result = self._fetch_one(
-            """SELECT
-                COUNT(*) as total_jobs,
-                COUNT(*) FILTER (WHERE status = 'pending') as pending,
-                COUNT(*) FILTER (WHERE status = 'running') as running,
-                COUNT(*) FILTER (WHERE status = 'completed') as completed,
-                COUNT(*) FILTER (WHERE status = 'dead') as dead,
-                COUNT(DISTINCT queue) as total_queues
-            FROM queue.jobs
-            WHERE namespace = %s""",
+            "SELECT * FROM queue.get_stats(%s)",
             (self.namespace,),
         )
         return result or {}
 
+    # =========================================================================
+    # Schedule Operations
+    # =========================================================================
 
-def _format_interval(td: timedelta) -> str:
-    """Convert timedelta to PostgreSQL interval string."""
-    total_secs = td.days * 86400 + td.seconds
-    hours, remainder = divmod(total_secs, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    if td.microseconds:
-        return f"{hours}:{minutes:02d}:{seconds:02d}.{td.microseconds:06d}"
-    return f"{hours}:{minutes:02d}:{seconds:02d}"
+    def create_schedule(
+        self,
+        name: str,
+        queue: str,
+        payload: dict[str, Any],
+        *,
+        cron_expression: str | None = None,
+        cron_timezone: str = "UTC",
+        every_interval: timedelta | None = None,
+        priority: int = 0,
+        max_attempts: int = 3,
+        tags: list[str] | None = None,
+        is_active: bool = True,
+    ) -> int:
+        """Create a recurring schedule that produces jobs automatically.
+
+        Schedules use either a cron expression or a fixed interval, not both.
+        The schedule is identified by name (unique within the namespace).
+
+        Args:
+            name: Schedule name (alphanumeric, underscores, hyphens)
+            queue: Target queue name for generated jobs
+            payload: Job payload template (must be JSON-serializable)
+            cron_expression: Standard 5-field cron ('*/5 * * * *')
+            cron_timezone: Timezone for cron evaluation (default 'UTC')
+            every_interval: Fixed interval between runs (alternative to cron)
+            priority: Job priority (-1000 to 1000)
+            max_attempts: Maximum retry attempts for generated jobs
+            tags: Tags applied to generated jobs
+            is_active: Whether schedule starts active (default True)
+
+        Returns:
+            Schedule ID
+        """
+        result = self._fetch_val(
+            """SELECT queue.create_schedule(
+                p_namespace := %s,
+                p_name := %s,
+                p_queue := %s,
+                p_payload := %s::jsonb,
+                p_cron_expression := %s,
+                p_cron_timezone := %s,
+                p_every_interval := %s,
+                p_priority := %s,
+                p_max_attempts := %s,
+                p_tags := %s,
+                p_is_active := %s
+            )""",
+            (
+                self.namespace,
+                name,
+                queue,
+                json.dumps(payload),
+                cron_expression,
+                cron_timezone,
+                every_interval,
+                priority,
+                max_attempts,
+                tags,
+                is_active,
+            ),
+            write=True,
+        )
+        if result is None:
+            raise QueueError("queue.create_schedule returned no value")
+        return int(result)
+
+    def get_schedule(self, name: str) -> dict[str, Any] | None:
+        """Get a schedule by name.
+
+        Args:
+            name: Schedule name
+
+        Returns:
+            Schedule dict with all fields, or None if not found
+        """
+        return self._fetch_one(
+            """SELECT * FROM queue.get_schedule(
+                p_namespace := %s,
+                p_name := %s
+            )""",
+            (self.namespace, name),
+        )
+
+    def list_schedules(
+        self,
+        *,
+        queue: str | None = None,
+        is_active: bool | None = None,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List schedules with optional filters and cursor pagination.
+
+        Args:
+            queue: Filter by target queue name
+            is_active: Filter by active status
+            limit: Maximum results (max 1000)
+            cursor: Last schedule name from previous page
+
+        Returns:
+            List of schedule dicts ordered by name
+        """
+        return self._fetch_all(
+            """SELECT * FROM queue.list_schedules(
+                p_namespace := %s,
+                p_queue := %s,
+                p_is_active := %s,
+                p_limit := %s,
+                p_cursor := %s
+            )""",
+            (self.namespace, queue, is_active, limit, cursor),
+        )
+
+    def delete_schedule(self, name: str) -> bool:
+        """Delete a schedule by name.
+
+        Args:
+            name: Schedule name
+
+        Returns:
+            True if deleted, False if not found
+        """
+        result = self._fetch_val(
+            """SELECT queue.delete_schedule(
+                p_namespace := %s,
+                p_name := %s
+            )""",
+            (self.namespace, name),
+            write=True,
+        )
+        return bool(result)
+
+    def pause_schedule(self, name: str) -> bool:
+        """Pause an active schedule.
+
+        Args:
+            name: Schedule name
+
+        Returns:
+            True if paused, False if already paused or not found
+        """
+        result = self._fetch_val(
+            """SELECT queue.pause_schedule(
+                p_namespace := %s,
+                p_name := %s
+            )""",
+            (self.namespace, name),
+            write=True,
+        )
+        return bool(result)
+
+    def resume_schedule(self, name: str) -> bool:
+        """Resume a paused schedule. Recalculates next_run_at from now.
+
+        Args:
+            name: Schedule name
+
+        Returns:
+            True if resumed, False if already active or not found
+        """
+        result = self._fetch_val(
+            """SELECT queue.resume_schedule(
+                p_namespace := %s,
+                p_name := %s
+            )""",
+            (self.namespace, name),
+            write=True,
+        )
+        return bool(result)
+
+    def tick_schedules(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Process due schedules and create jobs.
+
+        Finds active schedules where next_run_at <= now(), creates a job for
+        each, and advances their next_run_at. Uses FOR UPDATE SKIP LOCKED for
+        safe concurrent execution from multiple workers.
+
+        Args:
+            limit: Maximum schedules to process per call
+
+        Returns:
+            List of dicts with schedule_name, job_id, and next_run_at
+        """
+        return self._fetch_all(
+            """SELECT * FROM queue.tick_schedules(
+                p_namespace := %s,
+                p_limit := %s
+            )""",
+            (self.namespace, limit),
+            write=True,
+        )

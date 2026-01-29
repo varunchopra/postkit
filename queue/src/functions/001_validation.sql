@@ -1,6 +1,3 @@
--- =============================================================================
--- VALIDATION FUNCTIONS FOR POSTKIT/QUEUE
--- =============================================================================
 -- @group Internal
 
 -- @function queue._validate_namespace
@@ -121,7 +118,6 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = q
 -- @brief Validate schedule name format.
 -- @param p_value Schedule name to validate
 -- Schedule names follow same rules as queue names.
--- TODO: Used by future schedule functions (not yet implemented).
 CREATE OR REPLACE FUNCTION queue._validate_schedule_name(p_value text)
 RETURNS void AS $$
 BEGIN
@@ -158,7 +154,6 @@ $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = q
 -- @param p_value Cron expression to validate
 -- Format: minute hour day month weekday
 -- Each field can be: *, number, range (1-5), list (1,3,5), step (*/5)
--- TODO: Used by future schedule functions (not yet implemented).
 CREATE OR REPLACE FUNCTION queue._validate_cron_expression(p_value text)
 RETURNS void AS $$
 DECLARE

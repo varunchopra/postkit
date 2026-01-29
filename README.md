@@ -1,6 +1,6 @@
 # postkit
 
-Postgres-native identity, configuration, and metering. Auth, permissions, versioned config, and usage tracking - no external services.
+Postgres-native identity, configuration, metering, and job queues. Auth, permissions, versioned config, usage tracking, and scheduled tasks - no external services.
 
 ## Modules
 
@@ -10,6 +10,7 @@ Postgres-native identity, configuration, and metering. Auth, permissions, versio
 | [authn](authn/) | `authn` | Authentication (users, sessions, tokens) |
 | [config](config/) | `config` | Versioned configuration (prompts, flags, secrets) |
 | [meter](meter/) | `meter` | Usage metering (quotas, reservations, ledger) |
+| [queue](queue/) | `queue` | Job queues (scheduling, retries, dead letters) |
 
 Each module is independent -- use what you need.
 
@@ -30,6 +31,7 @@ psql $DATABASE_URL -f dist/authz.sql
 psql $DATABASE_URL -f dist/authn.sql
 psql $DATABASE_URL -f dist/config.sql
 psql $DATABASE_URL -f dist/meter.sql
+psql $DATABASE_URL -f dist/queue.sql
 ```
 
 ## Usage
@@ -73,6 +75,11 @@ config.rollback("prompts/bot")
 meter.allocate("alice", "llm_call", 10000, "tokens")
 res = meter.reserve("alice", "llm_call", 4000, "tokens")
 meter.commit(res["reservation_id"], 2347)
+
+# queue: job scheduling
+queue.push("email", {"to": "alice@example.com", "subject": "Welcome"})
+job = queue.pull("email", worker_id="worker-1")
+queue.ack(job["id"])
 ```
 
 See [sdk/](sdk/) for details.
@@ -91,7 +98,7 @@ See [docs/](docs/) for full API reference with function signatures, parameters, 
 
 ```bash
 make setup   # Start Postgres in Docker
-make build   # Build dist/postkit.sql, dist/authz.sql, dist/authn.sql, dist/config.sql, dist/meter.sql
+make build   # Build dist/postkit.sql, dist/authz.sql, dist/authn.sql, dist/config.sql, dist/meter.sql, dist/queue.sql
 make test    # Run tests
 make docs    # Generate API documentation
 make clean   # Cleanup

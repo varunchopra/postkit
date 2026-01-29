@@ -1,6 +1,3 @@
--- =============================================================================
--- PULL FUNCTIONS FOR POSTKIT/QUEUE
--- =============================================================================
 -- @group Pull
 
 -- @function queue.pull
@@ -220,6 +217,12 @@ BEGIN
         RAISE EXCEPTION 'Job ID cannot be null'
             USING ERRCODE = 'null_value_not_allowed',
                   HINT = 'postkit:queue:VAL_JOB_ID_NULL';
+    END IF;
+
+    IF p_extension IS NULL OR p_extension <= interval '0 seconds' THEN
+        RAISE EXCEPTION 'Extension must be a positive interval'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_EXTENSION_POSITIVE';
     END IF;
 
     -- Warn if namespace mismatch with RLS context
