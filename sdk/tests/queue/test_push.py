@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import psycopg.errors
 import pytest
 from postkit.errors import QueueErrorCode
 from postkit.queue import QueueValidationError
@@ -106,7 +107,7 @@ class TestPushBatch:
         assert job_ids == []
 
     def test_push_batch_with_options(self, queue):
-        """Batch push accepts priority and tags."""
+        """Batch push propagates priority, max_attempts, and tags to all jobs."""
         payloads = [{"msg": "alert1"}, {"msg": "alert2"}]
         job_ids = queue.push_batch(
             "alerts",
@@ -117,6 +118,17 @@ class TestPushBatch:
         )
 
         assert len(job_ids) == 2
+
+        # Pull jobs and verify options were propagated
+        jobs = queue.pull_batch("alerts", limit=2)
+        assert len(jobs) == 2
+        for job in jobs:
+            assert job["priority"] == 100
+            assert job["max_attempts"] == 1
+            assert job["tags"] == ["critical"]
+
+        for job in jobs:
+            queue.ack(job["id"])
 
 
 class TestPushValidation:
@@ -146,3 +158,18 @@ class TestPushValidation:
         with pytest.raises(QueueValidationError) as exc_info:
             queue.push("test", {"data": 1}, priority=-2000)
         assert exc_info.value.error_code == QueueErrorCode.VAL_PRIORITY_RANGE
+
+    def test_push_batch_rejects_null_payload_element(self, raw_cursor):
+        """Batch push with a NULL array element raises null_value_not_allowed."""
+        cursor, namespace = raw_cursor
+
+        with pytest.raises(psycopg.errors.NullValueNotAllowed) as exc_info:
+            cursor.execute(
+                """SELECT queue.push_batch(
+                    p_namespace := %s,
+                    p_queue := %s,
+                    p_payloads := ARRAY[NULL::jsonb, '{"valid":true}'::jsonb]
+                )""",
+                (namespace, "test_queue"),
+            )
+        assert "VAL_PAYLOAD_NULL" in exc_info.value.diag.message_hint

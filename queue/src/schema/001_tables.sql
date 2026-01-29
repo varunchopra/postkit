@@ -57,6 +57,8 @@ CREATE TABLE queue.jobs (
     -- Actor context (captured at push time)
     actor_id text,
     request_id text,
+    on_behalf_of text,
+    reason text,
 
     -- Timestamps
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -87,7 +89,9 @@ CREATE INDEX jobs_pull_idx ON queue.jobs (namespace, queue, priority DESC, sched
 CREATE UNIQUE INDEX jobs_unique_key_idx ON queue.jobs (namespace, queue, unique_key)
     WHERE unique_key IS NOT NULL AND status IN ('pending', 'running');
 
--- Timeout recovery: find jobs with expired visibility
+-- Timeout recovery: find jobs with expired visibility.
+-- TODO: No recovery function exists yet. Needs a tick_timeouts() function
+-- that moves expired running jobs back to pending.
 CREATE INDEX jobs_timeout_idx ON queue.jobs (visibility_timeout_at)
     WHERE status = 'running';
 
@@ -118,12 +122,15 @@ CREATE TABLE queue.dead_letters (
     last_error text,
 
     -- Retry tracking
+    -- TODO: No retry function exists yet. Needs a retry_dead_letter() function.
     retried_at timestamptz,                    -- When retry was initiated
     retry_job_id bigint,                       -- New job ID if retried
 
     -- Actor context from original push
     actor_id text,
     request_id text,
+    on_behalf_of text,
+    reason text,
 
     created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -135,6 +142,8 @@ CREATE INDEX dead_letters_queue_idx ON queue.dead_letters (namespace, queue, fai
 -- =============================================================================
 -- Recurring job definitions. External scheduler calls tick_schedules() periodically.
 -- Supports either cron expression OR interval, not both.
+-- TODO: No SQL functions or SDK support exists yet. Needs create_schedule(),
+-- delete_schedule(), tick_schedules(), and corresponding SDK methods.
 
 CREATE TABLE queue.schedules (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

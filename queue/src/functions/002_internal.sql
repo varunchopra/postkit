@@ -43,23 +43,21 @@ $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = queue, pg_temp;
 
 -- @function queue._notify_if_enabled
 -- @brief Send NOTIFY if configured.
--- @param p_namespace Namespace for config lookup
+-- @param p_config Config record (caller already fetched it)
+-- @param p_namespace Tenant namespace for channel name
 -- @param p_queue Queue name for channel
 -- @param p_payload Notification payload (JSON)
--- Channel name: queue_{queue_name}
+-- Channel name: queue_{namespace}_{queue_name}
 CREATE OR REPLACE FUNCTION queue._notify_if_enabled(
+    p_config queue.config,
     p_namespace text,
     p_queue text,
     p_payload jsonb
 )
 RETURNS void AS $$
-DECLARE
-    v_config queue.config;
 BEGIN
-    v_config := queue._get_config(p_namespace);
-
-    IF v_config.notify_on_push THEN
-        PERFORM pg_notify('queue_' || p_queue, p_payload::text);
+    IF p_config.notify_on_push THEN
+        PERFORM pg_notify('queue_' || p_namespace || '_' || p_queue, p_payload::text);
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
@@ -96,3 +94,64 @@ BEGIN
     RETURN v_delay;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue._move_to_dead_letter
+-- @brief Move an already-locked job to the dead letter queue.
+-- @param p_job The job record (caller must hold FOR UPDATE lock)
+-- @param p_error Error message for the dead letter entry
+-- Called by nack (when max attempts exceeded) and fail. Caller is
+-- responsible for locking the row; this function does no SELECT.
+CREATE OR REPLACE FUNCTION queue._move_to_dead_letter(
+    p_job queue.jobs,
+    p_error text
+)
+RETURNS void AS $$
+BEGIN
+    -- Insert into dead letters
+    INSERT INTO queue.dead_letters (
+        namespace,
+        queue,
+        original_job_id,
+        payload,
+        priority,
+        tags,
+        metadata,
+        attempts,
+        last_error,
+        actor_id,
+        request_id,
+        on_behalf_of,
+        reason
+    )
+    VALUES (
+        p_job.namespace,
+        p_job.queue,
+        p_job.id,
+        p_job.payload,
+        p_job.priority,
+        p_job.tags,
+        p_job.metadata,
+        p_job.attempts,
+        COALESCE(p_error, p_job.error),
+        p_job.actor_id,
+        p_job.request_id,
+        p_job.on_behalf_of,
+        p_job.reason
+    );
+
+    -- Mark job as dead
+    UPDATE queue.jobs
+    SET
+        status = 'dead',
+        error = COALESCE(p_error, p_job.error),
+        locked_by = NULL,
+        locked_at = NULL,
+        visibility_timeout_at = NULL,
+        completed_at = now(),
+        updated_at = now()
+    WHERE id = p_job.id
+      AND namespace = p_job.namespace
+      AND status = 'running';
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

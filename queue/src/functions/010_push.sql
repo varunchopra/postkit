@@ -74,7 +74,9 @@ BEGIN
         tags,
         metadata,
         actor_id,
-        request_id
+        request_id,
+        on_behalf_of,
+        reason
     )
     VALUES (
         p_namespace,
@@ -87,7 +89,9 @@ BEGIN
         COALESCE(p_tags, '{}'),
         p_metadata,
         v_actor.actor_id,
-        v_actor.request_id
+        v_actor.request_id,
+        v_actor.on_behalf_of,
+        v_actor.reason
     )
     ON CONFLICT (namespace, queue, unique_key)
         WHERE unique_key IS NOT NULL AND status IN ('pending', 'running')
@@ -97,6 +101,7 @@ BEGIN
     -- Notify if job was inserted and notifications enabled
     IF v_job_id IS NOT NULL THEN
         PERFORM queue._notify_if_enabled(
+            v_config,
             p_namespace,
             p_queue,
             jsonb_build_object('id', v_job_id, 'queue', p_queue)
@@ -143,6 +148,13 @@ BEGIN
         RETURN ARRAY[]::bigint[];
     END IF;
 
+    -- Reject NULL elements (each payload must be non-null jsonb)
+    IF EXISTS (SELECT 1 FROM unnest(p_payloads) AS p WHERE p IS NULL) THEN
+        RAISE EXCEPTION 'Payload cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:queue:VAL_PAYLOAD_NULL';
+    END IF;
+
     -- Warn if namespace mismatch with RLS context
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
@@ -162,7 +174,9 @@ BEGIN
             max_attempts,
             tags,
             actor_id,
-            request_id
+            request_id,
+            on_behalf_of,
+            reason
         )
         SELECT
             p_namespace,
@@ -172,7 +186,9 @@ BEGIN
             COALESCE(p_max_attempts, v_config.default_max_attempts),
             COALESCE(p_tags, '{}'),
             v_actor.actor_id,
-            v_actor.request_id
+            v_actor.request_id,
+            v_actor.on_behalf_of,
+            v_actor.reason
         RETURNING id
     )
     SELECT array_agg(id) INTO v_job_ids FROM inserted;
@@ -181,6 +197,7 @@ BEGIN
     v_count := array_length(v_job_ids, 1);
     IF v_count > 0 THEN
         PERFORM queue._notify_if_enabled(
+            v_config,
             p_namespace,
             p_queue,
             jsonb_build_object('count', v_count, 'queue', p_queue)

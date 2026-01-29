@@ -170,8 +170,8 @@ BEGIN
 
     -- Check if max attempts exceeded
     IF v_job.attempts >= v_job.max_attempts THEN
-        -- Move to dead letter queue
-        PERFORM queue.fail(p_namespace, p_job_id, p_error);
+        -- Move to dead letter queue (row already locked, use internal helper)
+        PERFORM queue._move_to_dead_letter(v_job, p_error);
         RETURN false;
     END IF;
 
@@ -242,48 +242,7 @@ BEGIN
         RETURN false;
     END IF;
 
-    -- Insert into dead letters
-    INSERT INTO queue.dead_letters (
-        namespace,
-        queue,
-        original_job_id,
-        payload,
-        priority,
-        tags,
-        metadata,
-        attempts,
-        last_error,
-        actor_id,
-        request_id
-    )
-    VALUES (
-        v_job.namespace,
-        v_job.queue,
-        v_job.id,
-        v_job.payload,
-        v_job.priority,
-        v_job.tags,
-        v_job.metadata,
-        v_job.attempts,
-        COALESCE(p_error, v_job.error),
-        v_job.actor_id,
-        v_job.request_id
-    );
-
-    -- Mark job as dead to preserve the reference
-    UPDATE queue.jobs
-    SET
-        status = 'dead',
-        error = COALESCE(p_error, v_job.error),
-        locked_by = NULL,
-        locked_at = NULL,
-        visibility_timeout_at = NULL,
-        completed_at = now(),
-        updated_at = now()
-    WHERE namespace = p_namespace
-      AND id = p_job_id
-      AND status = 'running';
-
+    PERFORM queue._move_to_dead_letter(v_job, p_error);
     RETURN true;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

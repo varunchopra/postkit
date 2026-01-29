@@ -144,7 +144,8 @@ CREATE OR REPLACE FUNCTION queue.pull_any(
 RETURNS SETOF queue.jobs AS $$
 DECLARE
     v_queue text;
-    v_found boolean := false;
+    v_config queue.config;
+    v_timeout interval;
 BEGIN
     -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
@@ -158,21 +159,39 @@ BEGIN
         PERFORM queue._validate_queue_name(v_queue);
     END LOOP;
 
-    -- Try each queue in order
-    FOREACH v_queue IN ARRAY p_queues LOOP
-        RETURN QUERY SELECT * FROM queue.pull(
-            p_namespace,
-            v_queue,
-            p_worker_id,
-            p_visibility_timeout
-        );
+    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-        -- Check if we got a job
-        GET DIAGNOSTICS v_found = ROW_COUNT;
-        IF v_found THEN
-            RETURN;
-        END IF;
-    END LOOP;
+    -- Get config for defaults
+    v_config := queue._get_config(p_namespace);
+    v_timeout := COALESCE(p_visibility_timeout, v_config.default_visibility_timeout);
+
+    -- Lock-and-claim pattern mirrors pull() but differs structurally: ANY(array)
+    -- with array_position ordering vs single-queue filter. If pull() gains
+    -- audit logging or extra status checks, update this query to match.
+    RETURN QUERY
+    WITH next_job AS (
+        SELECT j.id
+        FROM queue.jobs j
+        WHERE j.namespace = p_namespace
+          AND j.queue = ANY(p_queues)
+          AND j.status = 'pending'
+          AND j.scheduled_at <= now()
+        ORDER BY array_position(p_queues, j.queue), j.priority DESC, j.scheduled_at, j.id
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+    )
+    UPDATE queue.jobs j
+    SET
+        status = 'running',
+        attempts = j.attempts + 1,
+        locked_by = COALESCE(p_worker_id, 'anonymous'),
+        locked_at = now(),
+        visibility_timeout_at = now() + v_timeout,
+        updated_at = now()
+    FROM next_job
+    WHERE j.id = next_job.id
+    RETURNING j.*;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 

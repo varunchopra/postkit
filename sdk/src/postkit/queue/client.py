@@ -462,7 +462,9 @@ class QueueClient(BaseClient):
 
 def _format_interval(td: timedelta) -> str:
     """Convert timedelta to PostgreSQL interval string."""
-    total_seconds = int(td.total_seconds())
-    hours, remainder = divmod(total_seconds, 3600)
+    total_secs = td.days * 86400 + td.seconds
+    hours, remainder = divmod(total_secs, 3600)
     minutes, seconds = divmod(remainder, 60)
+    if td.microseconds:
+        return f"{hours}:{minutes:02d}:{seconds:02d}.{td.microseconds:06d}"
     return f"{hours}:{minutes:02d}:{seconds:02d}"
