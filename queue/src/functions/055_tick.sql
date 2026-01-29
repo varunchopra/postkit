@@ -99,3 +99,60 @@ BEGIN
     END LOOP;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue.tick_timeouts
+-- @brief Reclaim running jobs whose visibility timeout has expired.
+-- @param p_namespace Tenant namespace (NULL = all namespaces, requires RLS bypass)
+-- @param p_limit Maximum jobs to reclaim per call
+-- @returns Rows of (job_id, queue, stuck_duration) for each reclaimed job
+--
+-- Workers that crash or hang leave jobs stuck in 'running' status. This
+-- function finds those jobs (visibility_timeout_at < now()) and returns them
+-- to 'pending' for re-delivery. Attempt count is preserved so the next
+-- pull increments it normally. Does NOT check max_attempts — the next
+-- nack cycle handles DLQ routing, keeping that decision in one place.
+--
+-- Call periodically alongside tick_schedules(). Uses FOR UPDATE SKIP LOCKED
+-- so multiple tick workers can run concurrently without double-processing.
+CREATE OR REPLACE FUNCTION queue.tick_timeouts(
+    p_namespace text DEFAULT NULL,
+    p_limit int DEFAULT 100
+)
+RETURNS TABLE(
+    job_id bigint,
+    queue text,
+    stuck_duration interval
+) AS $$
+DECLARE
+    v_job record;
+BEGIN
+    FOR v_job IN
+        SELECT j.id, j.queue, (now() - j.locked_at) AS stuck_duration
+        FROM queue.jobs j
+        WHERE j.status = 'running'
+          AND j.visibility_timeout_at < now()
+          AND (p_namespace IS NULL OR j.namespace = p_namespace)
+        ORDER BY j.visibility_timeout_at
+        LIMIT p_limit
+        FOR UPDATE SKIP LOCKED
+    LOOP
+        -- Return to pending, clearing lock fields per jobs_locked_consistency.
+        -- Attempt count is NOT reset: the job keeps its history.
+        UPDATE queue.jobs
+        SET
+            status = 'pending',
+            locked_by = NULL,
+            locked_at = NULL,
+            visibility_timeout_at = NULL,
+            updated_at = now()
+        WHERE id = v_job.id
+          AND status = 'running';
+
+        job_id := v_job.id;
+        queue := v_job.queue;
+        stuck_duration := v_job.stuck_duration;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

@@ -246,3 +246,122 @@ BEGIN
     RETURN true;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue.cancel
+-- @brief Cancel a pending job by deleting it.
+-- @param p_namespace Tenant namespace
+-- @param p_job_id Job ID
+-- @returns True if cancelled, false if job not found or not pending
+--
+-- Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd,
+-- or failed. Cancelled jobs are deleted (not archived) because they were
+-- never processed — there is no completion state to retain.
+CREATE OR REPLACE FUNCTION queue.cancel(
+    p_namespace text,
+    p_job_id bigint
+)
+RETURNS boolean AS $$
+DECLARE
+    v_deleted int;
+BEGIN
+    -- Validate inputs
+    PERFORM queue._validate_namespace(p_namespace);
+
+    IF p_job_id IS NULL THEN
+        RAISE EXCEPTION 'Job ID cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:queue:VAL_JOB_ID_NULL';
+    END IF;
+
+    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._warn_namespace_mismatch(p_namespace);
+
+    DELETE FROM queue.jobs
+    WHERE namespace = p_namespace
+      AND id = p_job_id
+      AND status = 'pending';
+
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
+    RETURN v_deleted > 0;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue.release_jobs
+-- @brief Release all jobs held by a worker, returning them to pending.
+-- @param p_namespace Tenant namespace
+-- @param p_worker_id Worker identifier (as passed to pull)
+-- @returns Count of jobs released
+--
+-- Call during graceful shutdown so jobs are immediately re-deliverable
+-- instead of waiting for visibility timeout expiry. Clears lock fields
+-- per jobs_locked_consistency; preserves attempt count (consistent with
+-- tick_timeouts behavior).
+CREATE OR REPLACE FUNCTION queue.release_jobs(
+    p_namespace text,
+    p_worker_id text
+)
+RETURNS int AS $$
+DECLARE
+    v_count int;
+BEGIN
+    -- Validate inputs
+    PERFORM queue._validate_namespace(p_namespace);
+
+    IF p_worker_id IS NULL THEN
+        RAISE EXCEPTION 'Worker ID cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:queue:VAL_WORKER_ID_NULL';
+    END IF;
+
+    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._warn_namespace_mismatch(p_namespace);
+
+    UPDATE queue.jobs
+    SET
+        status = 'pending',
+        locked_by = NULL,
+        locked_at = NULL,
+        visibility_timeout_at = NULL,
+        updated_at = now()
+    WHERE namespace = p_namespace
+      AND locked_by = p_worker_id
+      AND status = 'running';
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue.purge_queue
+-- @brief Delete all pending jobs from a queue.
+-- @param p_namespace Tenant namespace
+-- @param p_queue Queue name
+-- @returns Count of deleted jobs
+--
+-- Only deletes pending jobs. Running jobs are held by workers — use
+-- release_jobs to return them first, or wait for visibility timeout.
+-- Completed and dead jobs are historical and not affected.
+CREATE OR REPLACE FUNCTION queue.purge_queue(
+    p_namespace text,
+    p_queue text
+)
+RETURNS int AS $$
+DECLARE
+    v_count int;
+BEGIN
+    PERFORM queue._validate_namespace(p_namespace);
+    PERFORM queue._validate_queue_name(p_queue);
+    PERFORM queue._warn_namespace_mismatch(p_namespace);
+
+    DELETE FROM queue.jobs
+    WHERE namespace = p_namespace
+      AND queue = p_queue
+      AND status = 'pending';
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

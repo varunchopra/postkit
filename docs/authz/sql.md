@@ -607,7 +607,7 @@ Check if a subject has a permission on a resource
 - `p_resource_type`: The type of resource (e.g., 'repo', 'doc')
 - `p_resource_id`: The resource identifier
 
-**Returns:** True if the subject has the permission PERFORMANCE: This function performs graph traversal on every call (subject groups, resource ancestors, permission hierarchy). Recursion depth is bounded at 50. For high-throughput scenarios, consider application-layer caching of results.
+**Returns:** True if the subject has the permission
 
 **Example:**
 ```sql

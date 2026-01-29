@@ -28,6 +28,39 @@ class TestAck:
         stats = queue.get_stats()
         assert stats["total_jobs"] == 0
 
+    def test_ack_archives_job_when_configured(self, raw_cursor):
+        """With archive_completed=true, ack marks job completed instead of deleting."""
+        cursor, namespace = raw_cursor
+
+        # Enable archive mode for this namespace.
+        cursor.execute(
+            "INSERT INTO queue.config (namespace, archive_completed) VALUES (%s, true)",
+            (namespace,),
+        )
+
+        q = QueueClient(cursor, namespace)
+        q.push("tasks", {"task": 1})
+        job = q.pull("tasks")
+        q.ack(job["id"])
+
+        # Job should be retained with completed status, not deleted.
+        cursor.execute(
+            "SELECT status, completed_at, locked_by, locked_at, visibility_timeout_at "
+            "FROM queue.jobs WHERE namespace = %s AND id = %s",
+            (namespace, job["id"]),
+        )
+        row = cursor.fetchone()
+        assert row[0] == "completed"
+        assert row[1] is not None  # completed_at set
+        assert row[2] is None  # locked_by cleared
+        assert row[3] is None  # locked_at cleared
+        assert row[4] is None  # visibility_timeout_at cleared
+
+        # Stats should reflect the completed job.
+        stats = q.get_stats()
+        assert stats["completed"] == 1
+        assert stats["total_jobs"] == 1
+
     def test_ack_pending_job_returns_false(self, queue):
         """ack returns False for pending (not running) job."""
         job_id = queue.push("tasks", {"task": 1})
@@ -68,6 +101,28 @@ class TestAckBatch:
         """ack_batch with empty list returns 0."""
         count = queue.ack_batch([])
         assert count == 0
+
+    def test_ack_batch_archives_when_configured(self, raw_cursor):
+        """With archive_completed=true, ack_batch marks jobs completed."""
+        cursor, namespace = raw_cursor
+
+        cursor.execute(
+            "INSERT INTO queue.config (namespace, archive_completed) VALUES (%s, true)",
+            (namespace,),
+        )
+
+        q = QueueClient(cursor, namespace)
+        for i in range(3):
+            q.push("tasks", {"task": i})
+
+        jobs = q.pull_batch("tasks", limit=3)
+        count = q.ack_batch([j["id"] for j in jobs])
+        assert count == 3
+
+        # All three should be retained with completed status.
+        stats = q.get_stats()
+        assert stats["completed"] == 3
+        assert stats["total_jobs"] == 3
 
     def test_ack_batch_partial_success(self, queue):
         """ack_batch counts only running jobs."""
@@ -196,6 +251,54 @@ class TestFail:
         row = cursor.fetchone()
         assert row is not None
         assert row[0] == "test error message"
+
+
+class TestCancel:
+    """Test pending job cancellation."""
+
+    def test_cancel_removes_pending_job(self, queue):
+        """cancel deletes a pending job."""
+        job_id = queue.push("tasks", {"task": 1})
+
+        result = queue.cancel(job_id)
+        assert result is True
+
+        stats = queue.get_stats()
+        assert stats["total_jobs"] == 0
+
+    def test_cancel_returns_false_for_running_job(self, queue):
+        """cancel returns False for a job that has been pulled."""
+        queue.push("tasks", {"task": 1})
+        job = queue.pull("tasks")
+
+        result = queue.cancel(job["id"])
+        assert result is False
+
+    def test_cancel_returns_false_for_nonexistent_job(self, queue):
+        """cancel returns False for a job that does not exist."""
+        result = queue.cancel(999999)
+        assert result is False
+
+    def test_cancel_returns_false_for_completed_job(self, queue, raw_cursor):
+        """cancel returns False for a job that is already completed."""
+        cursor, namespace = raw_cursor
+
+        q = QueueClient(cursor, namespace)
+        q.push("tasks", {"task": 1})
+        job = q.pull("tasks")
+        q.ack(job["id"])
+
+        # Job is now completed (or deleted). Either way, cancel should fail.
+        result = q.cancel(job["id"])
+        assert result is False
+
+    def test_cancelled_job_not_pullable(self, queue):
+        """After cancel, the job cannot be pulled."""
+        job_id = queue.push("tasks", {"task": 1})
+        queue.cancel(job_id)
+
+        result = queue.pull("tasks")
+        assert result is None
 
 
 class TestJobLifecycle:

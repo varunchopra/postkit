@@ -16,7 +16,7 @@ Acknowledge successful job completion.
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
 
-**Returns:** True if acknowledged, false if job not found or not running Job is either deleted or marked completed (based on archive_completed config).
+**Returns:** True if acknowledged, false if job not found or not running
 
 *Source: queue/src/functions/030_ack.sql:1*
 
@@ -40,6 +40,24 @@ Acknowledge multiple jobs as completed.
 
 ---
 
+### queue.cancel
+
+```sql
+queue.cancel(p_namespace: text, p_job_id: int8) -> bool
+```
+
+Cancel a pending job by deleting it.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_job_id`: Job ID
+
+**Returns:** True if cancelled, false if job not found or not pending
+
+*Source: queue/src/functions/030_ack.sql:248*
+
+---
+
 ### queue.fail
 
 ```sql
@@ -53,7 +71,7 @@ Move job to dead letter queue (permanent failure).
 - `p_job_id`: Job ID
 - `p_error`: Error message
 
-**Returns:** True if moved to DLQ, false if job not found Use when a job cannot be retried (invalid data, business logic failure, etc).
+**Returns:** True if moved to DLQ, false if job not found
 
 *Source: queue/src/functions/030_ack.sql:198*
 
@@ -73,9 +91,45 @@ Return job to queue for retry (temporary failure).
 - `p_error`: Error message (stored for debugging)
 - `p_backoff`: Optional custom backoff delay (default: exponential)
 
-**Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ) If max_attempts is exceeded, automatically moves to dead letter queue.
+**Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ)
 
 *Source: queue/src/functions/030_ack.sql:112*
+
+---
+
+### queue.purge_queue
+
+```sql
+queue.purge_queue(p_namespace: text, p_queue: text) -> int4
+```
+
+Delete all pending jobs from a queue.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_queue`: Queue name
+
+**Returns:** Count of deleted jobs
+
+*Source: queue/src/functions/030_ack.sql:335*
+
+---
+
+### queue.release_jobs
+
+```sql
+queue.release_jobs(p_namespace: text, p_worker_id: text) -> int4
+```
+
+Release all jobs held by a worker, returning them to pending.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_worker_id`: Worker identifier (as passed to pull)
+
+**Returns:** Count of jobs released
+
+*Source: queue/src/functions/030_ack.sql:288*
 
 ---
 
@@ -138,6 +192,65 @@ Set the tenant context for RLS policies.
 
 ---
 
+## Dead Letters
+
+### queue.purge_dead_letters
+
+```sql
+queue.purge_dead_letters(p_namespace: text, p_queue: text, p_older_than: interval) -> int4
+```
+
+Delete old un-retried dead letters.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_queue`: Queue filter (NULL = all queues)
+- `p_older_than`: Only delete entries older than this interval (default 30 days)
+
+**Returns:** Count of deleted dead letters
+
+*Source: queue/src/functions/060_dead_letters.sql:203*
+
+---
+
+### queue.retry_dead_letter
+
+```sql
+queue.retry_dead_letter(p_namespace: text, p_dead_letter_id: int8, p_queue: text) -> int8
+```
+
+Retry a dead-lettered job by creating a new job from its payload.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_dead_letter_id`: Dead letter ID
+- `p_queue`: Queue override (NULL = use original queue)
+
+**Returns:** New job ID
+
+*Source: queue/src/functions/060_dead_letters.sql:1*
+
+---
+
+### queue.retry_dead_letters
+
+```sql
+queue.retry_dead_letters(p_namespace: text, p_queue: text, p_limit: int4) -> table(dead_letter_id: int8, job_id: int8)
+```
+
+Retry multiple dead letters for a queue in a single transaction.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_queue`: Queue to retry dead letters from
+- `p_limit`: Maximum dead letters to retry (clamped to 1000)
+
+**Returns:** Rows of (dead_letter_id, job_id) for each retried entry
+
+*Source: queue/src/functions/060_dead_letters.sql:110*
+
+---
+
 ## Pull
 
 ### queue.extend_visibility
@@ -153,7 +266,7 @@ Extend the visibility timeout of a running job.
 - `p_job_id`: Job ID
 - `p_extension`: How much time to add
 
-**Returns:** True if extended, false if job not found or not running Use when processing takes longer than expected.
+**Returns:** True if extended, false if job not found or not running
 
 *Source: queue/src/functions/020_pull.sql:193*
 
@@ -173,7 +286,7 @@ Pull one job from a queue.
 - `p_worker_id`: Worker identifier (for debugging stuck jobs)
 - `p_visibility_timeout`: How long before job returns to queue if not ack'd
 
-**Returns:** Job record, or NULL if queue is empty Uses SELECT FOR UPDATE SKIP LOCKED for efficient concurrent access. Job status changes to 'running' and becomes invisible until ack/nack/timeout.
+**Returns:** Job record, or NULL if queue is empty
 
 *Source: queue/src/functions/020_pull.sql:1*
 
@@ -193,7 +306,7 @@ Pull one job from multiple queues (priority order).
 - `p_worker_id`: Worker identifier
 - `p_visibility_timeout`: How long before job returns to queue
 
-**Returns:** Job record from first queue with available job, or NULL Useful for workers that handle multiple queues with different priorities. Example: pull_any(ns, ARRAY['critical', 'default', 'bulk'])
+**Returns:** Job record from first queue with available job, or NULL
 
 *Source: queue/src/functions/020_pull.sql:122*
 
@@ -214,7 +327,7 @@ Pull multiple jobs from a queue.
 - `p_worker_id`: Worker identifier (for debugging stuck jobs)
 - `p_visibility_timeout`: How long before jobs return to queue if not ack'd
 
-**Returns:** Set of job records More efficient than multiple pull() calls for batch processing.
+**Returns:** Set of job records
 
 *Source: queue/src/functions/020_pull.sql:60*
 
@@ -241,7 +354,7 @@ Push a job onto a queue.
 - `p_tags`: Optional tags for filtering
 - `p_metadata`: Optional metadata
 
-**Returns:** Job ID, or NULL if deduplicated Jobs are immediately visible unless p_delay is specified. With unique_key, returns NULL if a pending/running job with same key exists.
+**Returns:** Job ID, or NULL if deduplicated
 
 *Source: queue/src/functions/010_push.sql:1*
 
@@ -263,7 +376,7 @@ Push multiple jobs onto a queue efficiently.
 - `p_max_attempts`: Maximum retry attempts for all jobs
 - `p_tags`: Tags for all jobs
 
-**Returns:** Array of job IDs More efficient than multiple push() calls. Does not support unique_key.
+**Returns:** Array of job IDs
 
 *Source: queue/src/functions/010_push.sql:110*
 
@@ -403,13 +516,49 @@ Process due schedules and create jobs.
 - `p_namespace`: Tenant namespace (NULL = all namespaces, requires RLS bypass)
 - `p_limit`: Maximum schedules to process per call
 
-**Returns:** Rows of (schedule_name, job_id, next_run_at) for each processed schedule Finds active schedules where next_run_at <= now(), creates a job for each, and advances next_run_at. Uses FOR UPDATE SKIP LOCKED for safe concurrent execution from multiple workers.
+**Returns:** Rows of (schedule_name, job_id, next_run_at) for each processed schedule
 
 *Source: queue/src/functions/055_tick.sql:1*
 
 ---
 
+### queue.tick_timeouts
+
+```sql
+queue.tick_timeouts(p_namespace: text, p_limit: int4) -> table(job_id: int8, queue: text, stuck_duration: interval)
+```
+
+Reclaim running jobs whose visibility timeout has expired.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace (NULL = all namespaces, requires RLS bypass)
+- `p_limit`: Maximum jobs to reclaim per call
+
+**Returns:** Rows of (job_id, queue, stuck_duration) for each reclaimed job
+
+*Source: queue/src/functions/055_tick.sql:101*
+
+---
+
 ## Stats
+
+### queue.get_queue_stats
+
+```sql
+queue.get_queue_stats(p_namespace: text, p_queue: text) -> table(queue: text, pending: int8, running: int8, completed: int8, dead: int8, oldest_pending_seconds: numeric, dead_letters: int8)
+```
+
+Get per-queue statistics with operational metrics.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_queue`: Queue filter (NULL = all queues)
+
+**Returns:** Row per queue with status counts, oldest pending age, and un-retried dead letter count
+
+*Source: queue/src/functions/040_stats.sql:33*
+
+---
 
 ### queue.get_stats
 

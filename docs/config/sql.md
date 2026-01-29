@@ -181,7 +181,7 @@ Get a config entry (active version or specific version)
 - `p_key`: The config key
 - `p_version`: Optional specific version (default: active version)
 
-**Returns:** value, version, created_at PERFORMANCE: Hot path - called for every config read. Uses unique partial index entries_single_active_idx on (namespace, key) WHERE is_active for O(1) lookup. For high-throughput scenarios, consider application-layer caching.
+**Returns:** value, version, created_at
 
 **Example:**
 ```sql

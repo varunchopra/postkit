@@ -417,6 +417,73 @@ class QueueClient(BaseClient):
         )
         return bool(result)
 
+    def cancel(self, job_id: int) -> bool:
+        """Cancel a pending job by deleting it.
+
+        Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd,
+        or failed. Cancelled jobs are deleted — they were never processed, so
+        there is no completion state to retain.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            True if cancelled, False if job not found or not pending
+        """
+        result = self._fetch_val(
+            """SELECT queue.cancel(
+                p_namespace := %s,
+                p_job_id := %s
+            )""",
+            (self.namespace, job_id),
+            write=True,
+        )
+        return bool(result)
+
+    def release_jobs(self, worker_id: str) -> int:
+        """Release all jobs held by a worker, returning them to pending.
+
+        Call during graceful shutdown so jobs are immediately re-deliverable
+        instead of waiting for visibility timeout expiry.
+
+        Args:
+            worker_id: Worker identifier (as passed to pull)
+
+        Returns:
+            Count of jobs released
+        """
+        result = self._fetch_val(
+            """SELECT queue.release_jobs(
+                p_namespace := %s,
+                p_worker_id := %s
+            )""",
+            (self.namespace, worker_id),
+            write=True,
+        )
+        return int(result) if result is not None else 0
+
+    def purge_queue(self, queue: str) -> int:
+        """Delete all pending jobs from a queue.
+
+        Only deletes pending jobs. Running jobs are held by workers — use
+        release_jobs to return them first, or wait for visibility timeout.
+
+        Args:
+            queue: Queue name
+
+        Returns:
+            Count of deleted jobs
+        """
+        result = self._fetch_val(
+            """SELECT queue.purge_queue(
+                p_namespace := %s,
+                p_queue := %s
+            )""",
+            (self.namespace, queue),
+            write=True,
+        )
+        return int(result) if result is not None else 0
+
     # =========================================================================
     # Stats
     # =========================================================================
@@ -432,6 +499,28 @@ class QueueClient(BaseClient):
             (self.namespace,),
         )
         return result or {}
+
+    def get_queue_stats(self, queue: str | None = None) -> list[dict[str, Any]]:
+        """Get per-queue statistics with operational metrics.
+
+        Unlike get_stats (namespace-wide totals), this breaks down by queue
+        and includes operational metrics: how stale the backlog is and how
+        many jobs have failed.
+
+        Args:
+            queue: Queue filter (None = all queues)
+
+        Returns:
+            List of dicts with queue, pending, running, completed, dead,
+            oldest_pending_seconds, and dead_letters (un-retried only) per queue
+        """
+        return self._fetch_all(
+            """SELECT * FROM queue.get_queue_stats(
+                p_namespace := %s,
+                p_queue := %s
+            )""",
+            (self.namespace, queue),
+        )
 
     # =========================================================================
     # Schedule Operations
@@ -629,3 +718,121 @@ class QueueClient(BaseClient):
             (self.namespace, limit),
             write=True,
         )
+
+    def tick_timeouts(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Reclaim running jobs whose visibility timeout has expired.
+
+        Workers that crash or hang leave jobs stuck in 'running' status. This
+        function returns them to 'pending' for re-delivery. Call periodically
+        alongside tick_schedules().
+
+        Args:
+            limit: Maximum jobs to reclaim per call
+
+        Returns:
+            List of dicts with job_id, queue, and stuck_duration
+        """
+        return self._fetch_all(
+            """SELECT * FROM queue.tick_timeouts(
+                p_namespace := %s,
+                p_limit := %s
+            )""",
+            (self.namespace, limit),
+            write=True,
+        )
+
+    # =========================================================================
+    # Dead Letter Operations
+    # =========================================================================
+
+    def retry_dead_letter(
+        self,
+        dead_letter_id: int,
+        *,
+        queue: str | None = None,
+    ) -> int:
+        """Retry a dead-lettered job by creating a new job from its payload.
+
+        The dead letter is marked as retried to prevent double-retry. The new
+        job gets a fresh attempt counter and the caller's actor context (not
+        the original actor).
+
+        Args:
+            dead_letter_id: Dead letter ID
+            queue: Queue override (None = use original queue)
+
+        Returns:
+            New job ID
+
+        Raises:
+            QueueError: If dead letter not found or already retried
+        """
+        result = self._fetch_val(
+            """SELECT queue.retry_dead_letter(
+                p_namespace := %s,
+                p_dead_letter_id := %s,
+                p_queue := %s
+            )""",
+            (self.namespace, dead_letter_id, queue),
+            write=True,
+        )
+        if result is None:
+            raise QueueError("queue.retry_dead_letter returned no value")
+        return int(result)
+
+    def retry_dead_letters(
+        self,
+        queue: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Retry multiple dead letters for a queue in a single transaction.
+
+        Retries un-retried dead letters oldest-first. Uses FOR UPDATE SKIP
+        LOCKED so concurrent callers do not double-retry.
+
+        Args:
+            queue: Queue to retry dead letters from
+            limit: Maximum dead letters to retry (max 1000)
+
+        Returns:
+            List of dicts with dead_letter_id and job_id for each retry
+        """
+        return self._fetch_all(
+            """SELECT * FROM queue.retry_dead_letters(
+                p_namespace := %s,
+                p_queue := %s,
+                p_limit := %s
+            )""",
+            (self.namespace, queue, limit),
+            write=True,
+        )
+
+    def purge_dead_letters(
+        self,
+        *,
+        queue: str | None = None,
+        older_than: timedelta = timedelta(days=30),
+    ) -> int:
+        """Delete old un-retried dead letters.
+
+        Only purges un-retried entries. Retried dead letters are kept as
+        historical records linking the failure to its retry job.
+
+        Args:
+            queue: Queue filter (None = all queues)
+            older_than: Only delete entries older than this (default 30 days)
+
+        Returns:
+            Count of deleted dead letters
+        """
+        result = self._fetch_val(
+            """SELECT queue.purge_dead_letters(
+                p_namespace := %s,
+                p_queue := %s,
+                p_older_than := %s
+            )""",
+            (self.namespace, queue, older_than),
+            write=True,
+        )
+        return int(result) if result is not None else 0

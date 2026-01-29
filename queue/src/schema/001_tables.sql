@@ -10,6 +10,23 @@
 --   3. Concurrent-safe: SKIP LOCKED for efficient worker distribution
 --   4. Deduplication: Optional unique_key prevents duplicate jobs
 --   5. Visibility timeout: Jobs auto-return to queue if worker dies
+--
+-- Deployment-level concerns (intentionally not handled by this library):
+--
+--   6. No GRANT/REVOKE statements. Role creation and permission grants are
+--      the deployer's responsibility. A library cannot assume role names,
+--      connection pooling strategy, or pg_hba.conf layout. Shipping
+--      opinionated grants would be either too permissive or too restrictive.
+--
+--   7. No payload size constraint. PostgreSQL already limits TOAST-able
+--      columns to ~1 GB. The acceptable payload size is a deployment
+--      policy decision (some tenants need 1 KB, others 10 MB). Deployers
+--      can add a CHECK constraint or validate at the application layer.
+--
+--   8. Actor context columns are nullable. Requiring them would break
+--      migrations, cron tickers, REPL debugging, and any non-request
+--      context. The audit trail is best-effort by design; the application
+--      layer decides when actor attribution is mandatory.
 
 CREATE SCHEMA IF NOT EXISTS queue;
 
@@ -90,8 +107,7 @@ CREATE UNIQUE INDEX jobs_unique_key_idx ON queue.jobs (namespace, queue, unique_
     WHERE unique_key IS NOT NULL AND status IN ('pending', 'running');
 
 -- Timeout recovery: find jobs with expired visibility.
--- TODO: No recovery function exists yet. Needs a tick_timeouts() function
--- that moves expired running jobs back to pending.
+-- Used by tick_timeouts() to reclaim stuck running jobs.
 CREATE INDEX jobs_timeout_idx ON queue.jobs (visibility_timeout_at)
     WHERE status = 'running';
 
@@ -122,10 +138,10 @@ CREATE TABLE queue.dead_letters (
     -- Failure info
     failed_at timestamptz NOT NULL DEFAULT now(),
     attempts int NOT NULL,
+    max_attempts int NOT NULL,
     last_error text,
 
-    -- Retry tracking
-    -- TODO: No retry function exists yet. Needs a retry_dead_letter() function.
+    -- Retry tracking (set by retry_dead_letter)
     retried_at timestamptz,                    -- When retry was initiated
     retry_job_id bigint,                       -- New job ID if retried
 

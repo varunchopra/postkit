@@ -1,6 +1,6 @@
-"""Tests for docstring parser."""
+"""Tests for docstring and SQL doc block parsers."""
 
-from gendocs.extractors import _parse_docstring
+from gendocs.extractors import _extract_params, _extract_tag, _parse_docstring
 
 
 def test_brief():
@@ -245,3 +245,66 @@ def test_multiline_param_description():
         == "This is a long description that continues on the next line and even a third line"
     )
     assert result.params["other"] == "Another param"
+
+
+# =============================================================================
+# SQL doc block extraction tests
+# =============================================================================
+
+
+def test_extract_tag_simple():
+    """Extract a simple @returns tag."""
+    block = "-- @returns True if acknowledged\n"
+    assert _extract_tag(block, "returns") == "True if acknowledged"
+
+
+def test_extract_tag_stops_at_blank_comment_line():
+    """@returns does not bleed into extended description after a blank -- line."""
+    block = (
+        "-- @brief Do something.\n"
+        "-- @returns True if acknowledged, false if not found\n"
+        "--\n"
+        "-- Job is either deleted or archived.\n"
+    )
+    assert _extract_tag(block, "returns") == "True if acknowledged, false if not found"
+
+
+def test_extract_tag_stops_at_next_tag():
+    """@brief stops at the next @param tag."""
+    block = "-- @brief Do something.\n-- @param p_id The ID\n-- @returns The result\n"
+    assert _extract_tag(block, "brief") == "Do something."
+
+
+def test_extract_tag_multiline_before_blank():
+    """Multi-line tag content is joined until the blank -- line."""
+    block = (
+        "-- @returns Row per queue with status counts,\n"
+        "-- oldest pending age, and dead letter count\n"
+        "--\n"
+        "-- Unlike get_stats, this breaks down by queue.\n"
+    )
+    result = _extract_tag(block, "returns")
+    assert (
+        result
+        == "Row per queue with status counts, oldest pending age, and dead letter count"
+    )
+
+
+def test_extract_params_last_param_stops_at_blank_line():
+    """Last @param does not bleed into extended description."""
+    block = (
+        "-- @param p_namespace Tenant namespace\n"
+        "-- @param p_reason Optional reason for the action\n"
+        "--\n"
+        "-- Actor context is captured when jobs are pushed.\n"
+    )
+    params = _extract_params(block)
+    assert params["p_namespace"] == "Tenant namespace"
+    assert params["p_reason"] == "Optional reason for the action"
+
+
+def test_extract_params_stops_at_next_tag():
+    """@param stops at @returns."""
+    block = "-- @param p_id The ID\n-- @returns The result\n"
+    params = _extract_params(block)
+    assert params["p_id"] == "The ID"

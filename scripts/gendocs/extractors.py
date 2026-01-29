@@ -458,7 +458,7 @@ def _extract_doc_blocks(content: str) -> dict[str, str]:
 
 def _extract_tag(block: str, tag: str) -> str:
     """Extract content of an @-tag from a doc block."""
-    pattern = rf"--\s*@{re.escape(tag)}\s+(.+?)(?=--\s*@|\Z)"
+    pattern = rf"--\s*@{re.escape(tag)}\s+(.+?)(?=--\s*@|\n--\s*\n|\Z)"
     match = re.search(pattern, block, re.DOTALL)
     if not match:
         return ""
@@ -477,7 +477,7 @@ def _extract_params(block: str) -> dict[str, str]:
     """Extract @param tags from a doc block."""
     params: dict[str, str] = {}
     for match in re.finditer(
-        r"--\s*@param\s+(\w+)\s+(.+?)(?=--\s*@|\Z)", block, re.DOTALL
+        r"--\s*@param\s+(\w+)\s+(.+?)(?=--\s*@|\n--\s*\n|\Z)", block, re.DOTALL
     ):
         name = match.group(1)
         desc = re.sub(r"\n--\s*", " ", match.group(2).strip())

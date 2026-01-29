@@ -377,7 +377,7 @@ authn.get_credentials(p_email: text, p_namespace: text) -> table(user_id: uuid, 
 
 Get password hash for login verification (only function that returns hash)
 
-**Returns:** user_id, password_hash, disabled_at. Verify hash in your app, check disabled_at, then call create_session if valid. SECURITY NOTE: This function intentionally does NOT check lockout status. The recommended login flow is: 1. Call is_locked_out(email) - reject if locked 2. Call get_credentials(email) - get hash for verification 3. Verify password hash in application code (argon2id) 4. Call record_login_attempt(email, success, ip) - track attempt 5. If success: call create_session() and return token This separation of concerns allows flexibility: - Different lockout policies per user tier or namespace - Custom rate limiting at the application layer - A/B testing authentication flows The application MUST call is_locked_out() before get_credentials() to prevent credential stuffing attacks. Password hashes should use argon2id to make offline cracking impractical even if hashes are harvested.
+**Returns:** user_id, password_hash, disabled_at. Verify hash in your app, check disabled_at, then call create_session if valid.
 
 **Example:**
 ```sql
@@ -992,7 +992,7 @@ Start cross-namespace operator impersonation
 - `p_duration`: How long the impersonation lasts (default 30 minutes, max 4 hours)
 - `p_ticket_reference`: Optional external ticket reference (Zendesk, Jira, etc.)
 
-**Returns:** impersonation_id, impersonation_session_id, expires_at IMPORTANT: This function only validates MECHANISM: - Operator has valid session (not revoked, not expired, user not disabled) - Target user exists and is not disabled The calling application MUST validate POLICY: - Whether the session owner is authorized as an operator - Any other business rules about who can impersonate whom
+**Returns:** impersonation_id, impersonation_session_id, expires_at
 
 **Example:**
 ```sql
@@ -1290,7 +1290,7 @@ authn.validate_session(p_token_hash: text, p_namespace: text) -> table(user_id: 
 
 Check if session is valid and get user info (hot path, no logging)
 
-**Returns:** user_id, email, session_id if valid. Empty if expired/revoked/disabled. Also returns same-namespace impersonation context if this is an impersonation session (from impersonation_sessions table). Does not detect cross-namespace operator impersonation; use get_operator_impersonation_context() for that. When impersonation is detected, automatically sets audit actor context. DESIGN NOTE: This function has a deliberate side effect for impersonation sessions. When an impersonation session is detected, it automatically calls set_actor() to configure the audit context. This is intentional for several reasons: 1. Convenience: Applications don't need to know about impersonation internals 2. Safety: Ensures all actions during impersonation are properly attributed in audit logs 3. Transparency: The impersonation context is always returned so apps can display it The function is marked VOLATILE due to this side effect. The side effect only triggers on the rare impersonation path (typically <0.01% of calls). For pure validation without side effects, check is_impersonating in the result and manage actor context manually. SECURITY NOTE: Token hash comparison uses PostgreSQL's = operator, which is not constant-time. Timing attacks are not practical here because: 1. Attacker must guess the SHA-256 hash (2^256 space), not the original token 2. Index lookup timing variance far exceeds string comparison variance 3. Network jitter (~1-10ms) drowns out comparison timing (~nanoseconds) 4. Even with perfect timing, reconstructing 256 bits via timing would require billions of precisely-timed queries Constant-time comparison would add overhead without meaningful security benefit. TRANSACTION NOTE: The auto-set actor context uses transaction-local settings (set_config with is_local=true). In autocommit mode, this context is lost when the implicit transaction commits. Callers using autocommit should use the returned impersonation context to set actor state at the application layer if needed for subsequent operations within the same request.
+**Returns:** user_id, email, session_id if valid. Empty if expired/revoked/disabled. Also returns same-namespace impersonation context if this is an impersonation session (from impersonation_sessions table). Does not detect cross-namespace operator impersonation; use get_operator_impersonation_context() for that. When impersonation is detected, automatically sets audit actor context.
 
 **Example:**
 ```sql
@@ -1477,7 +1477,7 @@ Atomically get existing user or create new one (for SSO flows)
 - `p_password_hash`: Optional password hash (NULL for SSO-only users)
 - `p_namespace`: Namespace to use
 
-**Returns:** user_id, created (true if new user), disabled (true if user is disabled) EDGE CASE: In an extremely rare race condition where: 1. INSERT fails because user exists (ON CONFLICT DO NOTHING) 2. Another transaction DELETEs that user before our SELECT 3. Our SELECT returns NULL This function will return (NULL, false, false). The SDK raises AuthnError in this case. This scenario requires user deletion during concurrent creation, which is operationally very unusual. If this is a concern for your use case, wrap the call in retry logic.
+**Returns:** user_id, created (true if new user), disabled (true if user is disabled)
 
 **Example:**
 ```sql
