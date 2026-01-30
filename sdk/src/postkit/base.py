@@ -141,16 +141,8 @@ class BaseClient(ABC):
         self._request_id: str | None = None
         self._on_behalf_of: str | None = None
         self._reason: str | None = None
-        # Set tenant context for RLS
-        try:
-            self.cursor.execute(
-                sql.SQL("SELECT {}.set_tenant(%s)").format(
-                    sql.Identifier(self._schema)
-                ),
-                (namespace,),
-            )
-        except psycopg.Error as e:
-            self._handle_error(e)
+        # Set tenant context for RLS (fail-fast: validates namespace immediately)
+        self._apply_tenant_context()
 
     def _handle_error(self, e: psycopg.Error) -> NoReturn:
         """Convert psycopg errors to SDK exceptions, preserving SQLSTATE and HINT.
@@ -195,40 +187,63 @@ class BaseClient(ABC):
         ...
 
     def _has_context(self) -> bool:
-        """Check if any context field is set."""
+        """Check if any actor context field is set."""
         return bool(
             self._actor_id or self._request_id or self._on_behalf_of or self._reason
         )
 
-    def _with_actor(self, executor: Callable[[], T]) -> T:
-        """Execute operation with actor context for audit logging.
+    def _apply_tenant_context(self) -> None:
+        """Apply tenant context for RLS policies.
 
-        Actor context uses PostgreSQL's transaction-local settings (SET LOCAL).
-        This requires a transaction to persist between setting context and executing.
+        Called before every operation to ensure the current transaction has
+        the correct tenant_id set. Uses SET LOCAL (transaction-scoped) so
+        context automatically clears on commit, preventing cross-tenant
+        leakage in connection pools.
 
-        - In autocommit mode: We wrap in an explicit transaction
-        - In manual transaction mode: Caller controls the transaction
+        Safe to call repeatedly within the same transaction — set_config
+        with the same value is a no-op at the PostgreSQL level.
+        """
+        try:
+            self.cursor.execute(
+                sql.SQL("SELECT {}.set_tenant(%s)").format(
+                    sql.Identifier(self._schema)
+                ),
+                (self.namespace,),
+            )
+        except psycopg.Error as e:
+            self._handle_error(e)
+
+    def _with_context(self, executor: Callable[[], T], *, write: bool = False) -> T:
+        """Execute operation with tenant context and optional actor context.
+
+        Ensures every operation runs inside a transaction with tenant context
+        set, so RLS policies see the correct tenant. Actor context is
+        additionally applied for write operations (audit trail).
+
+        Both use PostgreSQL's transaction-local settings (SET LOCAL), which
+        requires an active transaction. When none exists (autocommit mode or
+        between commits), this method wraps the operation in an explicit one.
 
         Note: This method assumes single-threaded cursor access.
         psycopg cursors are not thread-safe; do not share clients across threads.
 
         Args:
-            executor: Callable that performs the actual SQL execution and returns result
+            executor: Callable that performs the actual SQL execution
+            write: If True, also applies actor context for audit logging
         """
-        if not self._has_context():
-            return executor()
-
         conn = self.cursor.connection
         in_transaction = conn.info.transaction_status != 0
 
         if in_transaction:
-            # Caller manages transaction - just set actor context
-            self._apply_actor_context()
+            self._apply_tenant_context()
+            if write and self._has_context():
+                self._apply_actor_context()
             return executor()
         else:
-            # Use psycopg's transaction manager for proper cleanup
             with conn.transaction():
-                self._apply_actor_context()
+                self._apply_tenant_context()
+                if write and self._has_context():
+                    self._apply_actor_context()
                 return executor()
 
     def _fetch_val(
@@ -253,7 +268,7 @@ class BaseClient(ABC):
             except psycopg.Error as e:
                 self._handle_error(e)
 
-        return self._with_actor(execute) if write else execute()
+        return self._with_context(execute, write=write)
 
     def _fetch_one(
         self, query: LiteralString, params: tuple[Any, ...], *, write: bool = False
@@ -283,7 +298,7 @@ class BaseClient(ABC):
             except psycopg.Error as e:
                 self._handle_error(e)
 
-        return self._with_actor(execute) if write else execute()
+        return self._with_context(execute, write=write)
 
     def _fetch_all(
         self, query: LiteralString, params: tuple[Any, ...], *, write: bool = False
@@ -321,7 +336,7 @@ class BaseClient(ABC):
             except psycopg.Error as e:
                 self._handle_error(e)
 
-        return self._with_actor(execute) if write else execute()
+        return self._with_context(execute, write=write)
 
     def _fetch_raw(
         self, query: LiteralString, params: tuple[Any, ...]
@@ -338,11 +353,15 @@ class BaseClient(ABC):
         Returns:
             List of rows as tuples
         """
-        try:
-            self.cursor.execute(query, params)
-            return self.cursor.fetchall()
-        except psycopg.Error as e:
-            self._handle_error(e)
+
+        def execute() -> list[tuple[Any, ...]]:
+            try:
+                self.cursor.execute(query, params)
+                return self.cursor.fetchall()
+            except psycopg.Error as e:
+                self._handle_error(e)
+
+        return self._with_context(execute)
 
     def set_actor(
         self,
@@ -473,24 +492,27 @@ class BaseClient(ABC):
             conditions=sql.SQL(" AND ").join(conditions),
         )
 
-        try:
-            self.cursor.execute(query, tuple(params))
-            assert self.cursor.description is not None
-            columns = [desc[0] for desc in self.cursor.description]
-            rows = self.cursor.fetchall()
-        except psycopg.Error as e:
-            self._handle_error(e)
+        def execute() -> list[dict[str, Any]]:
+            try:
+                self.cursor.execute(query, tuple(params))
+                assert self.cursor.description is not None
+                columns = [desc[0] for desc in self.cursor.description]
+                rows = self.cursor.fetchall()
+            except psycopg.Error as e:
+                self._handle_error(e)
 
-        events = [
-            {col: self._normalize_value(val) for col, val in zip(columns, row)}
-            for row in rows
-        ]
+            events = [
+                {col: self._normalize_value(val) for col, val in zip(columns, row)}
+                for row in rows
+            ]
 
-        # Add opaque cursor to each event for pagination
-        for event in events:
-            event["cursor"] = self._encode_cursor(event["event_time"], event["id"])
+            # Add opaque cursor to each event for pagination
+            for event in events:
+                event["cursor"] = self._encode_cursor(event["event_time"], event["id"])
 
-        return events
+            return events
+
+        return self._with_context(execute)
 
     def get_stats(self) -> dict:
         """Get namespace statistics. Subclasses should override with module-specific stats."""

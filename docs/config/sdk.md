@@ -45,7 +45,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:376*
+*Source: sdk/src/postkit/base.py:395*
 
 ---
 
@@ -433,7 +433,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:347*
+*Source: sdk/src/postkit/base.py:366*
 
 ---
 

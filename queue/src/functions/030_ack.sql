@@ -203,7 +203,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
 -- @param p_error Error message
--- @returns True if moved to DLQ, false if job not found
+-- @returns True if moved to DLQ, false if job not found or not running
 --
 -- Use when a job cannot be retried (invalid data, business logic failure, etc).
 CREATE OR REPLACE FUNCTION queue.fail(

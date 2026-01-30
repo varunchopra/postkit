@@ -234,7 +234,7 @@ class TestFail:
         result = queue.fail(job_id)
         assert result is False
 
-    def test_fail_stores_error_message(self, queue, raw_cursor):
+    def test_fail_stores_error_message(self, raw_cursor):
         """fail stores error message in dead_letters."""
         cursor, namespace = raw_cursor
 
@@ -279,16 +279,24 @@ class TestCancel:
         result = queue.cancel(999999)
         assert result is False
 
-    def test_cancel_returns_false_for_completed_job(self, queue, raw_cursor):
+    def test_cancel_returns_false_for_completed_job(self, raw_cursor):
         """cancel returns False for a job that is already completed."""
         cursor, namespace = raw_cursor
+
+        # Enable archive mode so ack retains the job with status='completed'
+        # instead of deleting it. Without this, the test would be identical
+        # to test_cancel_returns_false_for_nonexistent_job.
+        cursor.execute(
+            "INSERT INTO queue.config (namespace, archive_completed) VALUES (%s, true)",
+            (namespace,),
+        )
 
         q = QueueClient(cursor, namespace)
         q.push("tasks", {"task": 1})
         job = q.pull("tasks")
         q.ack(job["id"])
 
-        # Job is now completed (or deleted). Either way, cancel should fail.
+        # Job exists with status='completed'. cancel only targets status='pending'.
         result = q.cancel(job["id"])
         assert result is False
 

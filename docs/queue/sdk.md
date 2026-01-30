@@ -51,7 +51,7 @@ Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd, or faile
 
 **Returns:** True if cancelled, False if job not found or not pending
 
-*Source: sdk/src/postkit/queue/client.py:420*
+*Source: sdk/src/postkit/queue/client.py:424*
 
 ---
 
@@ -63,7 +63,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:376*
+*Source: sdk/src/postkit/base.py:395*
 
 ---
 
@@ -91,7 +91,7 @@ Schedules use either a cron expression or a fixed interval, not both. The schedu
 
 **Returns:** Schedule ID
 
-*Source: sdk/src/postkit/queue/client.py:529*
+*Source: sdk/src/postkit/queue/client.py:534*
 
 ---
 
@@ -108,7 +108,7 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, False if not found
 
-*Source: sdk/src/postkit/queue/client.py:643*
+*Source: sdk/src/postkit/queue/client.py:648*
 
 ---
 
@@ -142,9 +142,9 @@ Move job to dead letter queue (permanent failure).
 - `job_id`: Job ID
 - `error`: Error message
 
-**Returns:** True if moved to DLQ, False if job not found
+**Returns:** True if moved to DLQ, False if job not found or not running
 
-*Source: sdk/src/postkit/queue/client.py:390*
+*Source: sdk/src/postkit/queue/client.py:394*
 
 ---
 
@@ -164,7 +164,7 @@ Unlike get_stats (namespace-wide totals), this breaks down by queue and includes
 **Returns:** List of dicts with queue, pending, running, completed, dead,
 oldest_pending_seconds, and dead_letters (un-retried only) per queue
 
-*Source: sdk/src/postkit/queue/client.py:503*
+*Source: sdk/src/postkit/queue/client.py:508*
 
 ---
 
@@ -181,7 +181,7 @@ Get a schedule by name.
 
 **Returns:** Schedule dict with all fields, or None if not found
 
-*Source: sdk/src/postkit/queue/client.py:596*
+*Source: sdk/src/postkit/queue/client.py:601*
 
 ---
 
@@ -193,9 +193,10 @@ get_stats() -> dict[str, Any]
 
 Get namespace-wide queue statistics.
 
-**Returns:** Dict with total_jobs, pending, running, completed, dead counts
+**Returns:** Dict with total_jobs, pending, running, completed, dead, and
+total_queues counts
 
-*Source: sdk/src/postkit/queue/client.py:491*
+*Source: sdk/src/postkit/queue/client.py:495*
 
 ---
 
@@ -215,7 +216,7 @@ List schedules with optional filters and cursor pagination.
 
 **Returns:** List of schedule dicts ordered by name
 
-*Source: sdk/src/postkit/queue/client.py:613*
+*Source: sdk/src/postkit/queue/client.py:618*
 
 ---
 
@@ -251,7 +252,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, False if already paused or not found
 
-*Source: sdk/src/postkit/queue/client.py:662*
+*Source: sdk/src/postkit/queue/client.py:667*
 
 ---
 
@@ -334,7 +335,7 @@ Only purges un-retried entries. Retried dead letters are kept as historical reco
 
 **Returns:** Count of deleted dead letters
 
-*Source: sdk/src/postkit/queue/client.py:811*
+*Source: sdk/src/postkit/queue/client.py:816*
 
 ---
 
@@ -353,7 +354,7 @@ Only deletes pending jobs. Running jobs are held by workers — use release_jobs
 
 **Returns:** Count of deleted jobs
 
-*Source: sdk/src/postkit/queue/client.py:465*
+*Source: sdk/src/postkit/queue/client.py:469*
 
 ---
 
@@ -417,7 +418,7 @@ Call during graceful shutdown so jobs are immediately re-deliverable instead of 
 
 **Returns:** Count of jobs released
 
-*Source: sdk/src/postkit/queue/client.py:443*
+*Source: sdk/src/postkit/queue/client.py:447*
 
 ---
 
@@ -434,7 +435,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, False if already active or not found
 
-*Source: sdk/src/postkit/queue/client.py:681*
+*Source: sdk/src/postkit/queue/client.py:686*
 
 ---
 
@@ -454,7 +455,7 @@ The dead letter is marked as retried to prevent double-retry. The new job gets a
 
 **Returns:** New job ID
 
-*Source: sdk/src/postkit/queue/client.py:748*
+*Source: sdk/src/postkit/queue/client.py:753*
 
 ---
 
@@ -474,7 +475,7 @@ Retries un-retried dead letters oldest-first. Uses FOR UPDATE SKIP LOCKED so con
 
 **Returns:** List of dicts with dead_letter_id and job_id for each retry
 
-*Source: sdk/src/postkit/queue/client.py:783*
+*Source: sdk/src/postkit/queue/client.py:788*
 
 ---
 
@@ -499,7 +500,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:347*
+*Source: sdk/src/postkit/base.py:366*
 
 ---
 
@@ -518,7 +519,7 @@ Finds active schedules where next_run_at <= now(), creates a job for each, and a
 
 **Returns:** List of dicts with schedule_name, job_id, and next_run_at
 
-*Source: sdk/src/postkit/queue/client.py:700*
+*Source: sdk/src/postkit/queue/client.py:705*
 
 ---
 
@@ -537,6 +538,6 @@ Workers that crash or hang leave jobs stuck in 'running' status. This function r
 
 **Returns:** List of dicts with job_id, queue, and stuck_duration
 
-*Source: sdk/src/postkit/queue/client.py:722*
+*Source: sdk/src/postkit/queue/client.py:727*
 
 ---

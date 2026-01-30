@@ -62,7 +62,7 @@ authz.bulk_grant("read", resource=("doc", "1"), subjects=[
 ])
 ```
 
-*Source: sdk/src/postkit/authz/client.py:983*
+*Source: sdk/src/postkit/authz/client.py:986*
 
 ---
 
@@ -88,7 +88,7 @@ authz.bulk_grant_resources(
 )
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1037*
+*Source: sdk/src/postkit/authz/client.py:1040*
 
 ---
 
@@ -181,7 +181,7 @@ result = authz.cleanup_expired()
 print(f"Removed {result['tuples_deleted']} expired grants")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1110*
+*Source: sdk/src/postkit/authz/client.py:1113*
 
 ---
 
@@ -193,7 +193,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:376*
+*Source: sdk/src/postkit/base.py:395*
 
 ---
 
@@ -217,7 +217,7 @@ Remove expiration from a grant (make it permanent).
 authz.clear_expiration("read", resource=("doc", "1"), subject=("user", "alice"))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1175*
+*Source: sdk/src/postkit/authz/client.py:1178*
 
 ---
 
@@ -324,7 +324,7 @@ new_expires = authz.extend_expiration("read", resource=("doc", "1"),
                                       extension=timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1213*
+*Source: sdk/src/postkit/authz/client.py:1216*
 
 ---
 
@@ -407,7 +407,7 @@ stats = authz.get_stats()
 print(f"Tuples: {stats['tuple_count']}, Users: {stats['unique_users']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:960*
+*Source: sdk/src/postkit/authz/client.py:963*
 
 ---
 
@@ -463,7 +463,7 @@ for grant in expiring:
     print(f"{grant['subject']} access to {grant['resource']} expires {grant['expires_at']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1080*
+*Source: sdk/src/postkit/authz/client.py:1083*
 
 ---
 
@@ -696,7 +696,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:347*
+*Source: sdk/src/postkit/base.py:366*
 
 ---
 
@@ -722,7 +722,7 @@ authz.set_expiration("read", resource=("doc", "1"), subject=("user", "alice"),
                     expires_at=datetime.now(timezone.utc) + timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1133*
+*Source: sdk/src/postkit/authz/client.py:1136*
 
 ---
 
@@ -812,6 +812,6 @@ for issue in issues:
     print(f"{issue['status']}: {issue['details']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:944*
+*Source: sdk/src/postkit/authz/client.py:947*
 
 ---

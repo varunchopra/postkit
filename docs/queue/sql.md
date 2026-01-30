@@ -71,7 +71,7 @@ Move job to dead letter queue (permanent failure).
 - `p_job_id`: Job ID
 - `p_error`: Error message
 
-**Returns:** True if moved to DLQ, false if job not found
+**Returns:** True if moved to DLQ, false if job not found or not running
 
 *Source: queue/src/functions/030_ack.sql:198*
 

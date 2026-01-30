@@ -910,36 +910,39 @@ class AuthzClient(BaseClient):
             LIMIT %s
         """).format(conditions=sql.SQL(" AND ").join(conditions))
 
-        try:
-            self.cursor.execute(query, tuple(params))
-            rows = self.cursor.fetchall()
-        except psycopg.Error as e:
-            self._handle_error(e)
+        def execute() -> list[dict]:
+            try:
+                self.cursor.execute(query, tuple(params))
+                rows = self.cursor.fetchall()
+            except psycopg.Error as e:
+                self._handle_error(e)
 
-        return [
-            {
-                "id": row[0],
-                "event_id": str(row[1]),
-                "event_type": row[2],
-                "event_time": row[3],
-                "cursor": self._encode_cursor(row[3], row[0]),
-                "actor_id": row[4],
-                "request_id": row[5],
-                "reason": row[6],
-                "on_behalf_of": row[7],
-                "session_user": row[8],
-                "current_user": row[9],
-                "client_addr": str(row[10]) if row[10] else None,
-                "application_name": row[11],
-                "resource": (row[12], row[13]),
-                "relation": row[14],
-                "subject": (row[15], row[16]),
-                "subject_relation": row[17],
-                "tuple_id": row[18],
-                "expires_at": row[19],
-            }
-            for row in rows
-        ]
+            return [
+                {
+                    "id": row[0],
+                    "event_id": str(row[1]),
+                    "event_type": row[2],
+                    "event_time": row[3],
+                    "cursor": self._encode_cursor(row[3], row[0]),
+                    "actor_id": row[4],
+                    "request_id": row[5],
+                    "reason": row[6],
+                    "on_behalf_of": row[7],
+                    "session_user": row[8],
+                    "current_user": row[9],
+                    "client_addr": str(row[10]) if row[10] else None,
+                    "application_name": row[11],
+                    "resource": (row[12], row[13]),
+                    "relation": row[14],
+                    "subject": (row[15], row[16]),
+                    "subject_relation": row[17],
+                    "tuple_id": row[18],
+                    "expires_at": row[19],
+                }
+                for row in rows
+            ]
+
+        return self._with_context(execute)
 
     def verify(self) -> list[dict]:
         """

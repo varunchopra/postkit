@@ -369,6 +369,10 @@ class QueueClient(BaseClient):
 
         Returns:
             True if returned to queue, False if max attempts exceeded (moved to DLQ)
+
+        Raises:
+            QueueValidationError: If job exists but is not in running status
+            QueueError: If job does not exist
         """
         result = self._fetch_val(
             """SELECT queue.nack(
@@ -400,7 +404,7 @@ class QueueClient(BaseClient):
             error: Error message
 
         Returns:
-            True if moved to DLQ, False if job not found
+            True if moved to DLQ, False if job not found or not running
         """
         result = self._fetch_val(
             """SELECT queue.fail(
@@ -492,7 +496,8 @@ class QueueClient(BaseClient):
         """Get namespace-wide queue statistics.
 
         Returns:
-            Dict with total_jobs, pending, running, completed, dead counts
+            Dict with total_jobs, pending, running, completed, dead, and
+            total_queues counts
         """
         result = self._fetch_one(
             "SELECT * FROM queue.get_stats(%s)",
