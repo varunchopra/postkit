@@ -8,75 +8,34 @@ import pytest
 from postkit.authn import AuthnClient, AuthnError
 
 from tests.conftest import DATABASE_URL
+from tests.helpers import (
+    assert_audit_fields,
+    assert_partition_create,
+    assert_partition_idempotent,
+    assert_partition_rejects_invalid_month,
+    cleanup_partition,
+)
 
 
 class TestCreateAuditPartition:
     def test_returns_name_for_new_partition(self, test_helpers):
         """Creating a new partition returns its name."""
-        # Use a far-future year unlikely to exist
-        test_helpers.cursor.execute(
-            "SELECT authn.create_audit_partition(%s, %s)",
-            (2099, 6),
-        )
-        result = test_helpers.cursor.fetchone()[0]
-        assert result == "audit_events_y2099m06"
-
-        # Cleanup
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS authn.audit_events_y2099m06")
+        name = assert_partition_create(test_helpers.cursor, "authn", 2099, 6)
+        cleanup_partition(test_helpers.cursor, "authn", name)
 
     def test_returns_null_if_partition_exists(self, test_helpers):
         """Creating an existing partition returns NULL."""
-        # Create it first
-        test_helpers.cursor.execute(
-            "SELECT authn.create_audit_partition(%s, %s)",
-            (2098, 7),
-        )
-        first_result = test_helpers.cursor.fetchone()[0]
-        assert first_result == "audit_events_y2098m07"
+        assert_partition_idempotent(test_helpers.cursor, "authn", 2098, 7)
+        cleanup_partition(test_helpers.cursor, "authn", "audit_events_y2098m07")
 
-        # Try to create again
-        test_helpers.cursor.execute(
-            "SELECT authn.create_audit_partition(%s, %s)",
-            (2098, 7),
-        )
-        second_result = test_helpers.cursor.fetchone()[0]
-        assert second_result is None
-
-        # Cleanup
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS authn.audit_events_y2098m07")
-
-    def test_validates_month_lower_bound(self, test_helpers):
-        """Month must be >= 1."""
-        with pytest.raises(
-            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
-        ):
-            test_helpers.cursor.execute(
-                "SELECT authn.create_audit_partition(%s, %s)",
-                (2024, 0),
-            )
-
-    def test_validates_month_upper_bound(self, test_helpers):
-        """Month must be <= 12."""
-        with pytest.raises(
-            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
-        ):
-            test_helpers.cursor.execute(
-                "SELECT authn.create_audit_partition(%s, %s)",
-                (2024, 13),
-            )
+    def test_validates_month_bounds(self, test_helpers):
+        """Month must be between 1 and 12."""
+        assert_partition_rejects_invalid_month(test_helpers.cursor, "authn")
 
     def test_partition_name_format(self, test_helpers):
         """Partition names use zero-padded year and month."""
-        test_helpers.cursor.execute(
-            "SELECT authn.create_audit_partition(%s, %s)",
-            (2097, 1),
-        )
-        result = test_helpers.cursor.fetchone()[0]
-        # Year is 4 digits, month is 2 digits
-        assert result == "audit_events_y2097m01"
-
-        # Cleanup
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS authn.audit_events_y2097m01")
+        name = assert_partition_create(test_helpers.cursor, "authn", 2097, 1)
+        cleanup_partition(test_helpers.cursor, "authn", name)
 
 
 class TestEnsureAuditPartitions:
@@ -208,8 +167,9 @@ class TestSetActor:
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
         assert len(matching) >= 1
-        assert matching[0]["actor_id"] == "user:admin"
-        assert matching[0]["request_id"] == "request-789"
+        assert_audit_fields(
+            matching[0], actor_id="user:admin", request_id="request-789"
+        )
 
     def test_on_behalf_of_captured_in_audit(self, authn, test_helpers):
         """on_behalf_of is captured in audit events."""
@@ -224,9 +184,12 @@ class TestSetActor:
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
         assert len(matching) >= 1
-        assert matching[0]["actor_id"] == "user:admin-bob"
-        assert matching[0]["on_behalf_of"] == "user:customer-alice"
-        assert matching[0]["reason"] == "support_ticket:12345"
+        assert_audit_fields(
+            matching[0],
+            actor_id="user:admin-bob",
+            on_behalf_of="user:customer-alice",
+            reason="support_ticket:12345",
+        )
 
     def test_reason_captured_in_audit(self, authn, test_helpers):
         """reason is captured in audit events (new for authn)."""
@@ -237,9 +200,12 @@ class TestSetActor:
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
         assert len(matching) >= 1
-        assert matching[0]["actor_id"] == "service:billing"
-        assert matching[0]["reason"] == "monthly_cleanup"
-        assert matching[0]["on_behalf_of"] is None
+        assert_audit_fields(
+            matching[0],
+            actor_id="service:billing",
+            reason="monthly_cleanup",
+            on_behalf_of=None,
+        )
 
     def test_on_behalf_of_without_actor_is_none(self, authn, test_helpers):
         """Without set_actor, on_behalf_of is None in audit events."""
@@ -248,9 +214,7 @@ class TestSetActor:
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
         assert len(matching) >= 1
-        assert matching[0]["actor_id"] is None
-        assert matching[0]["on_behalf_of"] is None
-        assert matching[0]["reason"] is None
+        assert_audit_fields(matching[0], actor_id=None, on_behalf_of=None, reason=None)
 
     def test_filter_by_actor(self, authn, test_helpers):
         """Can filter events by actor ID."""
@@ -288,10 +252,13 @@ class TestSetActorMergeSemantics:
             for e in authn.get_audit_events(event_type="user_created")
             if e["resource_id"] == user1
         )
-        assert event1["actor_id"] is None
-        assert event1["request_id"] == "req-123"
-        assert event1["ip_address"] == "10.0.0.1"
-        assert event1["user_agent"] == "TestClient/1.0"
+        assert_audit_fields(
+            event1,
+            actor_id=None,
+            request_id="req-123",
+            ip_address="10.0.0.1",
+            user_agent="TestClient/1.0",
+        )
 
         # After auth: actor_id added, HTTP context preserved
         authn.set_actor(actor_id="user:alice")
@@ -301,10 +268,13 @@ class TestSetActorMergeSemantics:
             for e in authn.get_audit_events(event_type="user_created")
             if e["resource_id"] == user2
         )
-        assert event2["actor_id"] == "user:alice"
-        assert event2["request_id"] == "req-123"
-        assert event2["ip_address"] == "10.0.0.1"
-        assert event2["user_agent"] == "TestClient/1.0"
+        assert_audit_fields(
+            event2,
+            actor_id="user:alice",
+            request_id="req-123",
+            ip_address="10.0.0.1",
+            user_agent="TestClient/1.0",
+        )
 
     def test_api_key_auth_flow(self, authn):
         """API key auth sets HTTP context first, then actor after validation."""
@@ -338,10 +308,13 @@ class TestSetActorMergeSemantics:
         events = authn.get_audit_events(event_type="api_key_created")
         event = next(e for e in events if e["resource_id"] == key_id2)
 
-        assert event["actor_id"] == f"user:{user_id}"
-        assert event["request_id"] == "req-api-456"
-        assert event["ip_address"] == "192.168.1.100"
-        assert event["user_agent"] == "TestClient/2.0"
+        assert_audit_fields(
+            event,
+            actor_id=f"user:{user_id}",
+            request_id="req-api-456",
+            ip_address="192.168.1.100",
+            user_agent="TestClient/2.0",
+        )
 
     def test_actor_context_in_caller_transaction(self, db_connection):
         """Actor context works when SDK runs inside caller's transaction."""
@@ -360,8 +333,7 @@ class TestSetActorMergeSemantics:
             events = client.get_audit_events(event_type="user_created")
             event = next(e for e in events if e["resource_id"] == user_id)
 
-            assert event["actor_id"] == "user:alice"
-            assert event["request_id"] == "req-789"
+            assert_audit_fields(event, actor_id="user:alice", request_id="req-789")
         finally:
             # Cleanup
             cursor.execute(

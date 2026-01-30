@@ -9,6 +9,8 @@ import psycopg
 import pytest
 from postkit.queue import QueueClient
 
+from tests.queue.helpers import cleanup_namespace
+
 
 def _ensure_rls_role(db_connection):
     """Create the non-superuser role and grant queue schema access.
@@ -68,16 +70,7 @@ class TestQueueRowLevelSecurity:
         """Remove test data after each test via superuser (bypasses RLS)."""
         yield
         for ns in ("rls_a", "rls_b", "rls_commit", "rls_autocommit"):
-            db_connection.execute(
-                "DELETE FROM queue.dead_letters WHERE namespace = %s", (ns,)
-            )
-            db_connection.execute(
-                "DELETE FROM queue.schedules WHERE namespace = %s", (ns,)
-            )
-            db_connection.execute("DELETE FROM queue.jobs WHERE namespace = %s", (ns,))
-            db_connection.execute(
-                "DELETE FROM queue.config WHERE namespace = %s", (ns,)
-            )
+            cleanup_namespace(db_connection, ns)
 
     def test_no_tenant_returns_empty(self, rls_connection):
         """Without tenant context, queries return nothing."""

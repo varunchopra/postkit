@@ -36,16 +36,17 @@ class TestCronParseField:
         cursor.execute("SELECT queue._cron_parse_field('1,3,5', 0, 59)")
         assert cursor.fetchone()[0] == [1, 3, 5]
 
-    def test_clamps_to_range(self, raw_cursor):
-        """Values outside [min, max] are filtered out."""
+    def test_filters_out_of_range_values(self, raw_cursor):
+        """Values outside [min, max] are excluded from the result."""
         cursor, _ = raw_cursor
+
+        # 7 is above max=6, so only 0 is kept (filtered, not clamped).
         cursor.execute("SELECT queue._cron_parse_field('0,7', 0, 6)")
-        assert cursor.fetchone()[0] == [0, 6] or cursor.fetchone() is None
-        # Re-query since fetchone consumed the row
+        assert cursor.fetchone()[0] == [0]
+
+        # 30 is above max=12, so result is empty.
         cursor.execute("SELECT queue._cron_parse_field('30', 1, 12)")
-        # 30 is out of range for months, should return empty
-        result = cursor.fetchone()[0]
-        assert result == [] or result is None
+        assert cursor.fetchone()[0] == []
 
 
 class TestCronNextRun:

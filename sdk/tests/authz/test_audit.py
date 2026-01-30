@@ -10,6 +10,14 @@ import psycopg
 import pytest
 from postkit.authz import AuthzError
 
+from tests.helpers import (
+    assert_audit_fields,
+    assert_partition_create,
+    assert_partition_idempotent,
+    assert_partition_rejects_invalid_month,
+    cleanup_partition,
+)
+
 
 class TestAuditCapture:
     """Tests that audit events are captured correctly."""
@@ -102,10 +110,12 @@ class TestActorContext:
         events = authz.get_audit_events()
 
         assert len(events) == 1
-        event = events[0]
-        assert event["actor_id"] == "admin@acme.com"
-        assert event["request_id"] == "req-123"
-        assert event["reason"] == "Quarterly review"
+        assert_audit_fields(
+            events[0],
+            actor_id="admin@acme.com",
+            request_id="req-123",
+            reason="Quarterly review",
+        )
 
     def test_actor_not_required(self, authz):
         """Audit events are created even without actor context."""
@@ -114,10 +124,9 @@ class TestActorContext:
         events = authz.get_audit_events()
 
         assert len(events) == 1
-        assert events[0]["actor_id"] is None
-        assert events[0]["request_id"] is None
-        assert events[0]["reason"] is None
-        assert events[0]["on_behalf_of"] is None
+        assert_audit_fields(
+            events[0], actor_id=None, request_id=None, reason=None, on_behalf_of=None
+        )
 
     def test_connection_context_always_present(self, authz):
         """PostgreSQL connection context is always captured."""
@@ -138,9 +147,9 @@ class TestActorContext:
 
         events = authz.get_audit_events()
 
-        assert events[0]["actor_id"] == "service-account"
-        assert events[0]["request_id"] is None
-        assert events[0]["reason"] is None
+        assert_audit_fields(
+            events[0], actor_id="service-account", request_id=None, reason=None
+        )
 
     def test_on_behalf_of_captured(self, authz):
         """on_behalf_of is captured in audit events."""
@@ -154,10 +163,12 @@ class TestActorContext:
         events = authz.get_audit_events()
 
         assert len(events) == 1
-        event = events[0]
-        assert event["actor_id"] == "user:admin-bob"
-        assert event["reason"] == "support_ticket:12345"
-        assert event["on_behalf_of"] == "user:customer-alice"
+        assert_audit_fields(
+            events[0],
+            actor_id="user:admin-bob",
+            reason="support_ticket:12345",
+            on_behalf_of="user:customer-alice",
+        )
 
     def test_on_behalf_of_without_reason(self, authz):
         """on_behalf_of works without reason."""
@@ -166,9 +177,12 @@ class TestActorContext:
 
         events = authz.get_audit_events()
 
-        assert events[0]["actor_id"] == "agent:support-bot"
-        assert events[0]["on_behalf_of"] == "user:customer-456"
-        assert events[0]["reason"] is None
+        assert_audit_fields(
+            events[0],
+            actor_id="agent:support-bot",
+            on_behalf_of="user:customer-456",
+            reason=None,
+        )
 
     def test_clear_actor(self, authz):
         """clear_actor() removes actor context including on_behalf_of."""
@@ -188,16 +202,18 @@ class TestActorContext:
         events = authz.get_audit_events()
 
         # Most recent event (doc:2) should have no actor
-        assert events[0]["actor_id"] is None
-        assert events[0]["request_id"] is None
-        assert events[0]["reason"] is None
-        assert events[0]["on_behalf_of"] is None
+        assert_audit_fields(
+            events[0], actor_id=None, request_id=None, reason=None, on_behalf_of=None
+        )
 
         # Earlier event (doc:1) should have actor and on_behalf_of
-        assert events[1]["actor_id"] == "admin@acme.com"
-        assert events[1]["request_id"] == "req-123"
-        assert events[1]["reason"] == "Initial setup"
-        assert events[1]["on_behalf_of"] == "user:customer-alice"
+        assert_audit_fields(
+            events[1],
+            actor_id="admin@acme.com",
+            request_id="req-123",
+            reason="Initial setup",
+            on_behalf_of="user:customer-alice",
+        )
 
     def test_clear_actor_sql_function(self, db_connection, request):
         """SQL clear_actor() function clears session context including on_behalf_of."""
@@ -342,13 +358,9 @@ class TestPartitionManagement:
 
     def test_create_partition(self, authz):
         """Can create a partition for a future month."""
-        # Create partition for a future month
-        authz.cursor.execute("SELECT authz.create_audit_partition(2030, 6)")
-        result = authz.cursor.fetchone()[0]
+        name = assert_partition_create(authz.cursor, "authz", 2030, 6)
 
-        assert result == "audit_events_y2030m06"
-
-        # Verify it exists
+        # Verify it exists in pg_class
         authz.cursor.execute(
             """
             SELECT 1 FROM pg_class c
@@ -358,22 +370,12 @@ class TestPartitionManagement:
         )
         assert authz.cursor.fetchone() is not None
 
-        # Cleanup
-        authz.cursor.execute("DROP TABLE authz.audit_events_y2030m06")
+        cleanup_partition(authz.cursor, "authz", name)
 
     def test_create_partition_idempotent(self, authz):
         """Creating same partition twice returns NULL (no error)."""
-        authz.cursor.execute("SELECT authz.create_audit_partition(2031, 1)")
-        first = authz.cursor.fetchone()[0]
-
-        authz.cursor.execute("SELECT authz.create_audit_partition(2031, 1)")
-        second = authz.cursor.fetchone()[0]
-
-        assert first == "audit_events_y2031m01"
-        assert second is None
-
-        # Cleanup
-        authz.cursor.execute("DROP TABLE authz.audit_events_y2031m01")
+        assert_partition_idempotent(authz.cursor, "authz", 2031, 1)
+        cleanup_partition(authz.cursor, "authz", "audit_events_y2031m01")
 
     def test_ensure_partitions(self, authz):
         """ensure_audit_partitions creates multiple partitions."""
@@ -405,10 +407,7 @@ class TestPartitionManagement:
 
     def test_invalid_month_rejected(self, authz):
         """Invalid month values are rejected."""
-        with pytest.raises(
-            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
-        ):
-            authz.cursor.execute("SELECT authz.create_audit_partition(2030, 13)")
+        assert_partition_rejects_invalid_month(authz.cursor, "authz")
 
     def test_drop_old_partitions(self, authz):
         """drop_audit_partitions removes old partitions correctly."""

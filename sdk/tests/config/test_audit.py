@@ -2,9 +2,16 @@
 
 from datetime import datetime
 
-import psycopg
 import pytest
 from postkit.config import ConfigError
+
+from tests.helpers import (
+    assert_audit_fields,
+    assert_partition_create,
+    assert_partition_idempotent,
+    assert_partition_rejects_invalid_month,
+    cleanup_partition,
+)
 
 
 class TestSetActor:
@@ -40,9 +47,12 @@ class TestSetActor:
 
         events = config.get_audit_events(event_type="entry_created")
 
-        assert events[0]["actor_id"] == "user:admin-bob"
-        assert events[0]["on_behalf_of"] == "user:customer-alice"
-        assert events[0]["reason"] == "support_ticket:12345"
+        assert_audit_fields(
+            events[0],
+            actor_id="user:admin-bob",
+            on_behalf_of="user:customer-alice",
+            reason="support_ticket:12345",
+        )
 
     def test_reason_without_on_behalf_of(self, config, test_helpers):
         """Reason can be set without on_behalf_of."""
@@ -51,9 +61,12 @@ class TestSetActor:
 
         events = config.get_audit_events(event_type="entry_created")
 
-        assert events[0]["actor_id"] == "service:deploy"
-        assert events[0]["reason"] == "deployment:v1.2.3"
-        assert events[0]["on_behalf_of"] is None
+        assert_audit_fields(
+            events[0],
+            actor_id="service:deploy",
+            reason="deployment:v1.2.3",
+            on_behalf_of=None,
+        )
 
 
 class TestClearActor:
@@ -165,46 +178,17 @@ class TestAuditPartitions:
 
     def test_create_partition(self, config, test_helpers):
         """create_audit_partition() creates a partition."""
-        test_helpers.cursor.execute(
-            "SELECT config.create_audit_partition(%s, %s)",
-            (2099, 6),
-        )
-        result = test_helpers.cursor.fetchone()[0]
-
-        assert result == "audit_events_y2099m06"
-
-        # Cleanup
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS config.audit_events_y2099m06")
+        name = assert_partition_create(test_helpers.cursor, "config", 2099, 6)
+        cleanup_partition(test_helpers.cursor, "config", name)
 
     def test_create_partition_returns_null_if_exists(self, config, test_helpers):
         """create_audit_partition() returns NULL if partition exists."""
-        # Create first
-        test_helpers.cursor.execute(
-            "SELECT config.create_audit_partition(%s, %s)",
-            (2098, 7),
-        )
-
-        # Try again
-        test_helpers.cursor.execute(
-            "SELECT config.create_audit_partition(%s, %s)",
-            (2098, 7),
-        )
-        result = test_helpers.cursor.fetchone()[0]
-
-        assert result is None
-
-        # Cleanup
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS config.audit_events_y2098m07")
+        assert_partition_idempotent(test_helpers.cursor, "config", 2098, 7)
+        cleanup_partition(test_helpers.cursor, "config", "audit_events_y2098m07")
 
     def test_validates_month_bounds(self, config, test_helpers):
         """create_audit_partition() validates month range."""
-        with pytest.raises(
-            psycopg.errors.InvalidParameterValue, match="Month must be between 1 and 12"
-        ):
-            test_helpers.cursor.execute(
-                "SELECT config.create_audit_partition(%s, %s)",
-                (2024, 13),
-            )
+        assert_partition_rejects_invalid_month(test_helpers.cursor, "config")
 
     def test_drop_old_partitions(self, config, test_helpers):
         """drop_audit_partitions() drops old partitions."""

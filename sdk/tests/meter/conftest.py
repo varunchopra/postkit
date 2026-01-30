@@ -1,53 +1,15 @@
 """Pytest fixtures for postkit.meter tests."""
 
-from pathlib import Path
-
-import psycopg
 import pytest
 from postkit.meter import MeterClient
-from tests.conftest import DATABASE_URL
-from tests.meter.helpers import MeterTestHelpers
+from tests.helpers import db_connection_for, make_namespace
+from tests.meter.helpers import MeterTestHelpers, cleanup_namespace
 
 
 @pytest.fixture(scope="session")
 def db_connection():
-    """
-    Session-scoped database connection.
-    Installs the meter schema once at the start of the test session.
-    """
-    conn = psycopg.connect(DATABASE_URL, autocommit=True)
-
-    # Install fresh schema
-    conn.execute("DROP SCHEMA IF EXISTS meter CASCADE")
-
-    # Load the built SQL file (sdk/tests/meter/ -> root/dist/)
-    dist_sql = Path(__file__).parent.parent.parent.parent / "dist" / "meter.sql"
-    if not dist_sql.exists():
-        pytest.fail("dist/meter.sql not found. Run 'make build' first.")
-
-    conn.execute(dist_sql.read_text())
-
-    yield conn
-
-    # Cleanup at end of session
-    conn.execute("DROP SCHEMA IF EXISTS meter CASCADE")
-    conn.close()
-
-
-def _make_namespace(request) -> str:
-    """Generate a unique namespace from test name."""
-    namespace = request.node.name.replace("[", "_").replace("]", "_").replace("-", "_")
-    return "t_" + namespace.lower()[:50]
-
-
-def _cleanup(cursor, namespace: str):
-    """Clean up all data for a namespace."""
-    cursor.execute("DELETE FROM meter.reservations WHERE namespace = %s", (namespace,))
-    # Disable immutability trigger for cleanup, then re-enable
-    cursor.execute("ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete")
-    cursor.execute("DELETE FROM meter.ledger WHERE namespace = %s", (namespace,))
-    cursor.execute("ALTER TABLE meter.ledger ENABLE TRIGGER ledger_no_delete")
-    cursor.execute("DELETE FROM meter.accounts WHERE namespace = %s", (namespace,))
+    """Session-scoped database connection with the meter schema installed."""
+    yield from db_connection_for("meter")
 
 
 @pytest.fixture
@@ -64,13 +26,13 @@ def meter(db_connection, request):
             result = meter.consume("alice", "llm_call", 100, "tokens")
             assert result["success"] is True
     """
-    namespace = _make_namespace(request)
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
     client = MeterClient(cursor, namespace)
 
     yield client
 
-    _cleanup(cursor, namespace)
+    cleanup_namespace(cursor, namespace)
     cursor.close()
 
 
@@ -84,7 +46,7 @@ def test_helpers(db_connection, request):
             meter.allocate("alice", "llm_call", 1000, "tokens")
             assert test_helpers.count_ledger_entries() == 1
     """
-    namespace = _make_namespace(request)
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
     helpers = MeterTestHelpers(cursor, namespace)
 
@@ -118,5 +80,5 @@ def make_meter(db_connection):
 
     # Cleanup all created namespaces (runs even if test fails)
     for ns in created:
-        _cleanup(cursor, ns)
+        cleanup_namespace(cursor, ns)
     cursor.close()

@@ -4,6 +4,12 @@ import psycopg
 import pytest
 from postkit.authn import AuthnError, AuthnErrorCode, AuthnValidationError
 
+from tests.helpers import (
+    INVALID_NAMESPACES,
+    NAMESPACE_ERROR_CASES,
+    VALID_NAMESPACES,
+)
+
 
 class TestEmailValidation:
     """Email must be valid format, normalized to lowercase."""
@@ -121,48 +127,15 @@ class TestNamespaceValidation:
     """Namespace must be 1-1024 chars, no control chars or leading/trailing whitespace."""
 
     def test_valid_namespaces(self, make_authn):
-        """Valid namespace formats should be accepted."""
-        valid = [
-            "default",
-            "tenant_123",
-            "acme-corp",
-            "550e8400-e29b-41d4-a716-446655440000",
-            "org:my-org-123",  # colon format
-            "MyOrganization",  # uppercase
-            "a" * 1024,  # max length
-        ]
-        for ns in valid:
+        for ns in VALID_NAMESPACES:
             client = make_authn(ns)
             user_id = client.create_user("test@example.com", "hash")
             assert user_id is not None
 
-    def test_rejects_null(self, make_authn):
+    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
+    def test_rejects_invalid_namespace(self, make_authn, ns):
         with pytest.raises(AuthnError):
-            make_authn(None)
-
-    def test_rejects_empty(self, make_authn):
-        with pytest.raises(AuthnError):
-            make_authn("")
-
-    def test_rejects_whitespace_only(self, make_authn):
-        with pytest.raises(AuthnError):
-            make_authn("   ")
-
-    def test_rejects_leading_whitespace(self, make_authn):
-        with pytest.raises(AuthnError):
-            make_authn(" leading")
-
-    def test_rejects_trailing_whitespace(self, make_authn):
-        with pytest.raises(AuthnError):
-            make_authn("trailing ")
-
-    def test_rejects_control_characters(self, make_authn):
-        with pytest.raises(AuthnError):
-            make_authn("has\ttab")
-
-    def test_rejects_over_max_length(self, make_authn):
-        with pytest.raises(AuthnError):
-            make_authn("a" * 1025)
+            make_authn(ns)
 
 
 class TestEmailEdgeCases:
@@ -252,29 +225,13 @@ class TestIpAddressValidation:
 class TestValidationErrorType:
     """Validation errors raise AuthnValidationError for precise error handling."""
 
-    def test_null_validation_raises_authn_validation_error(self, make_authn):
-        """Null validation raises AuthnValidationError (SQLSTATE 22004)."""
+    @pytest.mark.parametrize("ns, error_code_name", NAMESPACE_ERROR_CASES)
+    def test_namespace_validation_raises_correct_error(
+        self, make_authn, ns, error_code_name
+    ):
         with pytest.raises(AuthnValidationError) as exc_info:
-            make_authn(None)
-        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_NULL
-
-    def test_empty_validation_raises_authn_validation_error(self, make_authn):
-        """Empty string validation raises AuthnValidationError (SQLSTATE 22026)."""
-        with pytest.raises(AuthnValidationError) as exc_info:
-            make_authn("")
-        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_EMPTY
-
-    def test_length_validation_raises_authn_validation_error(self, make_authn):
-        """Length exceeded validation raises AuthnValidationError (SQLSTATE 22001)."""
-        with pytest.raises(AuthnValidationError) as exc_info:
-            make_authn("a" * 1025)
-        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_TOO_LONG
-
-    def test_format_validation_raises_authn_validation_error(self, make_authn):
-        """Format validation raises AuthnValidationError (SQLSTATE 22023)."""
-        with pytest.raises(AuthnValidationError) as exc_info:
-            make_authn("has\ttab")
-        assert exc_info.value.error_code == AuthnErrorCode.VAL_NAMESPACE_INVALID_CHARS
+            make_authn(ns)
+        assert exc_info.value.error_code == getattr(AuthnErrorCode, error_code_name)
 
     def test_authn_validation_error_is_authn_error(self):
         """AuthnValidationError is a subclass of AuthnError for backwards compatibility."""

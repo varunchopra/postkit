@@ -1,72 +1,16 @@
 """Pytest fixtures for postkit.authn tests."""
 
-from pathlib import Path
-
-import psycopg
 import pytest
 from postkit.authn import AuthnClient
 
-from tests.authn.helpers import AuthnTestHelpers
-from tests.conftest import DATABASE_URL
+from tests.authn.helpers import AuthnTestHelpers, cleanup_namespace
+from tests.helpers import db_connection_for, make_namespace
 
 
 @pytest.fixture(scope="session")
 def db_connection():
-    """
-    Session-scoped database connection.
-    Installs the authn schema once at the start of the test session.
-    """
-    conn = psycopg.connect(DATABASE_URL, autocommit=True)
-
-    # Install fresh schema
-    conn.execute("DROP SCHEMA IF EXISTS authn CASCADE")
-
-    # Load the built SQL file (sdk/tests/authn/ -> root/dist/)
-    dist_sql = Path(__file__).parent.parent.parent.parent / "dist" / "authn.sql"
-    if not dist_sql.exists():
-        pytest.fail("dist/authn.sql not found. Run 'make build' first.")
-
-    conn.execute(dist_sql.read_text())
-
-    yield conn
-
-    # Cleanup at end of session
-    conn.execute("DROP SCHEMA IF EXISTS authn CASCADE")
-    conn.close()
-
-
-def _make_namespace(request) -> str:
-    """Generate a unique namespace from test name."""
-    namespace = request.node.name.replace("[", "_").replace("]", "_").replace("-", "_")
-    return "t_" + namespace.lower()[:50]
-
-
-def _cleanup(cursor, namespace: str):
-    """Clean up all data for a namespace."""
-    cursor.execute("DELETE FROM authn.audit_events WHERE namespace = %s", (namespace,))
-    cursor.execute(
-        "DELETE FROM authn.login_attempts WHERE namespace = %s", (namespace,)
-    )
-    cursor.execute("DELETE FROM authn.credentials WHERE namespace = %s", (namespace,))
-    cursor.execute("DELETE FROM authn.api_keys WHERE namespace = %s", (namespace,))
-    cursor.execute("DELETE FROM authn.tokens WHERE namespace = %s", (namespace,))
-    cursor.execute(
-        "DELETE FROM authn.refresh_tokens WHERE namespace = %s", (namespace,)
-    )
-    cursor.execute(
-        "DELETE FROM authn.impersonation_sessions WHERE namespace = %s", (namespace,)
-    )
-    # Operator impersonation (cross-namespace) - clean up where namespace is operator or target
-    cursor.execute(
-        "DELETE FROM authn.operator_audit_events WHERE operator_namespace = %s OR target_namespace = %s",
-        (namespace, namespace),
-    )
-    cursor.execute(
-        "DELETE FROM authn.operator_impersonation_sessions WHERE operator_namespace = %s OR target_namespace = %s",
-        (namespace, namespace),
-    )
-    cursor.execute("DELETE FROM authn.sessions WHERE namespace = %s", (namespace,))
-    cursor.execute("DELETE FROM authn.users WHERE namespace = %s", (namespace,))
+    """Session-scoped database connection with the authn schema installed."""
+    yield from db_connection_for("authn")
 
 
 @pytest.fixture
@@ -83,13 +27,13 @@ def authn(db_connection, request):
             user = authn.get_user(user_id)
             assert user["email"] == "alice@example.com"
     """
-    namespace = _make_namespace(request)
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
     client = AuthnClient(cursor, namespace)
 
     yield client
 
-    _cleanup(cursor, namespace)
+    cleanup_namespace(cursor, namespace)
     cursor.close()
 
 
@@ -103,7 +47,7 @@ def test_helpers(db_connection, request):
             authn.create_user("alice@example.com", "hash")
             assert test_helpers.count_users() == 1
     """
-    namespace = _make_namespace(request)
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
     helpers = AuthnTestHelpers(cursor, namespace)
 
@@ -137,7 +81,7 @@ def make_authn(db_connection):
 
     # Cleanup all created namespaces (runs even if test fails)
     for ns in created:
-        _cleanup(cursor, ns)
+        cleanup_namespace(cursor, ns)
     cursor.close()
 
 

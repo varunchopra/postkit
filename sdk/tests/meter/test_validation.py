@@ -4,52 +4,25 @@ from datetime import date
 
 import pytest
 from postkit.meter import MeterError, MeterErrorCode, MeterValidationError
+from tests.helpers import (
+    INVALID_NAMESPACES,
+    NAMESPACE_ERROR_CASES,
+    VALID_NAMESPACES,
+)
 
 
 class TestNamespaceValidation:
     """Tests for namespace validation - must be 1-1024 chars, no control chars."""
 
     def test_valid_namespaces(self, make_meter):
-        """Valid namespace formats should be accepted."""
-        valid = ["default", "tenant_123", "org:my-org", "MyOrg", "a" * 1024]
-        for ns in valid:
+        for ns in VALID_NAMESPACES:
             client = make_meter(ns)
             client.allocate("user-1", "api.calls", 100, "credits")
 
-    def test_rejects_null(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter(None)
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_NULL
-
-    def test_rejects_empty(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter("")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_EMPTY
-
-    def test_rejects_whitespace_only(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter("   ")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_EMPTY
-
-    def test_rejects_leading_whitespace(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter(" leading")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_WHITESPACE
-
-    def test_rejects_trailing_whitespace(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter("trailing ")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_WHITESPACE
-
-    def test_rejects_control_characters(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter("has\ttab")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_INVALID_CHARS
-
-    def test_rejects_over_max_length(self, make_meter):
-        with pytest.raises(MeterError) as exc_info:
-            make_meter("a" * 1025)
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_TOO_LONG
+    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
+    def test_rejects_invalid_namespace(self, make_meter, ns):
+        with pytest.raises(MeterError):
+            make_meter(ns)
 
 
 class TestFieldLimits:
@@ -73,29 +46,19 @@ class TestFieldLimits:
 class TestValidationErrorType:
     """Validation errors raise MeterValidationError for precise error handling."""
 
-    def test_null_validation_raises_meter_validation_error(self, make_meter):
-        """Null validation raises MeterValidationError (SQLSTATE 22004)."""
+    @pytest.mark.parametrize("ns, error_code_name", NAMESPACE_ERROR_CASES)
+    def test_namespace_validation_raises_correct_error(
+        self, make_meter, ns, error_code_name
+    ):
         with pytest.raises(MeterValidationError) as exc_info:
-            make_meter(None)
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_NULL
-
-    def test_empty_validation_raises_meter_validation_error(self, make_meter):
-        """Empty string validation raises MeterValidationError (SQLSTATE 22026)."""
-        with pytest.raises(MeterValidationError) as exc_info:
-            make_meter("")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_EMPTY
+            make_meter(ns)
+        assert exc_info.value.error_code == getattr(MeterErrorCode, error_code_name)
 
     def test_length_validation_raises_meter_validation_error(self, meter):
         """Length exceeded validation raises MeterValidationError (SQLSTATE 22001)."""
         with pytest.raises(MeterValidationError) as exc_info:
             meter.allocate("user", "a" * 257, 100, "unit")  # event_type too long
         assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_TOO_LONG
-
-    def test_format_validation_raises_meter_validation_error(self, make_meter):
-        """Format validation raises MeterValidationError (SQLSTATE 22023)."""
-        with pytest.raises(MeterValidationError) as exc_info:
-            make_meter("has\ttab")
-        assert exc_info.value.error_code == MeterErrorCode.VAL_NAMESPACE_INVALID_CHARS
 
     def test_meter_validation_error_is_meter_error(self):
         """MeterValidationError is a subclass of MeterError for backwards compatibility."""

@@ -2,6 +2,40 @@
 
 from datetime import timedelta
 
+from tests.helpers import fetch_row
+
+
+def cleanup_namespace(cursor, namespace: str):
+    """Delete all authn data for a namespace.
+
+    Delete order respects foreign key constraints (children before parents).
+    Used by both authn/conftest.py and integration/conftest.py.
+    """
+    cursor.execute("DELETE FROM authn.audit_events WHERE namespace = %s", (namespace,))
+    cursor.execute(
+        "DELETE FROM authn.login_attempts WHERE namespace = %s", (namespace,)
+    )
+    cursor.execute("DELETE FROM authn.credentials WHERE namespace = %s", (namespace,))
+    cursor.execute("DELETE FROM authn.api_keys WHERE namespace = %s", (namespace,))
+    cursor.execute("DELETE FROM authn.tokens WHERE namespace = %s", (namespace,))
+    cursor.execute(
+        "DELETE FROM authn.refresh_tokens WHERE namespace = %s", (namespace,)
+    )
+    cursor.execute(
+        "DELETE FROM authn.impersonation_sessions WHERE namespace = %s", (namespace,)
+    )
+    # Operator impersonation (cross-namespace) - clean up where namespace is operator or target
+    cursor.execute(
+        "DELETE FROM authn.operator_audit_events WHERE operator_namespace = %s OR target_namespace = %s",
+        (namespace, namespace),
+    )
+    cursor.execute(
+        "DELETE FROM authn.operator_impersonation_sessions WHERE operator_namespace = %s OR target_namespace = %s",
+        (namespace, namespace),
+    )
+    cursor.execute("DELETE FROM authn.sessions WHERE namespace = %s", (namespace,))
+    cursor.execute("DELETE FROM authn.users WHERE namespace = %s", (namespace,))
+
 
 class AuthnTestHelpers:
     """
@@ -101,11 +135,7 @@ class AuthnTestHelpers:
             "SELECT * FROM authn.users WHERE namespace = %s AND id = %s::uuid",
             (self.namespace, user_id),
         )
-        result = self.cursor.fetchone()
-        if result is None:
-            return None
-        columns = [desc[0] for desc in self.cursor.description]
-        return dict(zip(columns, result))
+        return fetch_row(self.cursor)
 
     def insert_expired_refresh_token(
         self,
@@ -158,8 +188,4 @@ class AuthnTestHelpers:
                WHERE namespace = %s AND token_hash = %s""",
             (self.namespace, token_hash),
         )
-        result = self.cursor.fetchone()
-        if result is None:
-            return None
-        columns = [desc[0] for desc in self.cursor.description]
-        return dict(zip(columns, result))
+        return fetch_row(self.cursor)

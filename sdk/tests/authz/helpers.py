@@ -3,6 +3,15 @@
 from postkit.authz import Entity
 
 
+def cleanup_namespace(cursor, namespace: str):
+    """Delete all authz data for a namespace."""
+    cursor.execute("DELETE FROM authz.audit_events WHERE namespace = %s", (namespace,))
+    cursor.execute("DELETE FROM authz.tuples WHERE namespace = %s", (namespace,))
+    cursor.execute(
+        "DELETE FROM authz.permission_hierarchy WHERE namespace = %s", (namespace,)
+    )
+
+
 class AuthzTestHelpers:
     """
     Direct table access for test setup/teardown that bypasses the SDK.

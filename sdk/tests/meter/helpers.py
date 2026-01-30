@@ -1,5 +1,17 @@
 """Test helpers for meter - direct table access for test setup/teardown."""
 
+from tests.helpers import fetch_row
+
+
+def cleanup_namespace(cursor, namespace: str):
+    """Delete all meter data for a namespace."""
+    cursor.execute("DELETE FROM meter.reservations WHERE namespace = %s", (namespace,))
+    # Disable immutability trigger for cleanup, then re-enable.
+    cursor.execute("ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete")
+    cursor.execute("DELETE FROM meter.ledger WHERE namespace = %s", (namespace,))
+    cursor.execute("ALTER TABLE meter.ledger ENABLE TRIGGER ledger_no_delete")
+    cursor.execute("DELETE FROM meter.accounts WHERE namespace = %s", (namespace,))
+
 
 class MeterTestHelpers:
     """
@@ -70,11 +82,7 @@ class MeterTestHelpers:
                  AND unit = %s""",
             (self.namespace, user_id, event_type, resource or "", unit),
         )
-        row = self.cursor.fetchone()
-        if row is None:
-            return None
-        columns = [desc[0] for desc in self.cursor.description]
-        return dict(zip(columns, row))
+        return fetch_row(self.cursor)
 
     def get_ledger_entry_raw(self, entry_id: int) -> dict | None:
         """Get a ledger entry directly by ID."""
@@ -82,11 +90,7 @@ class MeterTestHelpers:
             "SELECT * FROM meter.ledger WHERE id = %s AND namespace = %s",
             (entry_id, self.namespace),
         )
-        row = self.cursor.fetchone()
-        if row is None:
-            return None
-        columns = [desc[0] for desc in self.cursor.description]
-        return dict(zip(columns, row))
+        return fetch_row(self.cursor)
 
     def get_reservation_raw(self, reservation_id: str) -> dict | None:
         """Get a reservation directly from the table."""
@@ -94,11 +98,7 @@ class MeterTestHelpers:
             "SELECT * FROM meter.reservations WHERE reservation_id = %s AND namespace = %s",
             (reservation_id, self.namespace),
         )
-        row = self.cursor.fetchone()
-        if row is None:
-            return None
-        columns = [desc[0] for desc in self.cursor.description]
-        return dict(zip(columns, row))
+        return fetch_row(self.cursor)
 
     def sum_ledger_amounts(
         self, user_id: str, event_type: str, unit: str, resource: str | None = None

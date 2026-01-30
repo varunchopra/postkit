@@ -1,5 +1,16 @@
 """Test helpers for config - direct table access for test setup/teardown."""
 
+from tests.helpers import fetch_row
+
+
+def cleanup_namespace(cursor, namespace: str):
+    """Delete all config data for a namespace."""
+    cursor.execute("DELETE FROM config.audit_events WHERE namespace = %s", (namespace,))
+    cursor.execute("DELETE FROM config.entries WHERE namespace = %s", (namespace,))
+    cursor.execute(
+        "DELETE FROM config.version_counters WHERE namespace = %s", (namespace,)
+    )
+
 
 class ConfigTestHelpers:
     """
@@ -55,11 +66,7 @@ class ConfigTestHelpers:
             "SELECT * FROM config.entries WHERE namespace = %s AND key = %s AND version = %s",
             (self.namespace, key, version),
         )
-        row = self.cursor.fetchone()
-        if row is None:
-            return None
-        columns = [desc[0] for desc in self.cursor.description]
-        return dict(zip(columns, row))
+        return fetch_row(self.cursor)
 
     def count_audit_events(self, event_type: str | None = None) -> int:
         """Count audit events, optionally filtered by type."""

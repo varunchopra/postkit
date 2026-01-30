@@ -1,51 +1,16 @@
 """Pytest fixtures for postkit.queue tests."""
 
-from pathlib import Path
-
-import psycopg
 import pytest
 from postkit.queue import QueueClient
 
-from tests.conftest import DATABASE_URL
+from tests.helpers import db_connection_for, make_namespace
+from tests.queue.helpers import QueueTestHelpers, cleanup_namespace
 
 
 @pytest.fixture(scope="session")
 def db_connection():
-    """Session-scoped database connection.
-
-    Installs the queue schema once at the start of the test session.
-    """
-    conn = psycopg.connect(DATABASE_URL, autocommit=True)
-
-    # Install fresh schema
-    conn.execute("DROP SCHEMA IF EXISTS queue CASCADE")
-
-    # Load the built SQL file (sdk/tests/queue/ -> root/dist/)
-    dist_sql = Path(__file__).parent.parent.parent.parent / "dist" / "queue.sql"
-    if not dist_sql.exists():
-        pytest.fail("dist/queue.sql not found. Run 'make build' first.")
-
-    conn.execute(dist_sql.read_text())
-
-    yield conn
-
-    # Cleanup at end of session
-    conn.execute("DROP SCHEMA IF EXISTS queue CASCADE")
-    conn.close()
-
-
-def _make_namespace(request) -> str:
-    """Generate a unique namespace from test name."""
-    namespace = request.node.name.replace("[", "_").replace("]", "_").replace("-", "_")
-    return "t_" + namespace.lower()[:50]
-
-
-def _cleanup(cursor, namespace: str):
-    """Clean up all data for a namespace."""
-    cursor.execute("DELETE FROM queue.dead_letters WHERE namespace = %s", (namespace,))
-    cursor.execute("DELETE FROM queue.schedules WHERE namespace = %s", (namespace,))
-    cursor.execute("DELETE FROM queue.jobs WHERE namespace = %s", (namespace,))
-    cursor.execute("DELETE FROM queue.config WHERE namespace = %s", (namespace,))
+    """Session-scoped database connection with the queue schema installed."""
+    yield from db_connection_for("queue")
 
 
 @pytest.fixture
@@ -61,13 +26,31 @@ def queue(db_connection, request):
             job = queue.pull("email")
             assert job["id"] == job_id
     """
-    namespace = _make_namespace(request)
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
     client = QueueClient(cursor, namespace)
 
     yield client
 
-    _cleanup(cursor, namespace)
+    cleanup_namespace(cursor, namespace)
+    cursor.close()
+
+
+@pytest.fixture
+def test_helpers(db_connection, request):
+    """Test helper utilities for direct table access.
+
+    Example:
+        def test_job_counts(queue, test_helpers):
+            queue.push("tasks", {"task": 1})
+            assert test_helpers.count_jobs(queue="tasks") == 1
+    """
+    namespace = make_namespace(request)
+    cursor = db_connection.cursor()
+    helpers = QueueTestHelpers(cursor, namespace)
+
+    yield helpers
+
     cursor.close()
 
 
@@ -95,7 +78,7 @@ def make_queue(db_connection):
 
     # Cleanup all created namespaces (runs even if test fails)
     for ns in created:
-        _cleanup(cursor, ns)
+        cleanup_namespace(cursor, ns)
     cursor.close()
 
 
@@ -105,7 +88,7 @@ def raw_cursor(db_connection, request):
 
     Use when you need to verify database state directly.
     """
-    namespace = _make_namespace(request)
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
 
     # Set tenant context
@@ -113,5 +96,5 @@ def raw_cursor(db_connection, request):
 
     yield cursor, namespace
 
-    _cleanup(cursor, namespace)
+    cleanup_namespace(cursor, namespace)
     cursor.close()

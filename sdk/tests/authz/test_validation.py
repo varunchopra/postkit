@@ -14,6 +14,12 @@ import psycopg
 import pytest
 from postkit.authz import AuthzError, AuthzErrorCode, AuthzValidationError
 
+from tests.helpers import (
+    INVALID_NAMESPACES,
+    NAMESPACE_ERROR_CASES,
+    VALID_NAMESPACES,
+)
+
 
 class TestBoundaryConditions:
     """Test edge cases and boundary conditions."""
@@ -345,68 +351,27 @@ class TestNamespaceValidation:
     """Namespace must be 1-1024 chars, no control chars or leading/trailing whitespace."""
 
     def test_valid_namespaces(self, make_authz):
-        """Valid namespace formats should be accepted."""
-        valid = ["default", "tenant_123", "org:my-org", "MyOrg", "a" * 1024]
-        for ns in valid:
+        for ns in VALID_NAMESPACES:
             client = make_authz(ns)
             client.grant("read", resource=("doc", "1"), subject=("user", "alice"))
             assert client.check(("user", "alice"), "read", ("doc", "1"))
 
-    def test_rejects_null(self, make_authz):
+    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
+    def test_rejects_invalid_namespace(self, make_authz, ns):
         with pytest.raises(AuthzError):
-            make_authz(None)
-
-    def test_rejects_empty(self, make_authz):
-        with pytest.raises(AuthzError):
-            make_authz("")
-
-    def test_rejects_whitespace_only(self, make_authz):
-        with pytest.raises(AuthzError):
-            make_authz("   ")
-
-    def test_rejects_leading_whitespace(self, make_authz):
-        with pytest.raises(AuthzError):
-            make_authz(" leading")
-
-    def test_rejects_trailing_whitespace(self, make_authz):
-        with pytest.raises(AuthzError):
-            make_authz("trailing ")
-
-    def test_rejects_control_characters(self, make_authz):
-        with pytest.raises(AuthzError):
-            make_authz("has\ttab")
-
-    def test_rejects_over_max_length(self, make_authz):
-        with pytest.raises(AuthzError):
-            make_authz("a" * 1025)
+            make_authz(ns)
 
 
 class TestValidationErrorType:
     """Validation errors raise AuthzValidationError for precise error handling."""
 
-    def test_null_validation_raises_authz_validation_error(self, make_authz):
-        """Null validation raises AuthzValidationError (SQLSTATE 22004)."""
+    @pytest.mark.parametrize("ns, error_code_name", NAMESPACE_ERROR_CASES)
+    def test_namespace_validation_raises_correct_error(
+        self, make_authz, ns, error_code_name
+    ):
         with pytest.raises(AuthzValidationError) as exc_info:
-            make_authz(None)
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_NAMESPACE_NULL
-
-    def test_empty_validation_raises_authz_validation_error(self, make_authz):
-        """Empty string validation raises AuthzValidationError (SQLSTATE 22026)."""
-        with pytest.raises(AuthzValidationError) as exc_info:
-            make_authz("")
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_NAMESPACE_EMPTY
-
-    def test_length_validation_raises_authz_validation_error(self, make_authz):
-        """Length exceeded validation raises AuthzValidationError (SQLSTATE 22001)."""
-        with pytest.raises(AuthzValidationError) as exc_info:
-            make_authz("a" * 1025)
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_NAMESPACE_TOO_LONG
-
-    def test_format_validation_raises_authz_validation_error(self, make_authz):
-        """Format validation raises AuthzValidationError (SQLSTATE 22023)."""
-        with pytest.raises(AuthzValidationError) as exc_info:
-            make_authz("has\ttab")
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_NAMESPACE_INVALID_CHARS
+            make_authz(ns)
+        assert exc_info.value.error_code == getattr(AuthzErrorCode, error_code_name)
 
     def test_authz_validation_error_is_authz_error(self):
         """AuthzValidationError is a subclass of AuthzError for backwards compatibility."""
