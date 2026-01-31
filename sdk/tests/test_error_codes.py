@@ -24,11 +24,18 @@ MODULE_CONFIG = {
 HINT_PATTERN = re.compile(r"HINT\s*=\s*'postkit:(\w+):(\w+)'")
 
 
-def _sql_error_codes(sql_dir: Path) -> set[str]:
+def _sql_error_codes(sql_dir: Path, module: str) -> set[str]:
     codes: set[str] = set()
+    mismatched: list[str] = []
     for sql_file in sql_dir.rglob("*.sql"):
         for match in HINT_PATTERN.finditer(sql_file.read_text()):
-            codes.add(match.group(2))
+            if match.group(1) != module:
+                mismatched.append(f"  {sql_file.name}: {match.group(0)}")
+            else:
+                codes.add(match.group(2))
+    assert not mismatched, f"HINT module prefix mismatch in {module}:\n" + "\n".join(
+        mismatched
+    )
     return codes
 
 
@@ -46,7 +53,7 @@ class TestErrorCodeSync:
         orphaned: dict[str, set[str]] = {}
 
         for module, cfg in MODULE_CONFIG.items():
-            sql_codes = _sql_error_codes(cfg["sql_dir"])
+            sql_codes = _sql_error_codes(cfg["sql_dir"], module)
             cls_codes = _class_constants(cfg["cls"])
 
             sql_only = sql_codes - cls_codes
@@ -57,9 +64,19 @@ class TestErrorCodeSync:
             if sdk_only:
                 orphaned[module] = sdk_only
 
-        assert not missing, "SQL error codes missing from SDK:\n" + "\n".join(
-            f"  {mod}: {sorted(codes)}" for mod, codes in missing.items()
-        )
-        assert not orphaned, "SDK constants with no SQL error code:\n" + "\n".join(
-            f"  {mod}: {sorted(codes)}" for mod, codes in orphaned.items()
-        )
+        errors = []
+        if missing:
+            errors.append(
+                "SQL error codes missing from SDK:\n"
+                + "\n".join(
+                    f"  {mod}: {sorted(codes)}" for mod, codes in missing.items()
+                )
+            )
+        if orphaned:
+            errors.append(
+                "SDK constants with no SQL error code:\n"
+                + "\n".join(
+                    f"  {mod}: {sorted(codes)}" for mod, codes in orphaned.items()
+                )
+            )
+        assert not errors, "\n\n".join(errors)

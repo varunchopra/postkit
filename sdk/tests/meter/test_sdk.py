@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 
 class TestAllocate:
     """Tests for meter.allocate()"""
@@ -131,6 +133,23 @@ class TestConsume:
         balance = meter.get_balance("alice", "llm_call", "tokens")
         assert result["available"] == balance["available"]
 
+    def test_consume_with_balance_check_respects_reservations(self, meter):
+        """check_balance=True rejects when available (not balance) is insufficient."""
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+        meter.reserve("alice", "llm_call", 800, "tokens")
+        # State: balance=1000, reserved=800, available=200
+
+        result = meter.consume("alice", "llm_call", 500, "tokens", check_balance=True)
+
+        # Should fail: available=200 < 500, even though balance=1000 >= 500
+        assert result["success"] is False
+        assert result["entry_id"] is None
+
+        # Balance unchanged.
+        balance = meter.get_balance("alice", "llm_call", "tokens")
+        assert balance["balance"] == 1000
+        assert balance["reserved"] == 800
+
 
 class TestReservation:
     """Tests for meter.reserve(), meter.commit(), meter.release()"""
@@ -239,6 +258,33 @@ class TestReservation:
         result = meter.commit("nonexistent-id", 100)
         assert result["success"] is False
 
+    def test_commit_zero_releases_hold(self, meter):
+        """Committing zero consumption releases hold without creating ledger entry."""
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+        res = meter.reserve("alice", "llm_call", 400, "tokens")
+
+        result = meter.commit(res["reservation_id"], 0)
+
+        assert result["success"] is True
+        assert result["consumed"] == 0
+        assert result["released"] == 400
+        assert result["balance"] == 1000
+
+        balance = meter.get_balance("alice", "llm_call", "tokens")
+        assert balance["reserved"] == 0
+        assert balance["available"] == 1000
+
+    def test_commit_already_committed_returns_failure(self, meter):
+        """Second commit on same reservation fails — status is no longer active."""
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+        res = meter.reserve("alice", "llm_call", 400, "tokens")
+
+        first = meter.commit(res["reservation_id"], 350)
+        assert first["success"] is True
+
+        second = meter.commit(res["reservation_id"], 50)
+        assert second["success"] is False
+
 
 class TestCommitOverage:
     """Tests for overage reporting in meter.commit()"""
@@ -307,29 +353,6 @@ class TestReservationCapacity:
         # Now fully reserved
         res4 = meter.reserve("alice", "llm_call", 1, "tokens")
         assert res4["granted"] is False
-
-    def test_reserve_does_not_change_balance(self, meter):
-        """Reservation only affects reserved, not balance."""
-        meter.allocate("alice", "llm_call", 1000, "tokens")
-
-        meter.reserve("alice", "llm_call", 400, "tokens")
-
-        balance = meter.get_balance("alice", "llm_call", "tokens")
-        assert balance["balance"] == 1000  # Unchanged
-        assert balance["reserved"] == 400
-        assert balance["available"] == 600
-
-    def test_release_does_not_change_balance(self, meter):
-        """Release only affects reserved, not balance."""
-        meter.allocate("alice", "llm_call", 1000, "tokens")
-        res = meter.reserve("alice", "llm_call", 400, "tokens")
-
-        meter.release(res["reservation_id"])
-
-        balance = meter.get_balance("alice", "llm_call", "tokens")
-        assert balance["balance"] == 1000  # Still unchanged
-        assert balance["reserved"] == 0
-        assert balance["available"] == 1000
 
     def test_commit_deducts_actual_from_balance(self, meter):
         """Commit reduces balance by actual consumption only."""
@@ -421,6 +444,10 @@ class TestQuery:
         balances = meter.get_user_balances("alice")
 
         assert len(balances) == 3
+        by_key = {(b["event_type"], b.get("resource")): b for b in balances}
+        assert by_key[("llm_call", "claude-sonnet")]["balance"] == 1000
+        assert by_key[("llm_call", "gpt-4")]["balance"] == 500
+        assert by_key[("api_call", None)]["balance"] == 100
 
     def test_get_ledger(self, meter):
         """get_ledger returns ledger entries for an account."""
@@ -431,9 +458,18 @@ class TestQuery:
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
 
         assert len(ledger) == 3
-        assert ledger[0]["entry_type"] == "consumption"  # Most recent first
+
+        assert ledger[0]["entry_type"] == "consumption"
+        assert ledger[0]["amount"] == -200
+        assert ledger[0]["balance_after"] == 700
+
         assert ledger[1]["entry_type"] == "consumption"
+        assert ledger[1]["amount"] == -100
+        assert ledger[1]["balance_after"] == 900
+
         assert ledger[2]["entry_type"] == "allocation"
+        assert ledger[2]["amount"] == 1000
+        assert ledger[2]["balance_after"] == 1000
 
     def test_get_usage(self, meter):
         """get_usage aggregates consumption."""
@@ -460,6 +496,11 @@ class TestQuery:
         assert balance["balance"] == 0
         assert balance["reserved"] == 0
         assert balance["available"] == 0
+
+    def test_get_audit_events_raises_not_implemented(self, meter):
+        """Meter uses ledger, not audit events."""
+        with pytest.raises(NotImplementedError):
+            meter.get_audit_events()
 
 
 class TestStats:
@@ -584,15 +625,18 @@ class TestActorContext:
     def test_on_behalf_of_captured(self, meter):
         """on_behalf_of delegation is captured."""
         meter.set_actor(
-            "user:admin", on_behalf_of="user:alice", reason="Support ticket #1234"
+            "user:admin",
+            request_id="req-456",
+            on_behalf_of="user:alice",
+            reason="Support ticket #1234",
         )
         meter.allocate("alice", "llm_call", 500, "tokens")
 
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
 
         assert ledger[0]["actor_id"] == "user:admin"
-        # on_behalf_of is captured in the ledger entry
-        # Note: get_ledger returns it if the column exists
+        assert ledger[0]["request_id"] == "req-456"
+        assert ledger[0]["on_behalf_of"] == "user:alice"
 
     def test_clear_actor_stops_capture(self, meter):
         """clear_actor() stops context capture."""

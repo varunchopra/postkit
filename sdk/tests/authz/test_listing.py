@@ -72,23 +72,8 @@ class TestFilterAuthorized:
         result = authz.filter_authorized(("user", "alice"), "doc", "read", all_docs)
 
         expected = {str(i) for i in range(0, 100, 2)}
+        assert len(result) == 50  # No duplicates in result
         assert set(result) == expected
-
-    def test_filter_returns_consistent_results(self, authz):
-        """filter_authorized returns results consistently."""
-        authz.grant("read", resource=("doc", "z"), subject=("user", "alice"))
-        authz.grant("read", resource=("doc", "a"), subject=("user", "alice"))
-        authz.grant("read", resource=("doc", "m"), subject=("user", "alice"))
-
-        result = authz.filter_authorized(
-            ("user", "alice"),
-            "doc",
-            "read",
-            ["z", "a", "m", "x"],  # x not authorized
-        )
-
-        # Should return authorized ones (order may vary, but set should match)
-        assert set(result) == {"z", "a", "m"}
 
 
 class TestPagination:

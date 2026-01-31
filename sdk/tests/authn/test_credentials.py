@@ -11,10 +11,11 @@ class TestAddCredential:
     def test_adds_totp_credential(self, authn):
         """TOTP credential stores secret_data, no lookup_key."""
         user_id = authn.create_user("alice@example.com", "hash")
-        credential_id = authn.add_credential(
-            user_id, "totp", secret_data="JBSWY3DPEHPK3PXP"
-        )
-        assert credential_id is not None
+        authn.add_credential(user_id, "totp", secret_data="JBSWY3DPEHPK3PXP")
+
+        creds = authn.list_user_credentials(user_id)
+        assert len(creds) == 1
+        assert creds[0]["credential_type"] == "totp"
 
     def test_adds_totp_with_name(self, authn):
         """TOTP credential can have a friendly name."""
@@ -30,22 +31,28 @@ class TestAddCredential:
     def test_adds_recovery_code(self, authn):
         """Recovery code stores lookup_key (hash), no secret_data."""
         user_id = authn.create_user("alice@example.com", "hash")
-        credential_id = authn.add_credential(
-            user_id, "recovery_code", lookup_key="sha256_of_code_1"
+        authn.add_credential(user_id, "recovery_code", lookup_key="sha256_of_code_1")
+
+        cred = authn.get_credential_by_lookup(
+            user_id, "sha256_of_code_1", "recovery_code"
         )
-        assert credential_id is not None
+        assert cred is not None
 
     def test_adds_webauthn_credential(self, authn):
         """WebAuthn stores both lookup_key (credential_id) and secret_data (public key)."""
         user_id = authn.create_user("alice@example.com", "hash")
-        credential_id = authn.add_credential(
+        authn.add_credential(
             user_id,
             "webauthn",
             lookup_key="credential_id_base64",
             secret_data="cose_public_key",
             name="YubiKey 5",
         )
-        assert credential_id is not None
+
+        creds = authn.get_user_credentials(user_id, "webauthn")
+        assert len(creds) == 1
+        assert creds[0]["lookup_key"] == "credential_id_base64"
+        assert creds[0]["secret_data"] == "cose_public_key"
 
     def test_validates_credential_type(self, authn):
         """Invalid credential type is rejected."""
@@ -53,21 +60,6 @@ class TestAddCredential:
 
         with pytest.raises(AuthnError):
             authn.add_credential(user_id, "invalid_type", secret_data="secret")
-
-    def test_valid_credential_types(self, authn):
-        """All valid credential types are accepted."""
-        user_id = authn.create_user("alice@example.com", "hash")
-
-        for ctype in ["totp", "recovery_code", "webauthn"]:
-            if ctype == "totp":
-                cred_id = authn.add_credential(user_id, ctype, secret_data="seed")
-            elif ctype == "recovery_code":
-                cred_id = authn.add_credential(user_id, ctype, lookup_key="hash")
-            else:  # webauthn
-                cred_id = authn.add_credential(
-                    user_id, ctype, lookup_key="cred_id", secret_data="pubkey"
-                )
-            assert cred_id is not None
 
     def test_requires_lookup_or_secret(self, authn):
         """At least one of lookup_key or secret_data must be provided."""
@@ -157,6 +149,15 @@ class TestGetCredentialByLookup:
         cred = authn.get_credential_by_lookup(user_id, "hash1", "recovery_code")
         assert cred is not None
         assert cred["consumed_at"] is not None
+
+    def test_excludes_disabled_credential(self, authn):
+        """Disabled credentials are not returned by lookup."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        cred_id = authn.add_credential(user_id, "recovery_code", lookup_key="hash1")
+        authn.disable_credential(cred_id, "Compromised")
+
+        cred = authn.get_credential_by_lookup(user_id, "hash1", "recovery_code")
+        assert cred is None
 
     def test_requires_correct_user_id(self, authn):
         """Lookup requires correct user_id (enumeration prevention)."""
@@ -473,14 +474,3 @@ class TestRecoveryCodeEnumeration:
         assert cred1 is not None
         assert cred2 is not None
         assert cred1["id"] != cred2["id"]
-
-    def test_cannot_enumerate_other_users_codes(self, authn):
-        """Cannot find another user's recovery code by hash."""
-        user1 = authn.create_user("alice@example.com", "hash")
-        user2 = authn.create_user("bob@example.com", "hash")
-
-        authn.add_credential(user1, "recovery_code", lookup_key="alice_hash")
-
-        # User2 cannot enumerate User1's codes
-        cred = authn.get_credential_by_lookup(user2, "alice_hash", "recovery_code")
-        assert cred is None

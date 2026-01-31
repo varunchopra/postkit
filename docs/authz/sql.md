@@ -133,7 +133,7 @@ SELECT * FROM authz.explain('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/024_explain.sql:1*
+*Source: authz/src/functions/025_explain.sql:1*
 
 ---
 
@@ -157,7 +157,7 @@ SELECT * FROM authz.explain_text('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain_text('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/024_explain.sql:202*
+*Source: authz/src/functions/025_explain.sql:202*
 
 ---
 
@@ -395,7 +395,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/023_list.sql:204*
+*Source: authz/src/functions/024_list.sql:204*
 
 ---
 
@@ -422,7 +422,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/023_list.sql:285*
+*Source: authz/src/functions/024_list.sql:285*
 
 ---
 
@@ -450,7 +450,7 @@ SELECT * FROM authz.list_resources('user', 'alice', 'doc', 'read', 'default');
 SELECT * FROM authz.list_resources('api_key', 'key-123', 'repo', 'read', 'default');
 ```
 
-*Source: authz/src/functions/023_list.sql:1*
+*Source: authz/src/functions/024_list.sql:1*
 
 ---
 
@@ -479,7 +479,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/023_list.sql:97*
+*Source: authz/src/functions/024_list.sql:97*
 
 ---
 
@@ -615,7 +615,7 @@ SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/022_check.sql:84*
+*Source: authz/src/functions/023_check.sql:84*
 
 ---
 
@@ -641,7 +641,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/022_check.sql:148*
+*Source: authz/src/functions/023_check.sql:148*
 
 ---
 
@@ -667,7 +667,7 @@ Check if a subject has any of the specified permissions
 SELECT authz.check_any('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/022_check.sql:119*
+*Source: authz/src/functions/023_check.sql:119*
 
 ---
 
@@ -754,6 +754,38 @@ SELECT authz.revoke_subject_grants('api_key', 'key-123', 'default', 'note');
 ```
 
 *Source: authz/src/functions/035_subject_grants.sql:36*
+
+---
+
+## Transfers
+
+### authz.transfer_tuple
+
+```sql
+authz.transfer_tuple(p_resource_type: text, p_resource_id: text, p_relation: text, p_from_subject_type: text, p_from_subject_id: text, p_to_subject_type: text, p_to_subject_id: text, p_namespace: text) -> bool
+```
+
+Move a grant from one subject to another atomically.
+
+**Parameters:**
+- `p_resource_type`: Resource type
+- `p_resource_id`: Resource identifier
+- `p_relation`: Permission being transferred
+- `p_from_subject_type`: Current holder's type
+- `p_from_subject_id`: Current holder's identifier
+- `p_to_subject_type`: New holder's type
+- `p_to_subject_id`: New holder's identifier
+- `p_namespace`: Tenant namespace
+
+**Returns:** True if the grant was transferred, false if the source had no active (non-expired) grant. Expiration is preserved: temporary grants remain temporary after transfer.
+
+**Example:**
+```sql
+-- Transfer ownership from alice to bob
+SELECT authz.transfer_tuple('org', '1', 'owner', 'user', 'alice', 'user', 'bob');
+```
+
+*Source: authz/src/functions/022_transfer.sql:1*
 
 ---
 

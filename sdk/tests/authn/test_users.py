@@ -69,7 +69,7 @@ class TestCreateUser:
         user_id = authn.create_user("alice@example.com", "hash")
 
         events = authn.get_audit_events(event_type="user_created")
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["resource_id"] == user_id
 
 
@@ -127,6 +127,12 @@ class TestUpdateEmail:
         user = authn.get_user(user_id)
         assert user["email_verified_at"] is None
 
+    def test_rejects_duplicate_email_in_namespace(self, authn):
+        authn.create_user("alice@example.com", "hash")
+        bob_id = authn.create_user("bob@example.com", "hash")
+        with pytest.raises(UniqueViolationError):
+            authn.update_email(bob_id, "alice@example.com")
+
     def test_returns_false_for_unknown_user(self, authn):
         result = authn.update_email(
             "00000000-0000-0000-0000-000000000000", "new@example.com"
@@ -148,7 +154,7 @@ class TestDisableUser:
         authn.create_session(user_id, "token1")
         authn.create_session(user_id, "token2")
 
-        authn.disable_user(user_id)
+        assert authn.disable_user(user_id) is True
 
         # Sessions should be revoked
         assert authn.validate_session("token1") is None
@@ -199,7 +205,7 @@ class TestDeleteUser:
         authn.add_credential(user_id, "totp", secret_data="seed")
         assert len(authn.list_user_credentials(user_id)) == 1
 
-        authn.delete_user(user_id)
+        assert authn.delete_user(user_id) is True
         assert len(authn.list_user_credentials(user_id)) == 0
 
     def test_returns_false_for_unknown_user(self, authn):

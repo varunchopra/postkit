@@ -32,6 +32,21 @@ class TestBasicResourceHierarchy:
         # Alice should not be able to read the doc
         assert not authz.check(("user", "alice"), "read", ("doc", "readme"))
 
+    def test_revoke_parent_severs_inherited_access(self, authz):
+        """Removing a resource from its parent revokes inherited access."""
+        authz.grant("parent", resource=("doc", "readme"), subject=("folder", "docs"))
+        authz.grant("read", resource=("folder", "docs"), subject=("user", "alice"))
+
+        # Alice can read doc via folder.
+        assert authz.check(("user", "alice"), "read", ("doc", "readme"))
+
+        # Remove doc from folder.
+        authz.revoke("parent", resource=("doc", "readme"), subject=("folder", "docs"))
+
+        # Folder access unchanged, but doc access severed.
+        assert authz.check(("user", "alice"), "read", ("folder", "docs"))
+        assert not authz.check(("user", "alice"), "read", ("doc", "readme"))
+
     def test_direct_doc_access_without_folder(self, authz):
         """Direct grant on doc works without folder access."""
         # doc:readme is inside folder:docs
@@ -81,8 +96,7 @@ class TestResourceHierarchyWithPermissionHierarchy:
 
     def test_admin_on_folder_gives_read_on_doc(self, authz):
         """Admin on folder grants read on docs via permission hierarchy."""
-        # Set up permission hierarchy
-        authz.add_hierarchy_rule("folder", "admin", "read")
+        # Set up permission hierarchy (doc type only — the check target is doc:readme)
         authz.add_hierarchy_rule("doc", "admin", "read")
 
         # doc:readme is inside folder:docs
@@ -93,17 +107,6 @@ class TestResourceHierarchyWithPermissionHierarchy:
 
         # Alice should be able to read the doc
         assert authz.check(("user", "alice"), "read", ("doc", "readme"))
-
-    def test_write_on_folder_gives_write_on_doc(self, authz):
-        """Write permission propagates to child resources."""
-        # doc:readme is inside folder:docs
-        authz.grant("parent", resource=("doc", "readme"), subject=("folder", "docs"))
-
-        # Alice can write to the folder
-        authz.grant("write", resource=("folder", "docs"), subject=("user", "alice"))
-
-        # Alice should be able to write to the doc
-        assert authz.check(("user", "alice"), "write", ("doc", "readme"))
 
 
 class TestResourceHierarchyWithGroups:
@@ -245,11 +248,7 @@ class TestExplainWithResourceHierarchy:
 
         explanation = authz.explain(("user", "alice"), "read", ("doc", "readme"))
 
-        # Should have at least one explanation showing access
-        assert len(explanation) > 0
-        # Should mention folder or resource in the explanation
-        explanation_text = " ".join(explanation)
-        assert (
-            "folder" in explanation_text.lower()
-            or "resource" in explanation_text.lower()
-        )
+        # Exactly one path: access via the parent resource.
+        assert len(explanation) == 1
+        assert "RESOURCE:" in explanation[0]
+        assert "folder:docs" in explanation[0]

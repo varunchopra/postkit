@@ -32,7 +32,7 @@ org_authz = AuthzClient(cursor, namespace="org:acme")
 org_authz.add_hierarchy_rule("doc", "legal_approver", "view")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:779*
+*Source: sdk/src/postkit/authz/client.py:790*
 
 ---
 
@@ -62,7 +62,7 @@ authz.bulk_grant("read", resource=("doc", "1"), subjects=[
 ])
 ```
 
-*Source: sdk/src/postkit/authz/client.py:986*
+*Source: sdk/src/postkit/authz/client.py:997*
 
 ---
 
@@ -88,7 +88,7 @@ authz.bulk_grant_resources(
 )
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1040*
+*Source: sdk/src/postkit/authz/client.py:1051*
 
 ---
 
@@ -181,7 +181,7 @@ result = authz.cleanup_expired()
 print(f"Removed {result['tuples_deleted']} expired grants")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1113*
+*Source: sdk/src/postkit/authz/client.py:1124*
 
 ---
 
@@ -217,7 +217,7 @@ Remove expiration from a grant (make it permanent).
 authz.clear_expiration("read", resource=("doc", "1"), subject=("user", "alice"))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1178*
+*Source: sdk/src/postkit/authz/client.py:1189*
 
 ---
 
@@ -229,7 +229,7 @@ clear_hierarchy(resource_type: str) -> int
 
 Clear all hierarchy rules for a resource type in the client's namespace.
 
-*Source: sdk/src/postkit/authz/client.py:817*
+*Source: sdk/src/postkit/authz/client.py:828*
 
 ---
 
@@ -324,7 +324,7 @@ new_expires = authz.extend_expiration("read", resource=("doc", "1"),
                                       extension=timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1216*
+*Source: sdk/src/postkit/authz/client.py:1227*
 
 ---
 
@@ -351,7 +351,7 @@ Use instead of calling check() in a loop - single query regardless of list size.
 visible = authz.filter_authorized(("user", uid), "note", "view", note_ids)
 ```
 
-*Source: sdk/src/postkit/authz/client.py:724*
+*Source: sdk/src/postkit/authz/client.py:735*
 
 ---
 
@@ -383,7 +383,7 @@ if events:
     )
 ```
 
-*Source: sdk/src/postkit/authz/client.py:837*
+*Source: sdk/src/postkit/authz/client.py:848*
 
 ---
 
@@ -407,7 +407,7 @@ stats = authz.get_stats()
 print(f"Tuples: {stats['tuple_count']}, Users: {stats['unique_users']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:963*
+*Source: sdk/src/postkit/authz/client.py:974*
 
 ---
 
@@ -463,7 +463,7 @@ for grant in expiring:
     print(f"{grant['subject']} access to {grant['resource']} expires {grant['expires_at']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1083*
+*Source: sdk/src/postkit/authz/client.py:1094*
 
 ---
 
@@ -493,7 +493,7 @@ expires_at
 shared = authz.list_external_resources(("user", "alice"), "note", "view")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:513*
+*Source: sdk/src/postkit/authz/client.py:508*
 
 ---
 
@@ -524,7 +524,7 @@ for grant in grants:
 note_grants = authz.list_grants(("api_key", key_id), resource_type="note")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:588*
+*Source: sdk/src/postkit/authz/client.py:583*
 
 ---
 
@@ -590,7 +590,7 @@ remove_hierarchy_rule(resource_type: str, permission: str, implies: str)
 
 Remove a hierarchy rule from the client's namespace.
 
-*Source: sdk/src/postkit/authz/client.py:809*
+*Source: sdk/src/postkit/authz/client.py:820*
 
 ---
 
@@ -647,7 +647,7 @@ print(f"Revoked {count} grants")
 count = authz.revoke_all_grants(("api_key", key_id), resource_type="note")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:631*
+*Source: sdk/src/postkit/authz/client.py:626*
 
 ---
 
@@ -671,7 +671,7 @@ authz.revoke_resource_grants(("note", note_id))
 db.execute("DELETE FROM notes WHERE id = %s", (note_id,))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:668*
+*Source: sdk/src/postkit/authz/client.py:663*
 
 ---
 
@@ -722,7 +722,7 @@ authz.set_expiration("read", resource=("doc", "1"), subject=("user", "alice"),
                     expires_at=datetime.now(timezone.utc) + timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1136*
+*Source: sdk/src/postkit/authz/client.py:1147*
 
 ---
 
@@ -745,7 +745,7 @@ authz.set_hierarchy("repo", "admin", "write", "read")
 # Now admin implies write, write implies read
 ```
 
-*Source: sdk/src/postkit/authz/client.py:762*
+*Source: sdk/src/postkit/authz/client.py:773*
 
 ---
 
@@ -781,7 +781,7 @@ transfer_grant(permission: str, *, resource: Entity, from_subject: Entity, to_su
 
 Transfer a grant from one subject to another.
 
-Atomically grants to the new subject then revokes from the old subject.
+Deletes the grant from the current holder and creates it for the new holder in a single SQL call.  Expiration is preserved: if the source grant has an expiration, the transferred grant keeps it.  Expired grants cannot be transferred (returns False, same as no grant).
 
 **Parameters:**
 - `permission`: The permission to transfer
@@ -789,9 +789,9 @@ Atomically grants to the new subject then revokes from the old subject.
 - `from_subject`: Current holder as (type, id) tuple
 - `to_subject`: New holder as (type, id) tuple
 
-**Returns:** True if revoke succeeded (grant always succeeds or raises)
+**Returns:** True if the grant was transferred, False if source had no active grant
 
-*Source: sdk/src/postkit/authz/client.py:697*
+*Source: sdk/src/postkit/authz/client.py:692*
 
 ---
 
@@ -812,6 +812,6 @@ for issue in issues:
     print(f"{issue['status']}: {issue['details']}")
 ```
 
-*Source: sdk/src/postkit/authz/client.py:947*
+*Source: sdk/src/postkit/authz/client.py:958*
 
 ---

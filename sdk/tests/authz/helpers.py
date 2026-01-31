@@ -4,12 +4,16 @@ from postkit.authz import Entity
 
 
 def cleanup_namespace(cursor, namespace: str):
-    """Delete all authz data for a namespace."""
-    cursor.execute("DELETE FROM authz.audit_events WHERE namespace = %s", (namespace,))
+    """Delete all authz data for a namespace.
+
+    Order matters: tuples and hierarchy deletes fire audit triggers, so
+    audit_events must be deleted last to clean up trigger-generated rows.
+    """
     cursor.execute("DELETE FROM authz.tuples WHERE namespace = %s", (namespace,))
     cursor.execute(
         "DELETE FROM authz.permission_hierarchy WHERE namespace = %s", (namespace,)
     )
+    cursor.execute("DELETE FROM authz.audit_events WHERE namespace = %s", (namespace,))
 
 
 class AuthzTestHelpers:

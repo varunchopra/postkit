@@ -43,6 +43,21 @@ class TestSetSchema:
         assert len(schemas) == 1
         assert schemas[0]["schema"]["required"] == ["enabled"]
 
+    def test_rejects_null_pattern(self, admin_config):
+        with pytest.raises(ConfigValidationError) as exc_info:
+            admin_config.set_schema(None, {"type": "object"})
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_PATTERN_NULL
+
+    def test_rejects_empty_pattern(self, admin_config):
+        with pytest.raises(ConfigValidationError) as exc_info:
+            admin_config.set_schema("", {"type": "object"})
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_PATTERN_EMPTY
+
+    def test_rejects_too_long_pattern(self, admin_config):
+        with pytest.raises(ConfigValidationError) as exc_info:
+            admin_config.set_schema("a" * 1025, {"type": "object"})
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_PATTERN_TOO_LONG
+
     def test_validates_pattern_format(self, admin_config):
         # Leading slash fails format check (must start with alphanumeric)
         with pytest.raises(ConfigValidationError) as exc_info:
@@ -245,57 +260,6 @@ class TestSchemaUpdateBlocking:
         assert len(exc_info.value.invalid_configs) == 2
         keys = {c["key"] for c in exc_info.value.invalid_configs}
         assert keys == {"flags/a", "flags/b"}
-
-
-class TestCollectionTypes:
-    """Homogeneous vs heterogeneous collection patterns."""
-
-    def test_homogeneous_collection_with_prefix(self, admin_config):
-        """All items in collection share same schema via prefix pattern."""
-        admin_config.set_schema(
-            "flags/",
-            {
-                "type": "object",
-                "required": ["enabled"],
-                "properties": {
-                    "enabled": {"type": "boolean"},
-                    "rollout": {"type": "number", "minimum": 0, "maximum": 100},
-                },
-            },
-        )
-
-        admin_config.set("flags/checkout", {"enabled": True, "rollout": 50})
-        admin_config.set("flags/dark-mode", {"enabled": False})
-        admin_config.set("flags/new-pricing", {"enabled": True, "rollout": 10})
-
-        assert admin_config.exists("flags/checkout")
-        assert admin_config.exists("flags/dark-mode")
-        assert admin_config.exists("flags/new-pricing")
-
-    def test_heterogeneous_collection_with_exact(self, admin_config):
-        """Each item has unique schema via exact pattern."""
-        admin_config.set_schema(
-            "integrations/webhook",
-            {
-                "type": "object",
-                "required": ["url"],
-                "properties": {"url": {"type": "string", "format": "uri"}},
-            },
-        )
-        admin_config.set_schema(
-            "integrations/slack",
-            {
-                "type": "object",
-                "required": ["channel"],
-                "properties": {"channel": {"type": "string"}},
-            },
-        )
-
-        admin_config.set("integrations/webhook", {"url": "https://example.com/hook"})
-        admin_config.set("integrations/slack", {"channel": "#alerts"})
-
-        with pytest.raises(ConfigValidationError):
-            admin_config.set("integrations/webhook", {"channel": "#wrong"})
 
 
 class TestMergeValidation:

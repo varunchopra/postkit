@@ -21,7 +21,7 @@ class TestGroupDeletion:
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
         # Remove team's permission (not alice's membership)
-        authz.revoke("read", resource=("doc", "1"), subject=("team", "eng"))
+        assert authz.revoke("read", resource=("doc", "1"), subject=("team", "eng"))
 
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
 
@@ -33,7 +33,9 @@ class TestGroupDeletion:
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
         # Remove alice from team
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
 
@@ -44,8 +46,10 @@ class TestGroupDeletion:
         authz.grant("member", resource=("team", "eng"), subject=("user", "bob"))
 
         # Remove all members
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "bob"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
+        assert authz.revoke("member", resource=("team", "eng"), subject=("user", "bob"))
 
         # No one can access via team anymore
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
@@ -159,17 +163,8 @@ class TestSubjectRelations:
         # bob (member) gets read only
         assert authz.check(("user", "bob"), "read", ("repo", "api"))
         assert not authz.check(("user", "bob"), "write", ("repo", "api"))
-
-    def test_default_member_relation_still_works(self, authz):
-        """Regular grant() still uses default 'member' relation."""
-        # Standard membership
-        authz.grant("member", resource=("team", "eng"), subject=("user", "charlie"))
-
-        # Standard grant (no explicit subject_relation = uses 'member')
-        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
-
-        # charlie should have access via default member relation
-        assert authz.check(("user", "charlie"), "read", ("doc", "1"))
+        # Security: admin relation must not grant access to member-only permission.
+        assert not authz.check(("user", "alice"), "read", ("repo", "api"))
 
 
 class TestGroupEdgeCases:

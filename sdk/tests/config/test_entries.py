@@ -83,6 +83,7 @@ class TestGet:
         result = config.get("prompts/bot")
         assert result["value"]["template"] == "v2"
         assert result["version"] == 2
+        assert result["created_at"] is not None
 
     def test_returns_specific_version(self, config):
         """get() with version returns that specific version."""
@@ -104,13 +105,6 @@ class TestGet:
 
         result = config.get("prompts/bot", version=999)
         assert result is None
-
-    def test_includes_created_at(self, config):
-        """get() returns created_at timestamp."""
-        config.set("prompts/bot", {"template": "hello"})
-
-        result = config.get("prompts/bot")
-        assert result["created_at"] is not None
 
 
 class TestGetBatch:
@@ -239,6 +233,7 @@ class TestSearch:
 
         keys = {r["key"] for r in results}
         assert keys == {"flags/a", "flags/c"}
+        assert all(r["created_at"] is not None for r in results)
 
     def test_filters_by_prefix(self, config):
         """search() respects prefix filter."""
@@ -257,15 +252,6 @@ class TestSearch:
         results = config.search({"enabled": True})
 
         assert results == []
-
-    def test_includes_created_at(self, config):
-        """search() returns created_at for each result."""
-        config.set("flags/checkout", {"enabled": True})
-
-        results = config.search({"enabled": True})
-
-        assert len(results) == 1
-        assert results[0]["created_at"] is not None
 
     def test_prefix_underscores_escaped(self, config):
         """search() escapes SQL underscore wildcard in prefix."""
@@ -423,6 +409,7 @@ class TestListEntries:
 
         results = config.list_entries()
 
+        assert len(results) == 3
         keys = [r["key"] for r in results]
         assert "prompts/bot-a" in keys
         assert "prompts/bot-b" in keys
@@ -486,6 +473,10 @@ class TestHistory:
         assert history[0]["version"] == 3
         assert history[1]["version"] == 2
         assert history[2]["version"] == 1
+        # Verify values match their versions.
+        assert history[0]["value"]["v"] == 3
+        assert history[1]["value"]["v"] == 2
+        assert history[2]["value"]["v"] == 1
 
     def test_shows_active_flag(self, config):
         """history() shows which version is active."""
@@ -523,6 +514,7 @@ class TestDelete:
 
         assert count == 3
         assert test_helpers.count_versions("prompts/bot") == 0
+        assert config.exists("prompts/bot") is False
 
     def test_returns_zero_for_missing_key(self, config):
         """delete() returns 0 for non-existent key."""
@@ -572,65 +564,6 @@ class TestExists:
     def test_returns_false_for_missing_key(self, config):
         """exists() returns False for non-existent key."""
         assert config.exists("prompts/nonexistent") is False
-
-
-class TestKeyNamingConventions:
-    """Tests for key naming conventions (prompts/, flags/, secrets/, settings/)"""
-
-    def test_prompts_prefix(self, config):
-        """prompts/ keys work for LLM prompts."""
-        config.set(
-            "prompts/support-bot",
-            {
-                "template": "You are a support agent",
-                "model": "claude-sonnet-4-20250514",
-                "temperature": 0.7,
-            },
-        )
-
-        value = config.get_value("prompts/support-bot")
-        assert value["template"] == "You are a support agent"
-
-    def test_flags_prefix(self, config):
-        """flags/ keys work for feature flags."""
-        config.set(
-            "flags/new-checkout",
-            {
-                "enabled": True,
-                "rollout": 0.5,
-                "allowlist": ["user-123"],
-            },
-        )
-
-        value = config.get_value("flags/new-checkout")
-        assert value["enabled"] is True
-        assert value["rollout"] == 0.5
-
-    def test_secrets_prefix(self, config):
-        """secrets/ keys work for encrypted secrets."""
-        config.set(
-            "secrets/OPENAI_API_KEY",
-            {
-                "encrypted": "aes256gcm:nonce:ciphertext",
-                "key_id": "key-2024-01",
-            },
-        )
-
-        value = config.get_value("secrets/OPENAI_API_KEY")
-        assert value["encrypted"].startswith("aes256gcm:")
-
-    def test_settings_prefix(self, config):
-        """settings/ keys work for app configuration."""
-        config.set(
-            "settings/email",
-            {
-                "from": "support@acme.com",
-                "reply_to": "help@acme.com",
-            },
-        )
-
-        value = config.get_value("settings/email")
-        assert value["from"] == "support@acme.com"
 
 
 class TestSetDefault:
@@ -711,46 +644,3 @@ class TestSetDefault:
         # Each tenant has their own value
         assert tenant_a.get_value("plans/free")["tokens"] == 1000
         assert tenant_b.get_value("plans/free")["tokens"] == 2000
-
-    def test_use_case_seeding_defaults(self, config):
-        """Demonstrates seeding default configs on app startup."""
-        DEFAULT_PLANS = {
-            "plans/free": {"tokens": 10000, "rate_limit": 10},
-            "plans/pro": {"tokens": 100000, "rate_limit": 100},
-            "plans/enterprise": {"tokens": 1000000, "rate_limit": 1000},
-        }
-
-        # First run: all created
-        results = {}
-        for key, value in DEFAULT_PLANS.items():
-            version, created = config.set_default(key, value)
-            results[key] = created
-
-        assert all(results.values())
-
-        # Second run: none created
-        for key, value in DEFAULT_PLANS.items():
-            version, created = config.set_default(key, value)
-            assert created is False
-
-
-class TestSqlValidationErrors:
-    """Tests for SQL-level validation errors raising ConfigValidationError."""
-
-    def test_invalid_key_raises_config_validation_error(self, config):
-        """Invalid key format raises ConfigValidationError (not ConfigError)."""
-        with pytest.raises(ConfigValidationError) as exc_info:
-            config.set("/leading-slash", {"v": 1})
-
-        assert exc_info.value.sqlstate == "22023"
-
-    def test_delete_active_version_raises_config_validation_error(self, config):
-        """Cannot delete active version raises ConfigValidationError."""
-        config.set("prompts/bot", {"v": 1})
-        config.set("prompts/bot", {"v": 2})
-
-        with pytest.raises(ConfigValidationError) as exc_info:
-            config.delete_version("prompts/bot", 2)  # v2 is active
-
-        assert exc_info.value.sqlstate == "22023"
-        assert "active" in str(exc_info.value).lower()

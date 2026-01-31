@@ -15,6 +15,7 @@ import threading
 import psycopg
 from postkit.meter import MeterClient
 from tests.conftest import DATABASE_URL
+from tests.meter.helpers import cleanup_namespace
 
 
 def _make_client(namespace: str) -> tuple[psycopg.Connection, MeterClient]:
@@ -89,24 +90,7 @@ class TestCommitExpiredReservation:
                 # Reset: re-create scenario if previous attempt consumed it.
                 if attempt > 0:
                     # Clean up previous attempt's state.
-                    conn_setup.execute(
-                        "DELETE FROM meter.reservations WHERE namespace = %s",
-                        (namespace,),
-                    )
-                    conn_setup.execute(
-                        "ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete"
-                    )
-                    conn_setup.execute(
-                        "DELETE FROM meter.ledger WHERE namespace = %s",
-                        (namespace,),
-                    )
-                    conn_setup.execute(
-                        "ALTER TABLE meter.ledger ENABLE TRIGGER ledger_no_delete"
-                    )
-                    conn_setup.execute(
-                        "DELETE FROM meter.accounts WHERE namespace = %s",
-                        (namespace,),
-                    )
+                    cleanup_namespace(conn_setup, namespace)
                     meter_setup.allocate("alice", "llm_call", 5000, "tokens")
                     reservation = meter_setup.reserve(
                         "alice", "llm_call", 1000, "tokens", ttl_seconds=3600
@@ -166,22 +150,7 @@ class TestCommitExpiredReservation:
             )
 
         finally:
-            # Cleanup.
-            conn_setup.execute(
-                "DELETE FROM meter.reservations WHERE namespace = %s", (namespace,)
-            )
-            conn_setup.execute(
-                "ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete"
-            )
-            conn_setup.execute(
-                "DELETE FROM meter.ledger WHERE namespace = %s", (namespace,)
-            )
-            conn_setup.execute(
-                "ALTER TABLE meter.ledger ENABLE TRIGGER ledger_no_delete"
-            )
-            conn_setup.execute(
-                "DELETE FROM meter.accounts WHERE namespace = %s", (namespace,)
-            )
+            cleanup_namespace(conn_setup, namespace)
             conn_setup.close()
 
     def test_account_consistent_after_deadlock_retry(self, db_connection):
@@ -253,21 +222,7 @@ class TestCommitExpiredReservation:
             )
 
         finally:
-            conn_setup.execute(
-                "DELETE FROM meter.reservations WHERE namespace = %s", (namespace,)
-            )
-            conn_setup.execute(
-                "ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete"
-            )
-            conn_setup.execute(
-                "DELETE FROM meter.ledger WHERE namespace = %s", (namespace,)
-            )
-            conn_setup.execute(
-                "ALTER TABLE meter.ledger ENABLE TRIGGER ledger_no_delete"
-            )
-            conn_setup.execute(
-                "DELETE FROM meter.accounts WHERE namespace = %s", (namespace,)
-            )
+            cleanup_namespace(conn_setup, namespace)
             conn_setup.close()
 
 
@@ -362,19 +317,5 @@ class TestExpireReleaseConcurrencyStress:
             )
 
         finally:
-            conn_setup.execute(
-                "DELETE FROM meter.reservations WHERE namespace = %s", (namespace,)
-            )
-            conn_setup.execute(
-                "ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete"
-            )
-            conn_setup.execute(
-                "DELETE FROM meter.ledger WHERE namespace = %s", (namespace,)
-            )
-            conn_setup.execute(
-                "ALTER TABLE meter.ledger ENABLE TRIGGER ledger_no_delete"
-            )
-            conn_setup.execute(
-                "DELETE FROM meter.accounts WHERE namespace = %s", (namespace,)
-            )
+            cleanup_namespace(conn_setup, namespace)
             conn_setup.close()

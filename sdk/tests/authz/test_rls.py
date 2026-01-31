@@ -8,6 +8,8 @@ import psycopg
 import pytest
 from postkit.authz import AuthzClient, AuthzError
 
+from tests.authz.helpers import cleanup_namespace
+
 
 class TestRowLevelSecurity:
     """Verify RLS enforces tenant isolation."""
@@ -53,15 +55,12 @@ class TestRowLevelSecurity:
 
         conn.close()
 
-    @pytest.fixture
-    def cleanup_tenant_a(self, db_connection):
-        """Cleanup tenant-a data after test."""
+    @pytest.fixture(autouse=True)
+    def cleanup(self, db_connection):
+        """Remove test data after each test via superuser (bypasses RLS)."""
         yield
-        # Superuser cleanup (bypasses RLS)
-        db_connection.execute(
-            "DELETE FROM authz.audit_events WHERE namespace = 'tenant-a'"
-        )
-        db_connection.execute("DELETE FROM authz.tuples WHERE namespace = 'tenant-a'")
+        for ns in ("tenant-a", "tenant-b", "org-a", "org-b"):
+            cleanup_namespace(db_connection, ns)
 
     def test_no_tenant_returns_empty(self, rls_connection):
         """Without tenant context, queries return nothing."""
@@ -74,9 +73,7 @@ class TestRowLevelSecurity:
         cursor.execute("SELECT * FROM authz.tuples")
         assert cursor.fetchall() == []
 
-    def test_tenant_isolation_read(
-        self, rls_connection, db_connection, cleanup_tenant_a
-    ):
+    def test_tenant_isolation_read(self, rls_connection, db_connection):
         """Tenants cannot see each other's data."""
         # Superuser creates data in tenant-a (bypasses RLS for setup)
         superuser_cursor = db_connection.cursor()
@@ -99,7 +96,7 @@ class TestRowLevelSecurity:
         cursor.execute("SELECT * FROM authz.tuples WHERE namespace = 'tenant-a'")
         assert len(cursor.fetchall()) == 1
 
-    def test_tenant_isolation_write(self, rls_connection, cleanup_tenant_a):
+    def test_tenant_isolation_write(self, rls_connection):
         """Cannot write to different namespace than tenant context."""
         cursor = rls_connection.cursor()
 
@@ -117,9 +114,7 @@ class TestRowLevelSecurity:
             """
             )
 
-    def test_tenant_isolation_check(
-        self, rls_connection, db_connection, cleanup_tenant_a
-    ):
+    def test_tenant_isolation_check(self, rls_connection, db_connection):
         """check() respects tenant isolation."""
         # Superuser creates permission in tenant-a
         superuser_cursor = db_connection.cursor()
@@ -138,9 +133,7 @@ class TestRowLevelSecurity:
         tenant_b = AuthzClient(cursor, "tenant-b")
         assert tenant_b.check(("user", "alice"), "read", ("doc", "rls-2")) is False
 
-    def test_tenant_isolation_audit(
-        self, rls_connection, db_connection, cleanup_tenant_a
-    ):
+    def test_tenant_isolation_audit(self, rls_connection, db_connection):
         """Audit events respect tenant isolation."""
         # Superuser creates data in tenant-a (generates audit event)
         superuser_cursor = db_connection.cursor()
@@ -154,7 +147,7 @@ class TestRowLevelSecurity:
         # As tenant-a, can see audit events
         tenant_a = AuthzClient(cursor, "tenant-a")
         events = tenant_a.get_audit_events()
-        assert len(events) >= 1
+        assert len(events) == 1
 
         # As tenant-b, cannot see tenant-a's audit events
         tenant_b = AuthzClient(cursor, "tenant-b")
@@ -190,15 +183,9 @@ class TestRowLevelSecurity:
 
         # Superuser can still see tenant-a data (bypasses RLS)
         cursor.execute("SELECT * FROM authz.tuples WHERE namespace = 'tenant-a'")
-        assert len(cursor.fetchall()) >= 1
+        assert len(cursor.fetchall()) == 1
 
-        # Cleanup
-        db_connection.execute(
-            "DELETE FROM authz.audit_events WHERE namespace = 'tenant-a'"
-        )
-        db_connection.execute("DELETE FROM authz.tuples WHERE namespace = 'tenant-a'")
-
-    def test_clear_tenant(self, rls_connection, db_connection, cleanup_tenant_a):
+    def test_clear_tenant(self, rls_connection, db_connection):
         """clear_tenant() removes tenant context."""
         # Setup: create data as superuser
         superuser_cursor = db_connection.cursor()
@@ -277,11 +264,6 @@ class TestRowLevelSecurity:
         )
         assert len(superuser_cursor.fetchall()) == 0
 
-        # Cleanup
-        db_connection.execute(
-            "DELETE FROM authz.audit_events WHERE namespace = 'org-a'"
-        )
-
     def test_recipient_cannot_delete_others_shares(self, rls_connection, db_connection):
         """Recipients can only delete shares where THEY are the subject."""
         # Org A shares a doc with bob (not alice)
@@ -318,11 +300,46 @@ class TestRowLevelSecurity:
         )
         assert len(superuser_cursor.fetchall()) == 1
 
-        # Cleanup
-        db_connection.execute("DELETE FROM authz.tuples WHERE namespace = 'org-a'")
-        db_connection.execute(
-            "DELETE FROM authz.audit_events WHERE namespace = 'org-a'"
+    def test_clear_viewer_blocks_recipient_visibility(
+        self, rls_connection, db_connection
+    ):
+        """After clearing viewer context, cross-namespace shares are invisible.
+
+        set_viewer uses session-level config (persists across transactions).
+        clear_viewer is the only protection against context leakage when
+        connections are returned to a pool. If broken, the next request on
+        the same connection would see the previous user's cross-org shares.
+        """
+        # Org A shares a doc with alice
+        superuser_cursor = db_connection.cursor()
+        org_a = AuthzClient(superuser_cursor, "org-a")
+        org_a.grant("read", resource=("doc", "viewer-test"), subject=("user", "alice"))
+
+        cursor = rls_connection.cursor()
+        org_b = AuthzClient(cursor, "org-b")
+
+        # State: viewer context set to alice
+        org_b.set_viewer(("user", "alice"))
+
+        # Alice can see cross-namespace share (recipient_visibility policy)
+        cursor.execute(
+            "SELECT * FROM authz.tuples "
+            "WHERE namespace = 'org-a' AND resource_id = 'viewer-test'"
         )
+        assert len(cursor.fetchall()) == 1
+
+        # Clear viewer context
+        cursor.execute(
+            "SELECT set_config('authz.viewer_type', '', false), "
+            "set_config('authz.viewer_id', '', false)"
+        )
+
+        # State: viewer context cleared — cross-namespace share no longer visible
+        cursor.execute(
+            "SELECT * FROM authz.tuples "
+            "WHERE namespace = 'org-a' AND resource_id = 'viewer-test'"
+        )
+        assert cursor.fetchall() == []
 
     def test_cannot_write_to_global_hierarchy(self, rls_connection):
         """Non-superusers cannot write to global permission_hierarchy.
@@ -339,6 +356,43 @@ class TestRowLevelSecurity:
         with pytest.raises(AuthzError, match="hierarchy_global_write_protection"):
             global_authz.add_hierarchy_rule("doc", "admin", "read")
 
+    def test_hierarchy_tenant_isolation(self, rls_connection, db_connection):
+        """Tenants cannot see each other's custom hierarchy rules.
+
+        The hierarchy_tenant_isolation policy isolates per-tenant hierarchy
+        customizations. Global hierarchies (namespace='global') are readable
+        by all tenants via hierarchy_global_read, but tenant-specific rules
+        are scoped.
+        """
+        # Superuser creates custom hierarchy rule in tenant-a
+        superuser_cursor = db_connection.cursor()
+        tenant_a_admin = AuthzClient(superuser_cursor, "tenant-a")
+        tenant_a_admin.add_hierarchy_rule("doc", "approver", "reviewer")
+
+        # Verify rule exists via superuser
+        superuser_cursor.execute(
+            "SELECT * FROM authz.permission_hierarchy "
+            "WHERE namespace = 'tenant-a' AND permission = 'approver'"
+        )
+        assert len(superuser_cursor.fetchall()) == 1
+
+        cursor = rls_connection.cursor()
+
+        # As tenant-b, cannot see tenant-a's custom hierarchy
+        AuthzClient(cursor, "tenant-b")
+        cursor.execute(
+            "SELECT * FROM authz.permission_hierarchy WHERE namespace = 'tenant-a'"
+        )
+        assert cursor.fetchall() == []
+
+        # As tenant-a, CAN see their own custom hierarchy
+        AuthzClient(cursor, "tenant-a")
+        cursor.execute(
+            "SELECT * FROM authz.permission_hierarchy "
+            "WHERE namespace = 'tenant-a' AND permission = 'approver'"
+        )
+        assert len(cursor.fetchall()) == 1
+
     def test_audit_events_fail_closed(self, rls_connection, db_connection):
         """Audit events are not visible when tenant context is not set (fail-closed)."""
         # Create audit event via superuser
@@ -353,9 +407,3 @@ class TestRowLevelSecurity:
         cursor.execute("SELECT authz.clear_tenant()")
         cursor.execute("SELECT * FROM authz.audit_events")
         assert cursor.fetchall() == []
-
-        # Cleanup
-        db_connection.execute(
-            "DELETE FROM authz.audit_events WHERE namespace = 'tenant-a'"
-        )
-        db_connection.execute("DELETE FROM authz.tuples WHERE namespace = 'tenant-a'")

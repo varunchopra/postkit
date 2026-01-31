@@ -136,6 +136,8 @@ RETURNS TABLE(
     reservation_id text,
     reference_id bigint,
     actor_id text,
+    request_id text,
+    on_behalf_of text,
     reason text,
     metadata jsonb
 ) AS $$
@@ -149,7 +151,8 @@ BEGIN
     RETURN QUERY
     SELECT
         l.id, l.entry_type, l.amount, l.balance_after, l.event_time,
-        l.reservation_id, l.reference_id, l.actor_id, l.reason, l.metadata
+        l.reservation_id, l.reference_id,
+        l.actor_id, l.request_id, l.on_behalf_of, l.reason, l.metadata
     FROM meter.ledger l
     WHERE l.namespace = p_namespace
       AND l.user_id IS NOT DISTINCT FROM p_user_id

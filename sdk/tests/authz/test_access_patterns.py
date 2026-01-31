@@ -50,7 +50,9 @@ class TestMultiLevelHierarchyAlternatePath:
         assert authz.check(("user", "alice"), "read", ("repo", "api"))
 
         # Remove alice from team:eng
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # alice should STILL have all permissions via team:platform's admin
         assert authz.check(("user", "alice"), "admin", ("repo", "api"))
@@ -72,7 +74,9 @@ class TestMultiLevelHierarchyAlternatePath:
         authz.grant("read", resource=("repo", "api"), subject=("team", "eng"))
         authz.grant("write", resource=("repo", "api"), subject=("team", "platform"))
 
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # alice should still have write and read via team:platform
         assert authz.check(("user", "alice"), "write", ("repo", "api"))
@@ -88,7 +92,9 @@ class TestMultiLevelHierarchyAlternatePath:
 
         assert authz.check(("user", "alice"), "read", ("repo", "api"))
 
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # alice should lose all access
         assert not authz.check(("user", "alice"), "read", ("repo", "api"))
@@ -131,14 +137,18 @@ class TestMultiLevelHierarchyAlternatePath:
         assert authz.check(("user", "alice"), "write", ("doc", "1"))
 
         # Remove Alice's member relation
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # Alice should STILL have read via admin->write->read
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
         assert authz.check(("user", "alice"), "write", ("doc", "1"))
 
         # Remove Alice's admin relation too
-        authz.revoke("admin", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "admin", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # Now Alice should lose all access
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
@@ -154,7 +164,9 @@ class TestMultiLevelHierarchyAlternatePath:
         # alice also has direct admin grant
         authz.grant("admin", resource=("repo", "api"), subject=("user", "alice"))
 
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # alice should still have all permissions via direct admin grant
         assert authz.check(("user", "alice"), "admin", ("repo", "api"))
@@ -174,7 +186,7 @@ class TestSubjectRelationFiltering:
         """
         User with 'member' relation doesn't get permission granted to 'admin'.
 
-        This tests that incremental_add_user_to_group filters by subject_relation.
+        The permission check must filter by the subject_relation on the tuple.
         """
         # alice is an admin of the team
         authz.grant("admin", resource=("team", "eng"), subject=("user", "alice"))
@@ -297,29 +309,17 @@ class TestCascadeHandling:
         # Verify alice has access
         assert authz.check(("user", "alice"), "read", ("repo", "api"))
         assert authz.check(("user", "alice"), "write", ("repo", "frontend"))
+        assert authz.check(("user", "alice"), "admin", ("doc", "design"))
 
         # alice leaves the team
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # alice should lose ALL access
         assert not authz.check(("user", "alice"), "read", ("repo", "api"))
         assert not authz.check(("user", "alice"), "write", ("repo", "frontend"))
         assert not authz.check(("user", "alice"), "admin", ("doc", "design"))
-
-    def test_cascade_with_hierarchy_expansion(self, authz):
-        """Cascade works together with hierarchy expansion."""
-        authz.set_hierarchy("repo", "admin", "write", "read")
-
-        # Team has admin on repo
-        authz.grant("admin", resource=("repo", "api"), subject=("team", "eng"))
-
-        # alice joins team
-        authz.grant("member", resource=("team", "eng"), subject=("user", "alice"))
-
-        # alice should have admin, write, and read (cascade + hierarchy)
-        assert authz.check(("user", "alice"), "admin", ("repo", "api"))
-        assert authz.check(("user", "alice"), "write", ("repo", "api"))
-        assert authz.check(("user", "alice"), "read", ("repo", "api"))
 
 
 class TestMultipleAlternatePaths:
@@ -341,19 +341,19 @@ class TestMultipleAlternatePaths:
         authz.grant("read", resource=("doc", "1"), subject=("team", "c"))
 
         # Remove from team:a
-        authz.revoke("member", resource=("team", "a"), subject=("user", "alice"))
+        assert authz.revoke("member", resource=("team", "a"), subject=("user", "alice"))
 
         # Still has access via team:b and team:c
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
         # Remove from team:b
-        authz.revoke("member", resource=("team", "b"), subject=("user", "alice"))
+        assert authz.revoke("member", resource=("team", "b"), subject=("user", "alice"))
 
         # Still has access via team:c
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
         # Remove from team:c
-        authz.revoke("member", resource=("team", "c"), subject=("user", "alice"))
+        assert authz.revoke("member", resource=("team", "c"), subject=("user", "alice"))
 
         # Now access is gone
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
@@ -365,13 +365,15 @@ class TestMultipleAlternatePaths:
         authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))  # Direct
 
         # Remove from group
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # Still has access via direct grant
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
         # Remove direct grant
-        authz.revoke("read", resource=("doc", "1"), subject=("user", "alice"))
+        assert authz.revoke("read", resource=("doc", "1"), subject=("user", "alice"))
 
         # Now access is gone
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
@@ -388,45 +390,13 @@ class TestMultipleAlternatePaths:
         authz.grant("write", resource=("doc", "1"), subject=("team", "ops"))
 
         # Remove from eng (had direct read)
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "alice"))
+        assert authz.revoke(
+            "member", resource=("team", "eng"), subject=("user", "alice")
+        )
 
         # Still has read via ops's write -> read
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
         assert authz.check(("user", "alice"), "write", ("doc", "1"))
-
-
-class TestDirectGrants:
-    """Tests for direct user grants."""
-
-    def test_direct_grant_with_hierarchy(self, authz):
-        """Direct grant to user expands hierarchy correctly."""
-        authz.set_hierarchy("repo", "admin", "write", "read")
-
-        authz.grant("admin", resource=("repo", "api"), subject=("user", "alice"))
-
-        assert authz.check(("user", "alice"), "admin", ("repo", "api"))
-        assert authz.check(("user", "alice"), "write", ("repo", "api"))
-        assert authz.check(("user", "alice"), "read", ("repo", "api"))
-
-    def test_direct_revoke_with_group_fallback(self, authz):
-        """Revoking direct grant preserves group-based access."""
-        authz.grant("member", resource=("team", "eng"), subject=("user", "alice"))
-        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
-        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))  # Direct
-
-        # Revoke direct grant
-        authz.revoke("read", resource=("doc", "1"), subject=("user", "alice"))
-
-        # alice still has access via team
-        assert authz.check(("user", "alice"), "read", ("doc", "1"))
-
-    def test_direct_revoke_no_fallback(self, authz):
-        """Revoking direct grant removes access when no fallback."""
-        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
-
-        authz.revoke("read", resource=("doc", "1"), subject=("user", "alice"))
-
-        assert not authz.check(("user", "alice"), "read", ("doc", "1"))
 
 
 class TestGroupGrants:
@@ -460,7 +430,7 @@ class TestGroupGrants:
         authz.grant("read", resource=("doc", "1"), subject=("team", "ops"))
 
         # Revoke from eng
-        authz.revoke("read", resource=("doc", "1"), subject=("team", "eng"))
+        assert authz.revoke("read", resource=("doc", "1"), subject=("team", "eng"))
 
         # alice should still have access (via ops)
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
@@ -472,8 +442,8 @@ class TestGroupGrants:
         """
         Revoking group#admin grant only affects users with admin relation.
 
-        This tests that incremental_remove_group_grant correctly filters
-        by subject_relation.
+        Revoking the tuple must only affect users whose relation matches
+        the subject_relation on the revoked tuple.
         """
         # charlie is team admin, alice is regular member
         authz.grant("admin", resource=("team", "eng"), subject=("user", "charlie"))
@@ -492,7 +462,7 @@ class TestGroupGrants:
         assert not authz.check(("user", "alice"), "write", ("repo", "api"))
 
         # Revoke the team#admin grant
-        authz.revoke(
+        assert authz.revoke(
             "write",
             resource=("repo", "api"),
             subject=("team", "eng"),
@@ -529,7 +499,7 @@ class TestGroupGrants:
         assert authz.check(("user", "alice"), "read", ("repo", "api"))
 
         # Revoke only admin grant
-        authz.revoke(
+        assert authz.revoke(
             "write",
             resource=("repo", "api"),
             subject=("team", "eng"),

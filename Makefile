@@ -1,4 +1,4 @@
-.PHONY: setup build test clean docs lint format
+.PHONY: all setup build test clean docs lint format
 
 PG_VERSION ?= 16
 PG_CONTAINER ?= postkit-test
@@ -6,8 +6,11 @@ PG_PORT ?= 5433
 DATABASE_URL ?= postgresql://postgres:postgres@localhost:$(PG_PORT)/postgres
 PYTEST = cd sdk && uv run --extra dev pytest
 
+RED = \033[0;31m
 GREEN = \033[0;32m
 NC = \033[0m
+
+all: build format lint docs test
 
 db:
 	@nc -z localhost $(PG_PORT) 2>/dev/null || \

@@ -5,6 +5,11 @@ Tests the AuthzClient SDK through its public API - the "happy path" tests.
 Edge cases and specialized functionality are in dedicated test files.
 """
 
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from postkit.authz import AuthzValidationError
+
 
 class TestGrantAndCheck:
     """Core grant/check behavior."""
@@ -39,14 +44,6 @@ class TestRevoke:
 
         authz.revoke("read", resource=("doc", "1"), subject=("user", "alice"))
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
-
-    def test_revoke_group_membership(self, authz):
-        authz.grant("write", resource=("doc", "1"), subject=("team", "eng"))
-        authz.grant("member", resource=("team", "eng"), subject=("user", "bob"))
-        assert authz.check(("user", "bob"), "write", ("doc", "1"))
-
-        authz.revoke("member", resource=("team", "eng"), subject=("user", "bob"))
-        assert not authz.check(("user", "bob"), "write", ("doc", "1"))
 
     def test_revoke_direct_keeps_group_access(self, authz):
         # Alice has access via team AND direct grant
@@ -117,8 +114,28 @@ class TestBatchChecks:
         assert not authz.check_any(("user", "alice"), [], ("doc", "1"))
 
 
-class TestAudit:
-    """Audit and listing operations."""
+class TestCountSubjects:
+    """Subject counting operations."""
+
+    def test_count_subjects_returns_count(self, authz):
+        authz.grant("view", resource=("doc", "1"), subject=("user", "alice"))
+        authz.grant("view", resource=("doc", "1"), subject=("user", "bob"))
+        authz.grant("view", resource=("doc", "1"), subject=("api_key", "key-1"))
+
+        assert authz.count_subjects("view", ("doc", "1")) == 3
+
+    def test_count_subjects_filters_by_type(self, authz):
+        authz.grant("view", resource=("doc", "1"), subject=("user", "alice"))
+        authz.grant("view", resource=("doc", "1"), subject=("api_key", "key-1"))
+
+        assert authz.count_subjects("view", ("doc", "1"), subject_type="user") == 1
+
+    def test_count_subjects_returns_zero_for_no_grants(self, authz):
+        assert authz.count_subjects("view", ("doc", "nonexistent")) == 0
+
+
+class TestExplainAndListing:
+    """Permission explanation and listing operations."""
 
     def test_explain_explains_direct_grant(self, authz):
         authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
@@ -134,8 +151,8 @@ class TestAudit:
 
         explanations = authz.explain(("user", "alice"), "write", ("doc", "1"))
 
-        assert len(explanations) >= 1
-        assert any("GROUP" in exp for exp in explanations)
+        assert len(explanations) == 1
+        assert "GROUP" in explanations[0]
 
     def test_explain_explains_hierarchy(self, authz):
         authz.set_hierarchy("doc", "admin", "read")
@@ -143,7 +160,8 @@ class TestAudit:
 
         explanations = authz.explain(("user", "alice"), "read", ("doc", "1"))
 
-        assert any("HIERARCHY" in exp for exp in explanations)
+        assert len(explanations) == 1
+        assert "HIERARCHY" in explanations[0]
 
     def test_explain_returns_no_access_message(self, authz):
         explanations = authz.explain(("user", "alice"), "read", ("doc", "1"))
@@ -257,7 +275,6 @@ class TestViewerContext:
         result = authz.cursor.fetchone()
         assert result[0] == "user"
         assert result[1] == "alice"
-        assert authz._viewer == ("user", "alice")
 
     def test_clear_viewer(self, authz):
         authz.set_viewer(("user", "alice"))
@@ -268,7 +285,6 @@ class TestViewerContext:
         result = authz.cursor.fetchone()
         assert result[0] == ""
         assert result[1] == ""
-        assert authz._viewer is None
 
 
 class TestResourceGrants:
@@ -337,7 +353,7 @@ class TestTransferGrant:
         assert authz.check(("user", "bob"), "owner", ("org", "1"))
 
     def test_transfer_grant_returns_false_if_source_not_found(self, authz):
-        """transfer_grant returns False if source doesn't have the grant."""
+        """transfer_grant returns False and creates nothing when source has no grant."""
         result = authz.transfer_grant(
             "owner",
             resource=("org", "1"),
@@ -346,9 +362,11 @@ class TestTransferGrant:
         )
 
         assert result is False
+        # Must not leave an orphaned grant on the target.
+        assert not authz.check(("user", "bob"), "owner", ("org", "1"))
 
-    def test_transfer_grant_overwrites_existing(self, authz):
-        """transfer_grant works even if target already has some grant."""
+    def test_transfer_does_not_affect_other_relations(self, authz):
+        """Transferring a relation doesn't disturb other relations the target holds on the same resource."""
         authz.grant("owner", resource=("org", "1"), subject=("user", "alice"))
         authz.grant("member", resource=("org", "1"), subject=("user", "bob"))
 
@@ -359,8 +377,165 @@ class TestTransferGrant:
             to_subject=("user", "bob"),
         )
 
-        # Bob should now have owner (member is separate)
+        assert not authz.check(("user", "alice"), "owner", ("org", "1"))
+        # Bob should now have owner (member is separate).
         assert authz.check(("user", "bob"), "owner", ("org", "1"))
+        assert authz.check(("user", "bob"), "member", ("org", "1"))
+
+    def test_transfer_replaces_target_expiration(self, authz, db_connection):
+        """When target already holds the same grant, transfer replaces its expiration."""
+        short = datetime.now(timezone.utc) + timedelta(hours=1)
+        long_ = datetime.now(timezone.utc) + timedelta(days=30)
+
+        authz.grant(
+            "owner", resource=("org", "1"), subject=("user", "bob"), expires_at=short
+        )
+        authz.grant(
+            "owner", resource=("org", "1"), subject=("user", "alice"), expires_at=long_
+        )
+
+        result = authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "bob"),
+        )
+
+        assert result is True
+        assert not authz.check(("user", "alice"), "owner", ("org", "1"))
+        assert authz.check(("user", "bob"), "owner", ("org", "1"))
+
+        # Bob's 1-hour expiration must be replaced by alice's 30-day expiration.
+        cursor = db_connection.cursor()
+        cursor.execute(
+            "SELECT expires_at FROM authz.tuples "
+            "WHERE namespace = %s AND resource_id = '1' "
+            "AND subject_id = 'bob' AND relation = 'owner'",
+            (authz.namespace,),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert abs((row[0] - long_).total_seconds()) < 1
+
+    def test_transfer_grant_rolls_back_revoke_on_grant_failure(self, authz):
+        """If the grant step raises, the revoke is rolled back."""
+        authz.grant("owner", resource=("org", "1"), subject=("user", "alice"))
+
+        with pytest.raises(AuthzValidationError):
+            authz.transfer_grant(
+                "owner",
+                resource=("org", "1"),
+                from_subject=("user", "alice"),
+                to_subject=("user", ""),  # Invalid subject_id
+            )
+
+        # Alice must still have her grant — the revoke was rolled back.
+        assert authz.check(("user", "alice"), "owner", ("org", "1"))
+
+    def test_transfer_grant_to_self_is_noop(self, authz):
+        """Self-transfer preserves the grant without audit noise."""
+        grant_id = authz.grant(
+            "owner", resource=("org", "1"), subject=("user", "alice")
+        )
+
+        result = authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "alice"),
+        )
+
+        assert result is True
+        assert authz.check(("user", "alice"), "owner", ("org", "1"))
+        # Grant ID unchanged — no delete+recreate happened.
+        new_id = authz.grant("owner", resource=("org", "1"), subject=("user", "alice"))
+        assert new_id == grant_id
+
+    def test_transfer_grant_to_self_returns_false_when_no_grant(self, authz):
+        """Self-transfer with no existing grant returns False."""
+        result = authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "alice"),
+        )
+
+        assert result is False
+
+    def test_self_transfer_of_expired_grant_returns_false(self, authz, db_connection):
+        """Self-transfer of an expired grant returns False (same as no grant)."""
+        authz.grant("owner", resource=("org", "1"), subject=("user", "alice"))
+
+        # Expire the grant via direct SQL (bypasses SDK validation).
+        db_connection.execute(
+            "UPDATE authz.tuples SET expires_at = now() - interval '1 hour' "
+            "WHERE namespace = %s AND subject_id = 'alice' AND relation = 'owner'",
+            (authz.namespace,),
+        )
+
+        result = authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "alice"),
+        )
+
+        assert result is False
+
+    def test_transfer_preserves_expiration(self, authz, db_connection):
+        """Transferred grant keeps the source's expiration."""
+        expires = datetime.now(timezone.utc) + timedelta(hours=2)
+        authz.grant(
+            "owner",
+            resource=("org", "1"),
+            subject=("user", "alice"),
+            expires_at=expires,
+        )
+
+        result = authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "bob"),
+        )
+
+        assert result is True
+        assert authz.check(("user", "bob"), "owner", ("org", "1"))
+
+        # Verify expiration was preserved on the target grant.
+        cursor = db_connection.cursor()
+        cursor.execute(
+            "SELECT expires_at FROM authz.tuples "
+            "WHERE namespace = %s AND resource_id = '1' "
+            "AND subject_id = 'bob' AND relation = 'owner'",
+            (authz.namespace,),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        # Timestamps lose sub-microsecond precision in Postgres; compare to 1 second.
+        assert abs((row[0] - expires).total_seconds()) < 1
+
+    def test_transfer_expired_grant_returns_false(self, authz, db_connection):
+        """Expired grants cannot be transferred."""
+        authz.grant("owner", resource=("org", "1"), subject=("user", "alice"))
+
+        # Expire the grant via direct SQL (bypasses SDK validation).
+        db_connection.execute(
+            "UPDATE authz.tuples SET expires_at = now() - interval '1 hour' "
+            "WHERE namespace = %s AND subject_id = 'alice' AND relation = 'owner'",
+            (authz.namespace,),
+        )
+
+        result = authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "bob"),
+        )
+
+        assert result is False
+        # Must not revive the expired grant on the target.
+        assert not authz.check(("user", "bob"), "owner", ("org", "1"))
 
 
 class TestListSubjectsWithFilter:

@@ -18,6 +18,10 @@ class TestRecordLoginAttempt:
         assert len(attempts) == 1
         assert attempts[0]["success"] is False
 
+        # Verify audit trail for failed attempt.
+        events = authn.get_audit_events(event_type="login_attempt_failed")
+        assert len(events) == 1
+
     def test_stores_ip_address(self, authn):
         authn.record_login_attempt("alice@example.com", True, ip_address="192.168.1.1")
 
@@ -47,8 +51,7 @@ class TestIsLockedOut:
             authn.record_login_attempt("alice@example.com", False)
         for _ in range(10):
             authn.record_login_attempt("alice@example.com", True)
-        for _ in range(1):
-            authn.record_login_attempt("alice@example.com", False)
+        authn.record_login_attempt("alice@example.com", False)
 
         # Only 4 failures, should not be locked out
         assert authn.is_locked_out("alice@example.com") is False
@@ -84,9 +87,13 @@ class TestIsLockedOut:
             is False
         )
 
-    def test_returns_false_for_nonexistent_email(self, authn):
-        """Verifies no error is raised for emails that don't exist."""
-        assert authn.is_locked_out("nonexistent@example.com") is False
+    def test_lockout_triggers_audit_event(self, authn):
+        """Crossing the lockout threshold must log a lockout_triggered audit event."""
+        for _ in range(5):
+            authn.record_login_attempt("alice@example.com", False)
+
+        events = authn.get_audit_events(event_type="lockout_triggered")
+        assert len(events) == 1
 
 
 class TestGetRecentAttempts:
@@ -106,6 +113,14 @@ class TestGetRecentAttempts:
 
         attempts = authn.get_recent_attempts("alice@example.com", limit=3)
         assert len(attempts) == 3
+
+    def test_clamps_limit_to_100(self, authn):
+        """SQL clamps limit to 100 to prevent excessive row fetches."""
+        for _ in range(105):
+            authn.record_login_attempt("alice@example.com", False)
+
+        attempts = authn.get_recent_attempts("alice@example.com", limit=200)
+        assert len(attempts) == 100
 
 
 class TestClearAttempts:

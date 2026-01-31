@@ -360,7 +360,7 @@ SELECT * FROM meter.get_balance('alice', 'llm_call', 'tokens', 'claude-sonnet');
 ### meter.get_ledger
 
 ```sql
-meter.get_ledger(p_user_id: text, p_event_type: text, p_unit: text, p_resource: text, p_start_time: timestamptz, p_end_time: timestamptz, p_limit: int4, p_namespace: text) -> table(id: int8, entry_type: text, amount: numeric, balance_after: numeric, event_time: timestamptz, reservation_id: text, reference_id: int8, actor_id: text, reason: text, metadata: jsonb)
+meter.get_ledger(p_user_id: text, p_event_type: text, p_unit: text, p_resource: text, p_start_time: timestamptz, p_end_time: timestamptz, p_limit: int4, p_namespace: text) -> table(id: int8, entry_type: text, amount: numeric, balance_after: numeric, event_time: timestamptz, reservation_id: text, reference_id: int8, actor_id: text, request_id: text, on_behalf_of: text, reason: text, metadata: jsonb)
 ```
 
 Get ledger entries for an account
@@ -406,7 +406,7 @@ Get org-level usage totals across all users
 SELECT * FROM meter.get_namespace_usage('2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:207*
+*Source: meter/src/functions/020_query.sql:210*
 
 ---
 
@@ -431,7 +431,7 @@ Get aggregated usage (consumption only) for a user
 SELECT * FROM meter.get_usage('alice', '2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:164*
+*Source: meter/src/functions/020_query.sql:167*
 
 ---
 

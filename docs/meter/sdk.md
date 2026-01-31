@@ -86,7 +86,7 @@ Calling close_period multiple times is safe but will recalculate based on curren
 **Returns:** Dict with expired (amount removed), carried_over (amount preserved),
 and new_balance (balance after expiration)
 
-*Source: sdk/src/postkit/meter/client.py:491*
+*Source: sdk/src/postkit/meter/client.py:492*
 
 ---
 
@@ -155,7 +155,7 @@ Not supported - meter module does not have audit events.
 
 The meter module uses a ledger-based design where all transactions are recorded in the ledger table. Use get_ledger() for transaction history instead.
 
-*Source: sdk/src/postkit/meter/client.py:648*
+*Source: sdk/src/postkit/meter/client.py:649*
 
 ---
 
@@ -234,7 +234,7 @@ Get namespace statistics.
 
 **Returns:** Dict with counts and totals
 
-*Source: sdk/src/postkit/meter/client.py:629*
+*Source: sdk/src/postkit/meter/client.py:630*
 
 ---
 
@@ -300,7 +300,7 @@ NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key wit
 
 **Returns:** New balance after allocation
 
-*Source: sdk/src/postkit/meter/client.py:531*
+*Source: sdk/src/postkit/meter/client.py:532*
 
 ---
 
@@ -319,7 +319,7 @@ Checks two invariants:
 **Returns:** List of dicts with 'user_id', 'event_type', 'resource', 'unit',
 'issue_type', 'expected', 'actual', 'discrepancy'
 
-*Source: sdk/src/postkit/meter/client.py:612*
+*Source: sdk/src/postkit/meter/client.py:613*
 
 ---
 
@@ -356,7 +356,7 @@ No ledger entries are created because reservations are holds on existing balance
 
 **Returns:** Count of reservations that were expired and released.
 
-*Source: sdk/src/postkit/meter/client.py:585*
+*Source: sdk/src/postkit/meter/client.py:586*
 
 ---
 
@@ -432,6 +432,6 @@ Period dates use the DATE type (not TIMESTAMP). Timezone handling is the caller'
 - `period_allocation`: Amount to allocate each period (must be positive)
 - `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over
 
-*Source: sdk/src/postkit/meter/client.py:445*
+*Source: sdk/src/postkit/meter/client.py:446*
 
 ---

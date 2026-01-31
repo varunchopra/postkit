@@ -3,7 +3,7 @@
 from datetime import datetime
 
 import pytest
-from postkit.config import ConfigError
+from postkit.config import ConfigError, ConfigErrorCode, ConfigValidationError
 
 from tests.helpers import (
     assert_audit_fields,
@@ -17,17 +17,17 @@ from tests.helpers import (
 class TestSetActor:
     """Actor context is captured in audit events when set."""
 
-    def test_captures_actor_in_audit(self, config, test_helpers):
+    def test_captures_actor_in_audit(self, config):
         """Actor context is captured in audit events."""
         config.set_actor("user:alice")
         config.set("prompts/bot", {"v": 1})
 
         events = config.get_audit_events(event_type="entry_created")
 
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["actor_id"] == "user:alice"
 
-    def test_captures_request_id(self, config, test_helpers):
+    def test_captures_request_id(self, config):
         """Request ID is captured in audit events."""
         config.set_actor("user:alice", request_id="req-123")
         config.set("prompts/bot", {"v": 1})
@@ -36,7 +36,7 @@ class TestSetActor:
 
         assert events[0]["request_id"] == "req-123"
 
-    def test_captures_on_behalf_of(self, config, test_helpers):
+    def test_captures_on_behalf_of(self, config):
         """on_behalf_of is captured in audit events."""
         config.set_actor(
             "user:admin-bob",
@@ -54,7 +54,7 @@ class TestSetActor:
             reason="support_ticket:12345",
         )
 
-    def test_reason_without_on_behalf_of(self, config, test_helpers):
+    def test_reason_without_on_behalf_of(self, config):
         """Reason can be set without on_behalf_of."""
         config.set_actor("service:deploy", reason="deployment:v1.2.3")
         config.set("prompts/bot", {"v": 1})
@@ -72,7 +72,7 @@ class TestSetActor:
 class TestClearActor:
     """Clearing actor context stops capture in subsequent events."""
 
-    def test_clears_actor_context(self, config, test_helpers):
+    def test_clears_actor_context(self, config):
         """clear_actor() removes actor context."""
         config.set_actor("user:alice", request_id="req-123")
         config.set("prompts/bot1", {"v": 1})
@@ -89,18 +89,18 @@ class TestClearActor:
 class TestAuditEvents:
     """Tests for audit event logging."""
 
-    def test_entry_created_event(self, config, test_helpers):
+    def test_entry_created_event(self, config):
         """entry_created event is logged on set()."""
         config.set("prompts/bot", {"template": "hello"})
 
         events = config.get_audit_events(event_type="entry_created")
 
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["key"] == "prompts/bot"
         assert events[0]["version"] == 1
         assert events[0]["new_value"]["template"] == "hello"
 
-    def test_entry_created_captures_old_value(self, config, test_helpers):
+    def test_entry_created_captures_old_value(self, config):
         """entry_created captures old value when updating."""
         config.set("prompts/bot", {"template": "v1"})
         config.set("prompts/bot", {"template": "v2"})
@@ -112,7 +112,7 @@ class TestAuditEvents:
         assert events[0]["old_value"]["template"] == "v1"
         assert events[0]["new_value"]["template"] == "v2"
 
-    def test_entry_activated_event(self, config, test_helpers):
+    def test_entry_activated_event(self, config):
         """entry_activated event is logged on activate()."""
         config.set("prompts/bot", {"template": "v1"})
         config.set("prompts/bot", {"template": "v2"})
@@ -120,22 +120,31 @@ class TestAuditEvents:
 
         events = config.get_audit_events(event_type="entry_activated")
 
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["key"] == "prompts/bot"
         assert events[0]["version"] == 1
 
-    def test_entry_deleted_event(self, config, test_helpers):
+    def test_activate_same_version_skips_audit(self, config):
+        """Activating the already-active version does not log an audit event."""
+        config.set("prompts/bot", {"v": 1})
+        config.activate("prompts/bot", 1)
+
+        events = config.get_audit_events(event_type="entry_activated")
+
+        assert len(events) == 0
+
+    def test_entry_deleted_event(self, config):
         """entry_deleted event is logged on delete()."""
         config.set("prompts/bot", {"template": "hello"})
         config.delete("prompts/bot")
 
         events = config.get_audit_events(event_type="entry_deleted")
 
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["key"] == "prompts/bot"
         assert events[0]["old_value"]["template"] == "hello"
 
-    def test_entry_version_deleted_event(self, config, test_helpers):
+    def test_entry_version_deleted_event(self, config):
         """entry_version_deleted event is logged on delete_version()."""
         config.set("prompts/bot", {"template": "v1"})
         config.set("prompts/bot", {"template": "v2"})
@@ -143,20 +152,20 @@ class TestAuditEvents:
 
         events = config.get_audit_events(event_type="entry_version_deleted")
 
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["key"] == "prompts/bot"
         assert events[0]["version"] == 1
 
-    def test_audit_without_actor(self, config, test_helpers):
+    def test_audit_without_actor(self, config):
         """Audit events are created even without actor context."""
         config.set("prompts/bot", {"template": "hello"})
 
         events = config.get_audit_events()
 
-        assert len(events) >= 1
+        assert len(events) == 1
         assert events[0]["actor_id"] is None
 
-    def test_filter_by_actor(self, config, test_helpers):
+    def test_filter_by_actor(self, config):
         """Can filter events by actor ID."""
         config.set_actor("alice")
         config.set("prompts/alice-bot", {"template": "alice's bot"})
@@ -189,6 +198,17 @@ class TestAuditPartitions:
     def test_validates_month_bounds(self, config, test_helpers):
         """create_audit_partition() validates month range."""
         assert_partition_rejects_invalid_month(test_helpers.cursor, "config")
+
+    def test_validates_year_bounds(self, config, test_helpers):
+        """create_audit_partition() validates year range."""
+        import psycopg
+
+        with pytest.raises(
+            psycopg.errors.InvalidParameterValue, match="Year must be between"
+        ):
+            test_helpers.cursor.execute(
+                "SELECT config.create_audit_partition(%s, %s)", (1969, 6)
+            )
 
     def test_drop_old_partitions(self, config, test_helpers):
         """drop_audit_partitions() drops old partitions."""
@@ -286,6 +306,12 @@ class TestCleanupOldVersions:
         # Should have: v1 (active), v3 (kept inactive)
         assert test_helpers.count_versions("prompts/bot") == 2
 
+    def test_rejects_negative_keep_versions(self, config):
+        """cleanup_old_versions() rejects negative keep_versions."""
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.cleanup_old_versions(keep_versions=-1)
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEEP_VERSIONS_NEGATIVE
+
 
 class TestAuditSecurityValidation:
     """Tests for audit event query security."""
@@ -347,42 +373,32 @@ class TestAuditPagination:
         # Get filtered events with pagination
         first_page = config.get_audit_events(event_type="entry_created", limit=2)
 
-        if len(first_page) == 2:
-            # Use opaque cursor
-            second_page = config.get_audit_events(
-                event_type="entry_created", limit=2, before=first_page[-1]["cursor"]
-            )
+        assert len(first_page) == 2
 
-            # Pages should not overlap
-            first_ids = {e["id"] for e in first_page}
-            second_ids = {e["id"] for e in second_page}
-            assert first_ids.isdisjoint(second_ids)
+        # Use opaque cursor
+        second_page = config.get_audit_events(
+            event_type="entry_created", limit=2, before=first_page[-1]["cursor"]
+        )
 
-    def test_events_include_cursor_field(self, config):
-        """Events include opaque cursor field for pagination."""
+        # Pages should not overlap
+        first_ids = {e["id"] for e in first_page}
+        second_ids = {e["id"] for e in second_page}
+        assert first_ids.isdisjoint(second_ids)
+
+    def test_events_include_pagination_fields(self, config):
+        """Events include id, event_time, and opaque cursor for pagination."""
         config.set("cursor-test/test", {"v": 1})
 
         events = config.get_audit_events(limit=1)
 
-        assert len(events) >= 1
-        assert "cursor" in events[0]
-        # Cursor should be a non-empty string (opaque)
-        assert isinstance(events[0]["cursor"], str)
-        assert len(events[0]["cursor"]) > 0
+        assert len(events) == 1
+        event = events[0]
+        assert isinstance(event["id"], int)
+        assert isinstance(event["event_time"], datetime)
+        assert isinstance(event["cursor"], str)
+        assert len(event["cursor"]) > 0
 
     def test_invalid_cursor_raises_error(self, config):
         """Invalid cursor raises clear error."""
         with pytest.raises(ConfigError, match="Invalid pagination cursor"):
             config.get_audit_events(before="garbage")
-
-    def test_events_include_id_and_event_time(self, config):
-        """Events include id and event_time fields for cursor building."""
-        config.set("cursor-fields/test", {"v": 1})
-
-        events = config.get_audit_events(limit=1)
-
-        assert len(events) >= 1
-        assert "id" in events[0]
-        assert "event_time" in events[0]
-        assert isinstance(events[0]["id"], int)
-        assert isinstance(events[0]["event_time"], datetime)

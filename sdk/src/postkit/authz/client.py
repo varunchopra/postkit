@@ -490,24 +490,19 @@ class AuthzClient(BaseClient):
             # ["api", "frontend", "docs"]
         """
         subject_type, subject_id = subject
-        if limit is not None:
-            rows = self._fetch_raw(
-                "SELECT * FROM authz.list_resources(%s, %s, %s, %s, %s, %s, %s)",
-                (
-                    subject_type,
-                    subject_id,
-                    resource_type,
-                    permission,
-                    self.namespace,
-                    limit,
-                    cursor,
-                ),
-            )
-        else:
-            rows = self._fetch_raw(
-                "SELECT * FROM authz.list_resources(%s, %s, %s, %s, %s)",
-                (subject_type, subject_id, resource_type, permission, self.namespace),
-            )
+        # Always pass all parameters to ensure consistent behavior
+        rows = self._fetch_raw(
+            "SELECT * FROM authz.list_resources(%s, %s, %s, %s, %s, %s, %s)",
+            (
+                subject_type,
+                subject_id,
+                resource_type,
+                permission,
+                self.namespace,
+                limit if limit is not None else 100,
+                cursor,
+            ),
+        )
         return [row[0] for row in rows]
 
     def list_external_resources(
@@ -704,7 +699,10 @@ class AuthzClient(BaseClient):
     ) -> bool:
         """Transfer a grant from one subject to another.
 
-        Atomically grants to the new subject then revokes from the old subject.
+        Deletes the grant from the current holder and creates it for the new
+        holder in a single SQL call.  Expiration is preserved: if the source
+        grant has an expiration, the transferred grant keeps it.  Expired
+        grants cannot be transferred (returns False, same as no grant).
 
         Args:
             permission: The permission to transfer
@@ -713,13 +711,26 @@ class AuthzClient(BaseClient):
             to_subject: New holder as (type, id) tuple
 
         Returns:
-            True if revoke succeeded (grant always succeeds or raises)
+            True if the grant was transferred, False if source had no active grant
         """
-        # Grant to new subject first
-        self.grant(permission, resource=resource, subject=to_subject)
-
-        # Revoke from old subject
-        return self.revoke(permission, resource=resource, subject=from_subject)
+        resource_type, resource_id = resource
+        from_type, from_id = from_subject
+        to_type, to_id = to_subject
+        result = self._fetch_val(
+            "SELECT authz.transfer_tuple(%s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                resource_type,
+                resource_id,
+                permission,
+                from_type,
+                from_id,
+                to_type,
+                to_id,
+                self.namespace,
+            ),
+            write=True,
+        )
+        return bool(result)
 
     def filter_authorized(
         self,

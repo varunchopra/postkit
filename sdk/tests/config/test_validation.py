@@ -1,7 +1,7 @@
 """Namespace validation tests for config module."""
 
 import pytest
-from postkit.config.client import ConfigError, ConfigValidationError
+from postkit.config import ConfigError, ConfigErrorCode, ConfigValidationError
 
 from tests.helpers import (
     INVALID_NAMESPACES,
@@ -32,8 +32,9 @@ class TestValidationErrorType:
     def test_namespace_validation_raises_correct_error(
         self, make_config, ns, error_code_name
     ):
-        with pytest.raises(ConfigValidationError):
+        with pytest.raises(ConfigValidationError) as exc_info:
             make_config(ns)
+        assert exc_info.value.error_code == getattr(ConfigErrorCode, error_code_name)
 
     def test_config_validation_error_is_config_error(self):
         """ConfigValidationError is a subclass of ConfigError for backwards compatibility."""

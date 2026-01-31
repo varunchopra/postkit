@@ -428,7 +428,8 @@ class MeterClient(BaseClient):
         """
         return self._fetch_all(
             """SELECT id, entry_type, amount, balance_after, event_time,
-                      reservation_id, reference_id, actor_id, reason, metadata
+                      reservation_id, reference_id,
+                      actor_id, request_id, on_behalf_of, reason, metadata
                FROM meter.get_ledger(%s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 user_id,

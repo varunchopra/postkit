@@ -4,12 +4,6 @@ from datetime import timedelta
 
 
 class TestCreateSession:
-    def test_creates_session(self, authn):
-        user_id = authn.create_user("alice@example.com", "hash")
-        session_id = authn.create_session(user_id, "token_hash")
-
-        assert session_id is not None
-
     def test_stores_ip_and_user_agent(self, authn):
         user_id = authn.create_user("alice@example.com", "hash")
         session_id = authn.create_session(
@@ -31,7 +25,21 @@ class TestCreateSession:
 
         sessions = authn.list_sessions(user_id)
         assert len(sessions) == 1
-        # Session exists and is active (not expired)
+        # Verify custom expiry was applied, not the 7-day default.
+        delta = sessions[0]["expires_at"] - sessions[0]["created_at"]
+        assert delta < timedelta(hours=2)
+
+    def test_creates_audit_event(self, authn):
+        """Creating a session logs a session_created audit event."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        session_id = authn.create_session(user_id, "token_hash")
+
+        events = authn.get_audit_events(event_type="session_created")
+        assert len(events) == 1
+        event = events[0]
+        assert event["resource_type"] == "session"
+        assert event["resource_id"] == session_id
+        assert event["new_values"]["user_id"] == user_id
 
 
 class TestValidateSession:
@@ -98,7 +106,10 @@ class TestExtendSession:
         new_expires_at = authn.extend_session("token_hash", extend_by=timedelta(days=7))
 
         assert new_expires_at is not None
-        # Should be about 7 days from now
+        # Verify extension is ~7 days from creation, not the original ~1 hour.
+        sessions = authn.list_sessions(user_id)
+        delta = new_expires_at - sessions[0]["created_at"]
+        assert timedelta(days=6) < delta < timedelta(days=8)
 
     def test_returns_none_for_unknown_token(self, authn):
         result = authn.extend_session("unknown_token")
@@ -175,6 +186,17 @@ class TestRevokeSession:
 
         result = authn.revoke_session("token_hash")
         assert result is False
+
+    def test_creates_audit_event(self, authn):
+        """Revoking a session logs a session_revoked audit event."""
+        user_id = authn.create_user("alice@example.com", "hash")
+        session_id = authn.create_session(user_id, "token_hash")
+        authn.revoke_session("token_hash")
+
+        events = authn.get_audit_events(event_type="session_revoked")
+        assert len(events) == 1
+        assert events[0]["resource_type"] == "session"
+        assert events[0]["resource_id"] == session_id
 
 
 class TestRevokeAllSessions:

@@ -74,6 +74,7 @@
 | [`authz.list_subject_grants`](sql.md#authzlist_subject_grants) | List all grants for a subject ("What can this API key access?") |
 | [`authz.revoke_resource_grants`](sql.md#authzrevoke_resource_grants) | Revoke all grants on a resource (cleanup when deleting a resource) |
 | [`authz.revoke_subject_grants`](sql.md#authzrevoke_subject_grants) | Revoke all grants for a subject (cleanup on deletion) |
+| [`authz.transfer_tuple`](sql.md#authztransfer_tuple) | Move a grant from one subject to another atomically. |
 | [`authz.write`](sql.md#authzwrite) | Simpler write_tuple when you don't need subject_relation |
 | [`authz.write_tuple`](sql.md#authzwrite_tuple) | Grant a permission to a user or team on a resource |
 | [`authz.write_tuples_bulk`](sql.md#authzwrite_tuples_bulk) | Grant same permission to many users at once (one SQL round-trip) |

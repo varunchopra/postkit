@@ -5,24 +5,21 @@ from postkit.authn import AuthnError
 
 
 class TestCreateToken:
-    def test_creates_token(self, authn):
+    def test_creates_token_for_each_valid_type(self, authn, test_helpers):
         user_id = authn.create_user("alice@example.com", "hash")
-        token_id = authn.create_token(user_id, "token_hash", "password_reset")
 
-        assert token_id is not None
+        for token_type in ["password_reset", "email_verify", "magic_link"]:
+            token_id = authn.create_token(user_id, f"hash_{token_type}", token_type)
+            assert token_id is not None
+
+        # Verify all three tokens were persisted.
+        assert test_helpers.count_tokens(user_id) == 3
 
     def test_validates_token_type(self, authn):
         user_id = authn.create_user("alice@example.com", "hash")
 
         with pytest.raises(AuthnError):
             authn.create_token(user_id, "token_hash", "invalid_type")
-
-    def test_valid_token_types(self, authn):
-        user_id = authn.create_user("alice@example.com", "hash")
-
-        for token_type in ["password_reset", "email_verify", "magic_link"]:
-            token_id = authn.create_token(user_id, f"hash_{token_type}", token_type)
-            assert token_id is not None
 
 
 class TestConsumeToken:
@@ -97,7 +94,7 @@ class TestVerifyEmail:
             event_type="email_verified",
             resource_id=user_id,
         )
-        assert len(events) >= 1
+        assert len(events) == 1
 
 
 class TestInvalidateTokens:
