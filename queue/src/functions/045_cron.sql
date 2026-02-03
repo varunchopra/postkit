@@ -126,8 +126,8 @@ BEGIN
     -- Detect whether day-of-month and day-of-week are restricted (not '*').
     -- POSIX: if both are restricted, a day matches if EITHER is satisfied.
     -- If only one is restricted, only that one applies.
-    v_dom_restricted := (v_fields[3] != '*' AND position('*' in v_fields[3]) = 0);
-    v_dow_restricted := (v_fields[5] != '*' AND position('*' in v_fields[5]) = 0);
+    v_dom_restricted := (v_fields[3] != '*');
+    v_dow_restricted := (v_fields[5] != '*');
 
     -- Start from base + 1 minute in target timezone
     v_local := (p_base AT TIME ZONE p_timezone) + interval '1 minute';

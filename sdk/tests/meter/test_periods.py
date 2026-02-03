@@ -92,28 +92,6 @@ class TestSetPeriodConfig:
         account = test_helpers.get_account_raw("alice", "llm_call", "tokens")
         assert float(account["carry_over_limit"]) == 0
 
-    def test_config_persists_across_operations(self, meter, test_helpers):
-        """Period config persists through allocations and consumption."""
-        meter.set_period_config(
-            user_id="alice",
-            event_type="llm_call",
-            unit="tokens",
-            resource=None,
-            period_start=date(2025, 1, 1),
-            period_allocation=10000,
-            carry_over_limit=2000,
-        )
-
-        # Perform operations.
-        meter.allocate("alice", "llm_call", 5000, "tokens")
-        meter.consume("alice", "llm_call", 1000, "tokens")
-
-        # Period config unchanged.
-        account = test_helpers.get_account_raw("alice", "llm_call", "tokens")
-        assert account["period_start"] == date(2025, 1, 1)
-        assert float(account["period_allocation"]) == 10000
-        assert float(account["carry_over_limit"]) == 2000
-
     def test_config_with_resource(self, meter, test_helpers):
         """Period config can be set per resource."""
         meter.set_period_config(
@@ -269,9 +247,15 @@ class TestClosePeriod:
             period_end=date(2025, 1, 31),
         )
 
-        # Verify expiration ledger entry exists.
+        # Verify expiration ledger entry exists with correct amount.
         expiration_count = test_helpers.count_ledger_entries("expiration")
         assert expiration_count == 1
+
+        # Balance=1000, carry_over_limit=200 → 800 expired.
+        ledger = meter.get_ledger("alice", "llm_call", "tokens")
+        expiration = [e for e in ledger if e["entry_type"] == "expiration"][0]
+        assert expiration["amount"] == -800
+        assert expiration["balance_after"] == 200
 
     def test_closes_period_no_expiration_entry_when_nothing_expires(
         self, meter, test_helpers
@@ -414,9 +398,14 @@ class TestOpenPeriod:
             period_start=date(2025, 2, 1),
         )
 
-        # Verify allocation ledger entry exists.
+        # Verify allocation ledger entry exists with correct amount.
         allocation_count = test_helpers.count_ledger_entries("allocation")
         assert allocation_count == 1
+
+        ledger = meter.get_ledger("alice", "llm_call", "tokens")
+        allocation = [e for e in ledger if e["entry_type"] == "allocation"][0]
+        assert allocation["amount"] == 10000
+        assert allocation["balance_after"] == 10000
 
     def test_opens_period_updates_period_start(self, meter, test_helpers):
         """Open period updates the account's period_start date."""
@@ -678,26 +667,10 @@ class TestReleaseExpiredReservations:
         test_helpers.set_reservation_expired(reservation["reservation_id"])
         meter.release_expired_reservations()
 
-        # Verify status is 'expired', not 'released'.
+        # Verify status is 'expired', not 'released', with completion timestamp.
         res = test_helpers.get_reservation_raw(reservation["reservation_id"])
         assert res["status"] == "expired"
-
-    def test_returns_count_of_released(self, meter, test_helpers):
-        """Returns accurate count of released reservations."""
-        meter.allocate("alice", "llm_call", 1000, "tokens")
-
-        # Create 5 reservations.
-        reservations = []
-        for _ in range(5):
-            r = meter.reserve("alice", "llm_call", 50, "tokens", ttl_seconds=3600)
-            reservations.append(r)
-
-        # Expire 3 of them.
-        for r in reservations[:3]:
-            test_helpers.set_reservation_expired(r["reservation_id"])
-
-        count = meter.release_expired_reservations()
-        assert count == 3
+        assert res["completed_at"] is not None
 
     def test_handles_no_expired_reservations(self, meter):
         """Returns 0 when no expired reservations exist."""

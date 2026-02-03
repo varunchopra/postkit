@@ -1,7 +1,5 @@
 """Tests for queue push operations."""
 
-from datetime import timedelta
-
 import psycopg.errors
 import pytest
 from postkit.errors import QueueErrorCode
@@ -19,12 +17,11 @@ class TestPush:
         assert job_id > 0
 
     def test_push_with_all_options(self, queue):
-        """Push accepts all optional parameters."""
+        """Push stores all optional parameters correctly."""
         job_id = queue.push(
             "email",
             {"to": "alice@example.com", "subject": "Hello"},
-            delay=timedelta(minutes=5),
-            priority=10,
+            priority=1000,
             max_attempts=5,
             unique_key="email:alice:welcome",
             tags=["welcome", "onboarding"],
@@ -33,15 +30,17 @@ class TestPush:
 
         assert job_id is not None
 
-    def test_push_with_high_priority(self, queue):
-        """High priority jobs are valid."""
-        job_id = queue.push("alert", {"msg": "server down"}, priority=1000)
-        assert job_id is not None
+        # Verify options were actually stored
+        job = queue.pull("email")
+        assert job is not None
+        assert job["id"] == job_id
+        assert job["priority"] == 1000
+        assert job["max_attempts"] == 5
+        assert job["tags"] == ["welcome", "onboarding"]
+        assert job["metadata"] == {"source": "signup"}
+        assert job["unique_key"] == "email:alice:welcome"
 
-    def test_push_with_low_priority(self, queue):
-        """Negative priority jobs are valid."""
-        job_id = queue.push("bulk", {"data": [1, 2, 3]}, priority=-500)
-        assert job_id is not None
+        queue.ack(job["id"])
 
 
 class TestPushDeduplication:
@@ -71,6 +70,7 @@ class TestPushDeduplication:
 
         assert job_id1 is not None
         assert job_id2 is not None
+        assert job_id1 != job_id2
 
     def test_unique_key_allows_reuse_after_completion(self, queue):
         """Unique key can be reused after job completes."""

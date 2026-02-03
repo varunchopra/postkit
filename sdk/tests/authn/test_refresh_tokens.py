@@ -59,24 +59,15 @@ class TestCreateRefreshToken:
 
 
 class TestRotateRefreshToken:
-    def test_rotates_token(self, authn):
+    def test_rotation_preserves_identity_and_increments_generation(self, authn):
         user_id = authn.create_user("alice@example.com", "hash")
         session_id = authn.create_session(user_id, "session_hash")
-        authn.create_refresh_token(session_id, "refresh_hash_1")
+        initial = authn.create_refresh_token(session_id, "refresh_hash_1")
 
         result = authn.rotate_refresh_token("refresh_hash_1", "refresh_hash_2")
-
-        assert result is not None
         assert str(result["user_id"]) == user_id
         assert str(result["session_id"]) == session_id
-        assert result["generation"] == 2
-
-    def test_increments_generation(self, authn):
-        user_id = authn.create_user("alice@example.com", "hash")
-        session_id = authn.create_session(user_id, "session_hash")
-        authn.create_refresh_token(session_id, "refresh_hash_1")
-
-        result = authn.rotate_refresh_token("refresh_hash_1", "refresh_hash_2")
+        assert str(result["family_id"]) == str(initial["family_id"])
         assert result["generation"] == 2
 
         result = authn.rotate_refresh_token("refresh_hash_2", "refresh_hash_3")
@@ -84,15 +75,6 @@ class TestRotateRefreshToken:
 
         result = authn.rotate_refresh_token("refresh_hash_3", "refresh_hash_4")
         assert result["generation"] == 4
-
-    def test_preserves_family_id(self, authn):
-        user_id = authn.create_user("alice@example.com", "hash")
-        session_id = authn.create_session(user_id, "session_hash")
-        initial = authn.create_refresh_token(session_id, "refresh_hash_1")
-
-        result = authn.rotate_refresh_token("refresh_hash_1", "refresh_hash_2")
-
-        assert str(result["family_id"]) == str(initial["family_id"])
 
     def test_returns_none_for_unknown_token(self, authn):
         result = authn.rotate_refresh_token("unknown", "new_hash")
@@ -381,13 +363,10 @@ class TestRefreshTokenEdgeCases:
         session_id = authn.create_session(user_id, "session_hash")
 
         # Create with short expiry
-        initial = authn.create_refresh_token(
-            session_id, "token1", expires_in=timedelta(days=1)
-        )
-        initial_expiry = initial["expires_at"]
+        authn.create_refresh_token(session_id, "token1", expires_in=timedelta(days=1))
 
         # Rotate - new token should have fresh expiry (default 30 days)
         result = authn.rotate_refresh_token("token1", "token2")
 
-        # New expiry should be ~30 days out, not 1 day
-        assert result["expires_at"] > initial_expiry + timedelta(days=7)
+        expected = datetime.now(timezone.utc) + timedelta(days=30)
+        assert abs((expected - result["expires_at"]).total_seconds()) < 60

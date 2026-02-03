@@ -48,6 +48,12 @@ class TestCronParseField:
         cursor.execute("SELECT queue._cron_parse_field('30', 1, 12)")
         assert cursor.fetchone()[0] == []
 
+    def test_reverse_range_returns_empty(self, raw_cursor):
+        """Reverse range like '5-1' produces empty result, matching standard cron."""
+        cursor, _ = raw_cursor
+        cursor.execute("SELECT queue._cron_parse_field('5-1', 0, 59)")
+        assert cursor.fetchone()[0] == []
+
 
 class TestCronNextRun:
     """Test _cron_next_run calculation."""
@@ -109,9 +115,7 @@ class TestCronEdgeCases:
             "SELECT queue._cron_next_run('0 0 29 2 *', 'UTC', '2025-01-01 00:00:00+00'::timestamptz)"
         )
         result = cursor.fetchone()[0]
-        assert result.year == 2028
-        assert result.month == 2
-        assert result.day == 29
+        assert result == datetime(2028, 2, 29, 0, 0, tzinfo=timezone.utc)
 
     def test_day_31_skips_short_months(self, raw_cursor):
         """Day 31 after March 31 skips April (30 days) to May 31."""
@@ -120,8 +124,7 @@ class TestCronEdgeCases:
             "SELECT queue._cron_next_run('0 0 31 * *', 'UTC', '2025-03-31 00:01:00+00'::timestamptz)"
         )
         result = cursor.fetchone()[0]
-        assert result.month == 5
-        assert result.day == 31
+        assert result == datetime(2025, 5, 31, 0, 0, tzinfo=timezone.utc)
 
     def test_every_minute(self, raw_cursor):
         """Every-minute cron returns the next minute."""
@@ -131,6 +134,48 @@ class TestCronEdgeCases:
         )
         result = cursor.fetchone()[0]
         assert result == datetime(2025, 1, 15, 10, 31, tzinfo=timezone.utc)
+
+    def test_impossible_schedule_returns_none(self, raw_cursor):
+        """Feb 30 never exists; function returns NULL after exhausting search."""
+        cursor, _ = raw_cursor
+        cursor.execute(
+            "SELECT queue._cron_next_run('0 0 30 2 *', 'UTC', '2025-01-01 00:00:00+00'::timestamptz)"
+        )
+        assert cursor.fetchone()[0] is None
+
+
+class TestCronPosixOr:
+    """Test POSIX OR semantics when both day-of-month and day-of-week are restricted."""
+
+    def test_dom_or_dow_matches_earlier_dow(self, raw_cursor):
+        """When both day-of-month and day-of-week are set, POSIX says match EITHER.
+
+        '0 9 15 * 1' = 9 AM on the 15th of any month OR any Monday.
+        From Wed Jan 15 2025 at 10:00 (15th already passed today),
+        next Monday is Jan 20, next 15th is Feb 15. Monday comes first.
+        """
+        cursor, _ = raw_cursor
+        cursor.execute(
+            "SELECT queue._cron_next_run('0 9 15 * 1', 'UTC', "
+            "'2025-01-15 10:00:00+00'::timestamptz)"
+        )
+        result = cursor.fetchone()[0]
+        assert result == datetime(2025, 1, 20, 9, 0, tzinfo=timezone.utc)
+
+    def test_step_on_wildcard_is_restricted(self, raw_cursor):
+        """Step expressions like */2 are restricted — POSIX OR still applies.
+
+        '0 0 */2 * 5' = midnight on odd-numbered days OR Fridays.
+        From Sat Jan 4 2025 at 01:00: next odd day is Jan 5 (Sun),
+        next Friday is Jan 10. Jan 5 comes first (dom match).
+        """
+        cursor, _ = raw_cursor
+        cursor.execute(
+            "SELECT queue._cron_next_run('0 0 */2 * 5', 'UTC', "
+            "'2025-01-04 01:00:00+00'::timestamptz)"
+        )
+        result = cursor.fetchone()[0]
+        assert result == datetime(2025, 1, 5, 0, 0, tzinfo=timezone.utc)
 
 
 class TestCronTimezone:
@@ -145,12 +190,3 @@ class TestCronTimezone:
         )
         result = cursor.fetchone()[0]
         assert result == datetime(2025, 1, 16, 14, 0, tzinfo=timezone.utc)
-
-    def test_utc_explicit(self, raw_cursor):
-        """UTC timezone returns UTC timestamps."""
-        cursor, _ = raw_cursor
-        cursor.execute(
-            "SELECT queue._cron_next_run('0 12 * * *', 'UTC', '2025-01-15 11:00:00+00'::timestamptz)"
-        )
-        result = cursor.fetchone()[0]
-        assert result == datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc)

@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 import pytest
+from postkit.base import UniqueViolationError
 from postkit.errors import QueueErrorCode
 from postkit.queue import QueueValidationError
 
@@ -10,29 +11,9 @@ from postkit.queue import QueueValidationError
 class TestCreateSchedule:
     """Test schedule creation with cron and interval modes."""
 
-    def test_create_cron_schedule(self, queue):
-        """Cron schedule returns a positive ID."""
-        schedule_id = queue.create_schedule(
-            "hourly_sync",
-            "sync",
-            {"action": "full_sync"},
-            cron_expression="0 * * * *",
-        )
-        assert schedule_id > 0
-
-    def test_create_interval_schedule(self, queue):
-        """Interval schedule returns a positive ID."""
-        schedule_id = queue.create_schedule(
-            "periodic_cleanup",
-            "maintenance",
-            {"action": "cleanup"},
-            every_interval=timedelta(minutes=30),
-        )
-        assert schedule_id > 0
-
     def test_create_with_all_options(self, queue):
-        """All optional parameters are accepted."""
-        schedule_id = queue.create_schedule(
+        """All optional parameters are stored correctly."""
+        queue.create_schedule(
             "full_opts",
             "reports",
             {"type": "daily"},
@@ -43,7 +24,15 @@ class TestCreateSchedule:
             tags=["reports", "daily"],
             is_active=True,
         )
-        assert schedule_id > 0
+
+        schedule = queue.get_schedule("full_opts")
+        assert schedule is not None
+        assert schedule["payload"] == {"type": "daily"}
+        assert schedule["cron_expression"] == "0 9 * * *"
+        assert schedule["cron_timezone"] == "America/New_York"
+        assert schedule["priority"] == 100
+        assert schedule["max_attempts"] == 5
+        assert schedule["tags"] == ["reports", "daily"]
 
     def test_create_inactive_schedule(self, queue):
         """Inactive schedule has no next_run_at."""
@@ -82,7 +71,7 @@ class TestCreateSchedule:
             every_interval=timedelta(hours=1),
         )
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(UniqueViolationError) as exc_info:
             queue.create_schedule(
                 "unique_name",
                 "tasks",
@@ -90,7 +79,7 @@ class TestCreateSchedule:
                 every_interval=timedelta(hours=2),
             )
 
-        assert QueueErrorCode.BIZ_SCHEDULE_DUPLICATE in str(exc_info.value)
+        assert exc_info.value.error_code == QueueErrorCode.BIZ_SCHEDULE_DUPLICATE
 
     def test_create_rejects_both_cron_and_interval(self, queue):
         """Cannot specify both cron_expression and every_interval."""
@@ -141,6 +130,7 @@ class TestGetSchedule:
         assert schedule is not None
         assert schedule["name"] == "my_schedule"
         assert schedule["queue"] == "email"
+        assert schedule["payload"] == {"to": "admin@example.com"}
         assert schedule["priority"] == 10
         assert schedule["max_attempts"] == 5
         assert schedule["cron_expression"] == "*/5 * * * *"
@@ -313,6 +303,28 @@ class TestPauseResumeSchedule:
         assert result is True
 
         schedule = queue.get_schedule("resumable")
+        assert schedule["is_active"] is True
+        assert schedule["next_run_at"] is not None
+
+    def test_resume_cron_schedule_recalculates_next_run(self, queue):
+        """Resuming a cron schedule recalculates next_run_at via cron evaluation."""
+        queue.create_schedule(
+            "cron_resumable",
+            "tasks",
+            {"a": 1},
+            cron_expression="0 * * * *",
+        )
+        queue.pause_schedule("cron_resumable")
+
+        # Verify paused state.
+        paused = queue.get_schedule("cron_resumable")
+        assert paused["is_active"] is False
+        assert paused["next_run_at"] is None
+
+        result = queue.resume_schedule("cron_resumable")
+        assert result is True
+
+        schedule = queue.get_schedule("cron_resumable")
         assert schedule["is_active"] is True
         assert schedule["next_run_at"] is not None
 

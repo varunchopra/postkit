@@ -1,6 +1,6 @@
 """Tests for schedule tick processing."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class TestTickSchedules:
@@ -64,6 +64,7 @@ class TestTickSchedules:
         # Verify the schedule state in the database.
         schedule = queue.get_schedule("advancing")
         assert schedule["next_run_at"] is not None
+        assert schedule["next_run_at"] > datetime.now(timezone.utc)
         assert schedule["next_run_at"] == results[0]["next_run_at"]
 
     def test_tick_increments_run_count(self, queue):
@@ -155,13 +156,15 @@ class TestTickSchedules:
         assert len(results) == 2
 
     def test_tick_created_job_is_pullable(self, queue):
-        """Jobs created by tick can be pulled from the target queue."""
+        """Jobs created by tick inherit the schedule's payload and options."""
         self._make_due_schedule(
             queue,
             "pullable",
             target_queue="email",
             payload={"to": "test@example.com"},
             every_interval=timedelta(hours=1),
+            priority=5,
+            tags=["scheduled"],
         )
 
         queue.tick_schedules()
@@ -169,6 +172,9 @@ class TestTickSchedules:
         job = queue.pull("email")
         assert job is not None
         assert job["payload"]["to"] == "test@example.com"
+        # Verify schedule options propagated (non-defaults to prove it's not table defaults).
+        assert job["priority"] == 5
+        assert job["tags"] == ["scheduled"]
 
     def test_tick_captures_actor_context(self, queue):
         """Jobs created by tick inherit the caller's actor context."""
@@ -194,3 +200,21 @@ class TestTickSchedules:
         row = queue.cursor.fetchone()
         assert row[0] == "scheduler-cron"
         assert row[1] == "req-abc-123"
+
+    def test_only_processes_own_namespace(self, make_queue):
+        """tick_schedules only processes schedules from the caller's namespace."""
+        q_a = make_queue("tick_ns_a")
+        q_b = make_queue("tick_ns_b")
+
+        self._make_due_schedule(q_a, "sched_a", every_interval=timedelta(hours=1))
+        self._make_due_schedule(q_b, "sched_b", every_interval=timedelta(hours=1))
+
+        # Tick from namespace A only processes A's schedule.
+        results = q_a.tick_schedules()
+        assert len(results) == 1
+        assert results[0]["schedule_name"] == "sched_a"
+
+        # B's schedule still due.
+        results_b = q_b.tick_schedules()
+        assert len(results_b) == 1
+        assert results_b[0]["schedule_name"] == "sched_b"

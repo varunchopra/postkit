@@ -82,6 +82,13 @@ class TestAck:
         result = queue.ack(job["id"])
         assert result is False
 
+    @pytest.mark.parametrize("method", ["ack", "fail", "cancel"])
+    def test_null_job_id_raises_validation_error(self, queue, method):
+        """Passing None as job_id raises VAL_JOB_ID_NULL."""
+        with pytest.raises(QueueValidationError) as exc_info:
+            getattr(queue, method)(None)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_JOB_ID_NULL
+
 
 class TestAckBatch:
     """Test batch acknowledgment."""
@@ -127,31 +134,37 @@ class TestAckBatch:
     def test_ack_batch_partial_success(self, queue):
         """ack_batch counts only running jobs."""
         queue.push("tasks", {"task": 1})
-        queue.push("tasks", {"task": 2})
+        pending_id = queue.push("tasks", {"task": 2})
 
         job = queue.pull("tasks")  # Only pull one
 
-        # Try to ack both (one running, one pending)
-        count = queue.ack_batch([job["id"], job["id"] + 1])
+        # Try to ack both (one running, one pending).
+        count = queue.ack_batch([job["id"], pending_id])
         assert count == 1
 
 
 class TestNack:
     """Test temporary failure handling."""
 
-    def test_nack_returns_job_to_queue(self, queue):
-        """nack returns job to pending status."""
-        queue.push("tasks", {"task": 1}, max_attempts=3)
-        job = queue.pull("tasks")
+    def test_nack_returns_job_to_queue(self, raw_cursor):
+        """nack returns job to pending status and stores error message."""
+        cursor, namespace = raw_cursor
 
-        result = queue.nack(job["id"], error="temporary failure")
+        q = QueueClient(cursor, namespace)
+        q.push("tasks", {"task": 1}, max_attempts=3)
+        job = q.pull("tasks")
+
+        result = q.nack(job["id"], error="temporary failure")
         assert result is True
 
-        # Job should be pullable again (after backoff)
-        # Note: In real scenario, would need to wait for backoff
-        # For test, we check stats
-        stats = queue.get_stats()
-        assert stats["pending"] == 1
+        # Job should be back in pending with error stored.
+        cursor.execute(
+            "SELECT status, error FROM queue.jobs WHERE namespace = %s AND id = %s",
+            (namespace, job["id"]),
+        )
+        row = cursor.fetchone()
+        assert row[0] == "pending"
+        assert row[1] == "temporary failure"
 
     def test_nack_increments_attempts(self, raw_cursor):
         """Each pull after nack increments the attempts counter."""
@@ -171,14 +184,30 @@ class TestNack:
                 (namespace, job["id"]),
             )
 
-    def test_nack_with_custom_backoff(self, queue):
-        """nack accepts custom backoff duration."""
+    def test_nack_with_custom_backoff(self, raw_cursor):
+        """nack schedules retry with the provided backoff instead of exponential default."""
+        cursor, namespace = raw_cursor
 
-        queue.push("tasks", {"task": 1}, max_attempts=3)
-        job = queue.pull("tasks")
+        q = QueueClient(cursor, namespace)
+        q.push("tasks", {"task": 1}, max_attempts=3)
+        job = q.pull("tasks")
 
-        result = queue.nack(job["id"], backoff=timedelta(seconds=1))
-        assert result is True
+        q.nack(job["id"], backoff=timedelta(seconds=1))
+
+        # Verify scheduled_at reflects the 1-second custom backoff, not the
+        # 30-second exponential default.
+        cursor.execute(
+            "SELECT scheduled_at FROM queue.jobs WHERE namespace = %s AND id = %s",
+            (namespace, job["id"]),
+        )
+        scheduled_at = cursor.fetchone()[0]
+        cursor.execute("SELECT now()")
+        db_now = cursor.fetchone()[0]
+
+        # scheduled_at should be within a few seconds of now (custom 1s backoff),
+        # not ~30 seconds away (exponential default for first retry).
+        delta = (scheduled_at - db_now).total_seconds()
+        assert delta < 5, f"Expected ~1s backoff, got {delta:.1f}s"
 
     def test_nack_max_attempts_moves_to_dlq(self, queue):
         """nack moves job to DLQ when max_attempts exceeded."""
@@ -210,6 +239,12 @@ class TestNack:
         with pytest.raises(QueueError) as exc_info:
             queue.nack(999999)
         assert exc_info.value.error_code == QueueErrorCode.DATA_JOB_NOT_FOUND
+
+    def test_nack_null_job_id_raises_validation_error(self, queue):
+        """Passing None as job_id raises VAL_JOB_ID_NULL."""
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.nack(None)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_JOB_ID_NULL
 
 
 class TestFail:
@@ -307,43 +342,3 @@ class TestCancel:
 
         result = queue.pull("tasks")
         assert result is None
-
-
-class TestJobLifecycle:
-    """Test complete job lifecycle scenarios."""
-
-    def test_push_pull_ack_flow(self, queue):
-        """Complete happy path: push -> pull -> ack."""
-        job_id = queue.push("email", {"to": "alice@example.com"})
-        job = queue.pull("email")
-        assert job["id"] == job_id
-
-        result = queue.ack(job["id"])
-        assert result is True
-
-        # Queue is empty
-        assert queue.pull("email") is None
-
-    def test_push_pull_nack_retry_ack_flow(self, queue):
-        """Retry flow: push -> pull -> nack -> pull -> ack."""
-        queue.push("tasks", {"task": 1}, max_attempts=3)
-
-        # First attempt fails
-        job1 = queue.pull("tasks")
-        queue.nack(job1["id"], error="first failure")
-
-        # For this test, we'll check that the job is back in pending
-        stats = queue.get_stats()
-        assert stats["pending"] == 1
-
-    def test_push_pull_fail_dlq_flow(self, queue):
-        """DLQ flow: push -> pull -> fail (to DLQ)."""
-        queue.push("tasks", {"task": "bad data"})
-
-        job = queue.pull("tasks")
-        queue.fail(job["id"], error="unprocessable")
-
-        # Job is dead
-        stats = queue.get_stats()
-        assert stats["dead"] == 1
-        assert stats["pending"] == 0

@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 import pytest
+from postkit.errors import QueueErrorCode
 from postkit.queue import QueueError, QueueValidationError
 
 
@@ -94,13 +95,17 @@ class TestRetryDeadLetter:
         dl_id, _ = self._make_dead_letter(queue)
         queue.retry_dead_letter(dl_id)
 
-        with pytest.raises(QueueError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.retry_dead_letter(dl_id)
+        assert (
+            exc_info.value.error_code == QueueErrorCode.BIZ_DEAD_LETTER_ALREADY_RETRIED
+        )
 
     def test_retry_nonexistent_raises_error(self, queue):
         """Retrying a nonexistent dead letter raises not-found error."""
-        with pytest.raises(QueueError):
+        with pytest.raises(QueueError) as exc_info:
             queue.retry_dead_letter(999999)
+        assert exc_info.value.error_code == QueueErrorCode.DATA_DEAD_LETTER_NOT_FOUND
 
     def test_retry_with_queue_override(self, queue):
         """Retrying with queue override puts job in the new queue."""
@@ -145,8 +150,9 @@ class TestRetryDeadLetter:
 
     def test_retry_null_id_raises_validation_error(self, queue):
         """Passing None as dead_letter_id raises a validation error."""
-        with pytest.raises(QueueValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.retry_dead_letter(None)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == QueueErrorCode.VAL_DEAD_LETTER_ID_NULL
 
 
 class TestRetryDeadLetters:
@@ -207,6 +213,13 @@ class TestRetryDeadLetters:
             pulled.append(job["id"])
 
         assert set(pulled) == retried_ids
+
+    def test_clamps_limit_to_1000(self, queue):
+        """Limits above 1000 are silently clamped, not rejected."""
+        self._make_dead_letters(queue, count=2)
+        # Should succeed without error despite exceeding 1000.
+        results = queue.retry_dead_letters("tasks", limit=5000)
+        assert len(results) == 2
 
     def test_captures_caller_actor_context(self, queue):
         """Bulk retry captures the caller's actor context on all new jobs."""
@@ -301,18 +314,3 @@ class TestPurgeDeadLetters:
 
         count = queue.purge_dead_letters(older_than=timedelta(days=30))
         assert count == 0  # Retried entry preserved.
-
-    def test_purge_returns_count(self, queue):
-        """Returns the exact count of deleted dead letters."""
-        for _ in range(4):
-            self._make_dead_letter(queue)
-
-        # Backdate all.
-        queue.cursor.execute(
-            "UPDATE queue.dead_letters SET failed_at = now() - interval '60 days' "
-            "WHERE namespace = %s",
-            (queue.namespace,),
-        )
-
-        count = queue.purge_dead_letters(older_than=timedelta(days=30))
-        assert count == 4

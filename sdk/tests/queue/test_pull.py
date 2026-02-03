@@ -21,6 +21,7 @@ class TestPull:
         assert job["payload"] == {"to": "alice@example.com"}
         assert job["status"] == "running"
         assert job["attempts"] == 1
+        assert job["locked_by"] == "anonymous"  # Default when no worker_id provided
 
     def test_pull_empty_queue_returns_none(self, queue):
         """Pull from empty queue returns None."""
@@ -154,6 +155,11 @@ class TestPullAny:
         job = queue.pull_any(["high", "medium", "low"])
         assert job is None
 
+    def test_pull_any_empty_list_returns_none(self, queue):
+        """pull_any with empty queue list returns None without error."""
+        job = queue.pull_any([])
+        assert job is None
+
 
 class TestVisibilityTimeout:
     """Test visibility timeout behavior."""
@@ -181,24 +187,18 @@ class TestVisibilityTimeout:
         result = queue.extend_visibility(999999, timedelta(minutes=10))
         assert result is False
 
-    def test_extend_visibility_rejects_negative_extension(self, queue):
-        """Negative extension is rejected to prevent shrinking the timeout."""
+    @pytest.mark.parametrize(
+        "extension",
+        [timedelta(0), timedelta(seconds=-30)],
+        ids=["zero", "negative"],
+    )
+    def test_extend_visibility_rejects_non_positive_extension(self, queue, extension):
+        """Non-positive extension is rejected."""
         queue.push("tasks", {"task": 1})
         job = queue.pull("tasks")
 
         with pytest.raises(QueueValidationError) as exc_info:
-            queue.extend_visibility(job["id"], timedelta(seconds=-30))
-        assert exc_info.value.error_code == QueueErrorCode.VAL_EXTENSION_POSITIVE
-
-        queue.ack(job["id"])
-
-    def test_extend_visibility_rejects_zero_extension(self, queue):
-        """Zero extension raises validation error."""
-        queue.push("tasks", {"task": 1})
-        job = queue.pull("tasks")
-
-        with pytest.raises(QueueValidationError) as exc_info:
-            queue.extend_visibility(job["id"], timedelta(0))
+            queue.extend_visibility(job["id"], extension)
         assert exc_info.value.error_code == QueueErrorCode.VAL_EXTENSION_POSITIVE
 
         queue.ack(job["id"])
