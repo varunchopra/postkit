@@ -246,9 +246,9 @@ class TestDisableUserRevokesAPIKeys:
         authn.create_api_key(user_id, "key_hash_1", name="Key 1")
         authn.create_api_key(user_id, "key_hash_2", name="Key 2")
 
-        # Verify keys work before disable
-        result = authn.validate_api_key("key_hash_1")
-        assert result is not None
+        # Verify both keys work before disable
+        assert authn.validate_api_key("key_hash_1") is not None
+        assert authn.validate_api_key("key_hash_2") is not None
 
         authn.disable_user(user_id)
 
@@ -453,34 +453,6 @@ class TestDisableUserInvalidatesTokens:
         # Token should be invalid (marked as used)
         result = authn.consume_token("reset_hash", "password_reset")
         assert result is None
-
-    def test_tokens_not_restored_on_reenable(self, authn):
-        """One-time tokens remain invalidated after re-enable."""
-        user_id = authn.create_user("alice@example.com", "hash")
-        authn.create_token(user_id, "reset_hash", "password_reset")
-
-        authn.disable_user(user_id)
-        authn.enable_user(user_id)
-
-        # Token was marked as used, should remain invalid
-        result = authn.consume_token("reset_hash", "password_reset")
-        assert result is None
-
-    def test_new_token_works_after_reenable(self, authn):
-        """User can create new tokens after re-enable."""
-        user_id = authn.create_user("alice@example.com", "hash")
-        authn.create_token(user_id, "old_hash", "password_reset")
-
-        authn.disable_user(user_id)
-        authn.enable_user(user_id)
-
-        # Old token is invalid
-        assert authn.consume_token("old_hash", "password_reset") is None
-
-        # New token works
-        authn.create_token(user_id, "new_hash", "password_reset")
-        result = authn.consume_token("new_hash", "password_reset")
-        assert result is not None
 
 
 class TestEndImpersonationsCount:

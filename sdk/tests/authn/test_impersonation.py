@@ -7,21 +7,6 @@ from postkit.authn import AuthnErrorCode, AuthnValidationError
 
 
 class TestStartImpersonation:
-    def test_creates_impersonation_session(self, authn):
-        """Basic impersonation creates all required records."""
-        admin_id = authn.create_user("admin@example.com", "hash1")
-        target_id = authn.create_user("target@example.com", "hash2")
-        admin_session = authn.create_session(admin_id, "admin_token")
-
-        result = authn.start_impersonation(
-            admin_session, target_id, "Support ticket #123", token_hash="imp_token"
-        )
-
-        assert result is not None
-        assert "impersonation_id" in result
-        assert "impersonation_session_id" in result
-        assert "expires_at" in result
-
     def test_creates_session_as_target_user(self, authn):
         """Impersonation session is valid and belongs to target user."""
         admin_id = authn.create_user("admin@example.com", "hash1")
@@ -266,21 +251,8 @@ class TestStartImpersonation:
 
 
 class TestEndImpersonation:
-    def test_ends_impersonation(self, authn):
-        """Ending impersonation marks it as ended."""
-        admin_id = authn.create_user("admin@example.com", "hash1")
-        target_id = authn.create_user("target@example.com", "hash2")
-        admin_session = authn.create_session(admin_id, "admin_token")
-
-        imp = authn.start_impersonation(
-            admin_session, target_id, "Testing", token_hash="imp_token"
-        )
-        result = authn.end_impersonation(str(imp["impersonation_id"]))
-
-        assert result is True
-
     def test_revokes_impersonation_session(self, authn):
-        """Ending impersonation revokes the impersonation session."""
+        """Ending impersonation returns true and revokes the impersonation session."""
         admin_id = authn.create_user("admin@example.com", "hash1")
         target_id = authn.create_user("target@example.com", "hash2")
         admin_session = authn.create_session(admin_id, "admin_token")
@@ -289,11 +261,13 @@ class TestEndImpersonation:
             admin_session, target_id, "Testing", token_hash="imp_token"
         )
 
-        # Session should be active before ending
+        # Impersonation session should be active before ending
         sessions_before = authn.list_sessions(target_id)
-        assert len(sessions_before) == 1
+        imp_session_ids = [str(s["session_id"]) for s in sessions_before]
+        assert str(imp["impersonation_session_id"]) in imp_session_ids
 
-        authn.end_impersonation(str(imp["impersonation_id"]))
+        result = authn.end_impersonation(str(imp["impersonation_id"]))
+        assert result is True
 
         # Session should be revoked after ending
         sessions_after = authn.list_sessions(target_id)
@@ -333,7 +307,11 @@ class TestEndImpersonation:
         events = authn.get_audit_events(event_type="impersonation_ended")
         assert len(events) == 1
         event = events[0]
+        assert event["resource_type"] == "impersonation"
         assert event["resource_id"] == str(imp["impersonation_id"])
+        assert event["new_values"]["actor_id"] == admin_id
+        assert event["new_values"]["target_user_id"] == target_id
+        assert event["new_values"]["reason"] == "Testing"
 
 
 class TestGetImpersonationContext:
@@ -448,6 +426,35 @@ class TestGetImpersonationContext:
         # Should return false - matches validate_session behavior
         context = authn.get_impersonation_context(str(imp["impersonation_session_id"]))
         assert context["is_impersonating"] is False
+
+    def test_returns_false_when_expired(self, authn):
+        """Returns is_impersonating=false after impersonation expires."""
+        admin_id = authn.create_user("admin@example.com", "hash1")
+        target_id = authn.create_user("target@example.com", "hash2")
+        admin_session = authn.create_session(admin_id, "admin_token")
+
+        imp = authn.start_impersonation(
+            admin_session, target_id, "Support ticket", token_hash="imp_token"
+        )
+
+        # Force expiry without ending or revoking (simulates clock advancing past expiry).
+        authn.cursor.execute(
+            "UPDATE authn.impersonation_sessions SET expires_at = now() - interval '1 minute' WHERE id = %s::uuid",
+            (str(imp["impersonation_id"]),),
+        )
+
+        # get_impersonation_context checks imp.expires_at > now()
+        context = authn.get_impersonation_context(str(imp["impersonation_session_id"]))
+        assert context["is_impersonating"] is False
+
+        # list_active_impersonations checks imp.expires_at > now()
+        active = authn.list_active_impersonations()
+        assert len(active) == 0
+
+        # list_impersonation_history computes is_active using imp.expires_at > now()
+        history = authn.list_impersonation_history()
+        assert len(history) == 1
+        assert history[0]["is_active"] is False
 
 
 class TestListActiveImpersonations:

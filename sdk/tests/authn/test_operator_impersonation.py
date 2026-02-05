@@ -9,31 +9,6 @@ from postkit.authn import AuthnErrorCode, AuthnValidationError
 class TestStartOperatorImpersonation:
     """Tests for authn.start_operator_impersonation()."""
 
-    def test_creates_cross_namespace_impersonation(self, make_authn):
-        """Operator in one namespace can impersonate user in another."""
-        # Setup: operator in platform namespace, target in customer namespace
-        platform = make_authn("platform")
-        customer = make_authn("customer")
-
-        operator_id = platform.create_user("operator@platform.com", "hash1")
-        operator_session = platform.create_session(operator_id, "operator_token")
-
-        target_id = customer.create_user("user@customer.com", "hash2")
-
-        # Start operator impersonation
-        result = platform.start_operator_impersonation(
-            operator_session_id=operator_session,
-            target_user_id=target_id,
-            target_namespace="customer",
-            token_hash="imp_token_hash",
-            reason="Support ticket #123",
-        )
-
-        assert result is not None
-        assert "impersonation_id" in result
-        assert "impersonation_session_id" in result
-        assert "expires_at" in result
-
     def test_creates_session_in_target_namespace(self, make_authn):
         """Impersonation session is created in target namespace."""
         platform = make_authn("platform")
@@ -208,6 +183,37 @@ class TestStartOperatorImpersonation:
             )
         assert exc_info.value.error_code == AuthnErrorCode.SESSION_TARGET_INVALID
 
+    def test_rejects_disabled_operator_user(self, make_authn):
+        """Cannot start impersonation if operator user is disabled.
+
+        The SQL validates operator via u.disabled_at IS NULL (line 224 in
+        085_operator_impersonation.sql). This test sets disabled_at directly
+        without revoking sessions, isolating the disabled_at defense-in-depth check.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        # Set disabled_at directly WITHOUT revoking sessions.
+        # Isolates the u.disabled_at IS NULL check in the operator session query.
+        platform.cursor.execute(
+            "UPDATE authn.users SET disabled_at = now() WHERE id = %s::uuid",
+            (operator_id,),
+        )
+
+        with pytest.raises(AuthnValidationError) as exc_info:
+            platform.start_operator_impersonation(
+                operator_session_id=operator_session,
+                target_user_id=target_id,
+                target_namespace="customer",
+                token_hash="imp_token",
+                reason="Disabled operator",
+            )
+        assert exc_info.value.error_code == AuthnErrorCode.SESSION_OPERATOR_INVALID
+
     def test_custom_duration(self, make_authn):
         """Can specify custom duration within limits."""
         platform = make_authn("platform")
@@ -274,32 +280,6 @@ class TestStartOperatorImpersonation:
             )
         assert exc_info.value.error_code == AuthnErrorCode.VAL_DURATION_POSITIVE
 
-    def test_stores_ticket_reference(self, make_authn):
-        """Ticket reference is stored in impersonation record."""
-        platform = make_authn("platform")
-        customer = make_authn("customer")
-
-        operator_id = platform.create_user("operator@platform.com", "hash1")
-        operator_session = platform.create_session(operator_id, "operator_token")
-
-        target_id = customer.create_user("target@customer.com", "hash2")
-
-        platform.start_operator_impersonation(
-            operator_session_id=operator_session,
-            target_user_id=target_id,
-            target_namespace="customer",
-            token_hash="imp_token",
-            reason="Support ticket",
-            ticket_reference="ZENDESK-12345",
-        )
-
-        # Verify ticket reference is in audit events
-        events = platform.get_operator_audit_events(
-            event_type="operator_impersonation_started"
-        )
-        assert len(events) == 1
-        assert events[0]["ticket_reference"] == "ZENDESK-12345"
-
     def test_creates_audit_event(self, make_authn):
         """Operator impersonation start is logged to operator audit."""
         platform = make_authn("platform")
@@ -316,6 +296,7 @@ class TestStartOperatorImpersonation:
             target_namespace="customer",
             token_hash="imp_token",
             reason="Support ticket #456",
+            ticket_reference="ZENDESK-12345",
         )
 
         events = platform.get_operator_audit_events(
@@ -330,6 +311,7 @@ class TestStartOperatorImpersonation:
         assert str(event["target_user_id"]) == target_id
         assert event["target_user_email"] == "target@customer.com"
         assert event["reason"] == "Support ticket #456"
+        assert event["ticket_reference"] == "ZENDESK-12345"
         assert event["details"]["impersonation_id"] == str(result["impersonation_id"])
 
 
@@ -356,6 +338,12 @@ class TestEndOperatorImpersonation:
 
         result = platform.end_operator_impersonation(str(imp["impersonation_id"]))
         assert result is True
+
+        # Verify impersonation is actually ended via context.
+        context = platform.get_operator_impersonation_context(
+            str(imp["impersonation_session_id"])
+        )
+        assert context["is_operator_impersonating"] is False
 
     def test_revokes_impersonation_session(self, make_authn):
         """Ending impersonation revokes the impersonation session."""
@@ -510,6 +498,52 @@ class TestGetOperatorImpersonationContext:
             str(imp["impersonation_session_id"])
         )
         assert context["is_operator_impersonating"] is False
+
+    def test_returns_false_when_expired(self, make_authn):
+        """Returns is_operator_impersonating=false after impersonation expires.
+
+        The SQL checks ois.expires_at > now() in get_operator_impersonation_context
+        (line 451), list_active_operator_impersonations (line 649), and in the
+        is_active computed field of list functions (lines 525, 585). This test
+        simulates clock advancement by setting expires_at to the past.
+        """
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        imp = platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Testing",
+            duration=timedelta(minutes=15),
+        )
+
+        # Force expiry without ending or revoking (simulates clock advancing past expiry).
+        platform.cursor.execute(
+            "UPDATE authn.operator_impersonation_sessions "
+            "SET expires_at = now() - interval '1 minute' WHERE id = %s::uuid",
+            (str(imp["impersonation_id"]),),
+        )
+
+        # get_operator_impersonation_context checks ois.expires_at > now().
+        context = platform.get_operator_impersonation_context(
+            str(imp["impersonation_session_id"])
+        )
+        assert context["is_operator_impersonating"] is False
+
+        # list_active_operator_impersonations checks ois.expires_at > now().
+        active = platform.list_active_operator_impersonations()
+        assert len(active) == 0
+
+        # list_operator_impersonations_for_target computes is_active using expires_at > now().
+        history = platform.list_operator_impersonations_for_target("customer")
+        assert len(history) == 1
+        assert history[0]["is_active"] is False
 
     def test_returns_false_when_operator_disabled(self, make_authn):
         """Context should return false if operator user is disabled after impersonation starts.

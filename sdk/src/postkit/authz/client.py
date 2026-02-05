@@ -540,32 +540,32 @@ class AuthzClient(BaseClient):
 
         rows = self._fetch_raw(
             """
+            WITH RECURSIVE implied_by AS (
+                SELECT %s AS permission
+                UNION
+                SELECT h.permission
+                FROM implied_by ib
+                JOIN authz.permission_hierarchy h
+                    ON h.namespace = 'global'
+                    AND h.resource_type = %s
+                    AND h.implies = ib.permission
+            )
             SELECT t.namespace, t.resource_id, t.relation, t.created_at, t.expires_at
             FROM authz.tuples t
             WHERE t.subject_type = %s
               AND t.subject_id = %s
               AND t.resource_type = %s
-              AND (
-                  t.relation = %s
-                  OR EXISTS (
-                      SELECT 1 FROM authz.permission_hierarchy h
-                      WHERE h.resource_type = %s
-                        AND h.permission = t.relation
-                        AND h.implies = %s
-                        AND h.namespace = 'global'
-                  )
-              )
+              AND t.relation IN (SELECT permission FROM implied_by)
               AND t.namespace != %s
               AND (t.expires_at IS NULL OR t.expires_at > now())
             ORDER BY t.created_at DESC
             """,
             (
+                permission,
+                resource_type,
                 subject_type,
                 subject_id,
                 resource_type,
-                permission,
-                resource_type,
-                permission,
                 self.namespace,
             ),
         )

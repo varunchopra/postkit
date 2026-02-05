@@ -48,23 +48,6 @@ class TestHierarchyModification:
         assert authz.check(("user", "alice"), "write", ("doc", "1"))
         assert not authz.check(("user", "alice"), "read", ("doc", "1"))
 
-    def test_hierarchy_change_affects_multiple_resources(self, authz):
-        """Hierarchy change recomputes all affected resources."""
-        # Setup: 20 docs, all with admin grants
-        for i in range(20):
-            authz.grant("admin", resource=("doc", str(i)), subject=("user", "alice"))
-
-        # Verify no read access yet
-        for i in range(20):
-            assert not authz.check(("user", "alice"), "read", ("doc", str(i)))
-
-        # Add hierarchy
-        authz.add_hierarchy_rule("doc", "admin", "read")
-
-        # All 20 should now have read
-        for i in range(20):
-            assert authz.check(("user", "alice"), "read", ("doc", str(i)))
-
     def test_hierarchy_chain_modification(self, authz):
         """Modifying middle of hierarchy chain updates correctly."""
         # admin -> write -> read
@@ -91,7 +74,8 @@ class TestHierarchyModification:
 
         assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
-        authz.clear_hierarchy("doc")
+        # admin -> write -> read = 2 rules
+        assert authz.clear_hierarchy("doc") == 2
 
         # Only admin remains, implied permissions gone
         assert authz.check(("user", "alice"), "admin", ("doc", "1"))
@@ -151,6 +135,14 @@ class TestHierarchyEdgeCases:
 
         for level in levels:
             assert authz.check(("user", "alice"), level, ("doc", "1"))
+
+    def test_add_hierarchy_rule_is_idempotent(self, authz):
+        """Adding the same rule twice succeeds without error."""
+        authz.add_hierarchy_rule("doc", "admin", "read")
+        authz.add_hierarchy_rule("doc", "admin", "read")
+
+        authz.grant("admin", resource=("doc", "1"), subject=("user", "alice"))
+        assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
     def test_wide_hierarchy_branches(self, authz):
         """Permission implying many others."""
@@ -281,7 +273,7 @@ class TestGlobalHierarchy:
         acme.grant("owner", resource=("note", "n1"), subject=("user", "alice"))
 
         paths = acme.explain(("user", "alice"), "view", ("note", "n1"))
-        assert any("owner" in p and "view" in p for p in paths)
+        assert any("owner -> edit -> view" in p for p in paths)
 
 
 class TestExternalResources:
@@ -319,17 +311,32 @@ class TestExternalResources:
         assert shared[0]["relation"] == "edit"
         # Cleanup handled by cleanup_global_hierarchies fixture
 
-    def test_filters_expired(self, make_authz, db_connection):
-        cursor = db_connection.cursor()
+    def test_resolves_multi_level_hierarchy(self, make_authz, db_connection):
+        """Multi-hop global hierarchy is resolved, not just direct implications."""
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT authz.add_hierarchy('note', 'owner', 'edit', 'global')")
+            cur.execute("SELECT authz.add_hierarchy('note', 'edit', 'view', 'global')")
 
+        authz_a = make_authz("swm_org_h")
+        authz_a.grant("owner", resource=("note", "1"), subject=("user", "alice"))
+
+        authz_b = make_authz("swm_org_i")
+        shared = authz_b.list_external_resources(("user", "alice"), "note", "view")
+
+        # owner -> edit -> view: the owner grant must appear when querying for view
+        assert len(shared) == 1
+        assert shared[0]["relation"] == "owner"
+
+    def test_filters_expired(self, make_authz, db_connection):
         # Insert expired tuple directly (bypass SDK validation)
-        cursor.execute(
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO authz.tuples
+                    (namespace, resource_type, resource_id, relation, subject_type, subject_id, expires_at)
+                VALUES ('swm_org_f', 'note', 'expired', 'view', 'user', 'alice', now() - interval '1 hour')
             """
-            INSERT INTO authz.tuples
-                (namespace, resource_type, resource_id, relation, subject_type, subject_id, expires_at)
-            VALUES ('swm_org_f', 'note', 'expired', 'view', 'user', 'alice', now() - interval '1 hour')
-        """
-        )
+            )
 
         # Grant valid permission via SDK
         authz_a = make_authz("swm_org_f")

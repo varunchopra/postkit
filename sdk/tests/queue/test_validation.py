@@ -5,7 +5,6 @@ from postkit.errors import QueueErrorCode
 from postkit.queue import QueueError, QueueValidationError
 
 from tests.helpers import (
-    INVALID_NAMESPACES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
 )
@@ -18,11 +17,6 @@ class TestNamespaceValidation:
         for ns in VALID_NAMESPACES:
             client = make_queue(ns)
             client.push("test_queue", {"data": 1})
-
-    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
-    def test_rejects_invalid_namespace(self, make_queue, ns):
-        with pytest.raises(QueueError):
-            make_queue(ns)
 
 
 class TestQueueNameBoundaries:

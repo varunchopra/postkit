@@ -15,6 +15,7 @@ from tests.helpers import (
     assert_partition_create,
     assert_partition_idempotent,
     assert_partition_rejects_invalid_month,
+    assert_partition_rejects_invalid_year,
     cleanup_partition,
 )
 
@@ -301,8 +302,11 @@ class TestAuditFiltering:
         repo_events = authz.get_audit_events(resource=("repo", "api"))
 
         assert len(doc1_events) == 1
+        assert doc1_events[0]["resource"] == ("doc", "1")
         assert len(doc2_events) == 1
+        assert doc2_events[0]["resource"] == ("doc", "2")
         assert len(repo_events) == 1
+        assert repo_events[0]["resource"] == ("repo", "api")
 
     def test_filter_by_subject(self, authz):
         """Can filter events by subject."""
@@ -314,7 +318,9 @@ class TestAuditFiltering:
         team_events = authz.get_audit_events(subject=("team", "eng"))
 
         assert len(alice_events) == 1
+        assert alice_events[0]["subject"] == ("user", "alice")
         assert len(team_events) == 1
+        assert team_events[0]["subject"] == ("team", "eng")
 
     def test_limit_works(self, authz):
         """Limit parameter restricts result count."""
@@ -339,6 +345,7 @@ class TestAuditFiltering:
         )
 
         assert len(events) == 2
+        assert all(e["actor_id"] == "admin" for e in events)
 
     def test_events_ordered_by_time_desc(self, authz):
         """Events are returned most recent first."""
@@ -378,36 +385,43 @@ class TestPartitionManagement:
         cleanup_partition(authz.cursor, "authz", "audit_events_y2031m01")
 
     def test_ensure_partitions(self, authz):
-        """ensure_audit_partitions creates multiple partitions."""
-        # First drop any far-future partitions that might exist
-        authz.cursor.execute(
-            """
-            SELECT c.relname FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'authz' AND c.relname LIKE 'audit_events_y2032%'
-        """
-        )
-        for row in authz.cursor.fetchall():
-            authz.cursor.execute(f"DROP TABLE authz.{row[0]}")
+        """ensure_audit_partitions creates partitions for upcoming months."""
+        # Clean slate: drop any 2060-range partitions that might exist
+        for m in range(1, 13):
+            authz.cursor.execute(
+                f"DROP TABLE IF EXISTS authz.audit_events_y2060m{m:02d}"
+            )
 
-        # Create partitions starting far in the future
-        authz.cursor.execute(
-            """
-            SELECT authz.create_audit_partition(2032, 1)
-        """
-        )
+        # Manually create 2060-01 so ensure has a starting point to extend from
+        authz.cursor.execute("SELECT authz.create_audit_partition(2060, 1)")
+        assert authz.cursor.fetchone()[0] == "audit_events_y2060m01"
 
-        # ensure_partitions from 2032-01 would create more
-        # But let's just verify the function works
-        authz.cursor.execute("SELECT count(*) FROM authz.ensure_audit_partitions(0)")
-        # This creates current month if not exists, should succeed
+        # ensure_audit_partitions(2) from current date creates current month + 2 ahead.
+        # We can't control "current date" in SQL, so instead verify the function
+        # returns only newly created partitions (skips existing ones).
+        authz.cursor.execute("SELECT * FROM authz.ensure_audit_partitions(2)")
+        created = [row[0] for row in authz.cursor.fetchall()]
+
+        # Should have created at least the current month (if not already present).
+        # All returned names must follow the partition naming convention.
+        for name in created:
+            assert name.startswith("audit_events_y")
+
+        # Calling again with same range returns nothing (all already exist)
+        authz.cursor.execute("SELECT * FROM authz.ensure_audit_partitions(2)")
+        second_run = [row[0] for row in authz.cursor.fetchall()]
+        assert len(second_run) == 0
 
         # Cleanup
-        authz.cursor.execute("DROP TABLE IF EXISTS authz.audit_events_y2032m01")
+        authz.cursor.execute("DROP TABLE IF EXISTS authz.audit_events_y2060m01")
 
     def test_invalid_month_rejected(self, authz):
         """Invalid month values are rejected."""
         assert_partition_rejects_invalid_month(authz.cursor, "authz")
+
+    def test_invalid_year_rejected(self, authz):
+        """Invalid year values are rejected."""
+        assert_partition_rejects_invalid_year(authz.cursor, "authz")
 
     def test_drop_old_partitions(self, authz):
         """drop_audit_partitions removes old partitions correctly."""
@@ -704,29 +718,17 @@ class TestAuditPagination:
 
         # Get filtered events with pagination
         first_page = authz.get_audit_events(event_type="tuple_created", limit=2)
+        assert len(first_page) == 2
 
-        if len(first_page) == 2:
-            # Use opaque cursor
-            second_page = authz.get_audit_events(
-                event_type="tuple_created", limit=2, before=first_page[-1]["cursor"]
-            )
+        # Use opaque cursor
+        second_page = authz.get_audit_events(
+            event_type="tuple_created", limit=2, before=first_page[-1]["cursor"]
+        )
 
-            # Pages should not overlap
-            first_ids = {e["id"] for e in first_page}
-            second_ids = {e["id"] for e in second_page}
-            assert first_ids.isdisjoint(second_ids)
-
-    def test_events_include_cursor_field(self, authz):
-        """Events include opaque cursor field for pagination."""
-        authz.grant("read", resource=("doc", "cursor-test"), subject=("user", "alice"))
-
-        events = authz.get_audit_events(limit=1)
-
-        assert len(events) >= 1
-        assert "cursor" in events[0]
-        # Cursor should be a non-empty string (opaque)
-        assert isinstance(events[0]["cursor"], str)
-        assert len(events[0]["cursor"]) > 0
+        # Pages should not overlap
+        first_ids = {e["id"] for e in first_page}
+        second_ids = {e["id"] for e in second_page}
+        assert first_ids.isdisjoint(second_ids)
 
     def test_invalid_cursor_raises_error(self, authz):
         """Invalid cursor raises clear error."""

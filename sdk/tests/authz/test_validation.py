@@ -12,10 +12,14 @@ Tests for:
 
 import psycopg
 import pytest
-from postkit.authz import AuthzError, AuthzErrorCode, AuthzValidationError
+from postkit.authz import (
+    AuthzCycleError,
+    AuthzError,
+    AuthzErrorCode,
+    AuthzValidationError,
+)
 
 from tests.helpers import (
-    INVALID_NAMESPACES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
 )
@@ -62,18 +66,35 @@ class TestBoundaryConditions:
 
     def test_empty_id_rejected(self, authz):
         """Empty IDs are rejected."""
-        with pytest.raises(AuthzError):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("doc", ""), subject=("user", "alice"))
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_EMPTY
 
     def test_empty_user_rejected(self, authz):
         """Empty user IDs are rejected."""
-        with pytest.raises(AuthzError):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("doc", "1"), subject=("user", ""))
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_EMPTY
 
     def test_whitespace_only_rejected(self, authz):
         """Whitespace-only identifiers are rejected."""
-        with pytest.raises(AuthzError):
+        with pytest.raises(AuthzError) as exc_info:
             authz.grant("read", resource=("doc", "   "), subject=("user", "alice"))
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_EMPTY
+
+    def test_control_chars_in_id_rejected(self, authz):
+        """IDs with control characters are rejected."""
+        with pytest.raises(AuthzError) as exc_info:
+            authz.grant(
+                "read", resource=("doc", "bad\x01id"), subject=("user", "alice")
+            )
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_INVALID_CHARS
+
+    def test_leading_trailing_whitespace_rejected(self, authz):
+        """IDs with leading or trailing whitespace are rejected."""
+        with pytest.raises(AuthzError) as exc_info:
+            authz.grant("read", resource=("doc", " leading"), subject=("user", "alice"))
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_WHITESPACE
 
     def test_null_bytes_rejected_by_driver(self, authz):
         """Null bytes are rejected (by psycopg at protocol level, not our validation)."""
@@ -282,18 +303,14 @@ class TestValidationEdgeCases:
 class TestExceptionHandling:
     """Test that SDK raises proper exception types."""
 
-    def test_validation_error_on_empty_id(self, authz):
-        """Empty ID raises AuthzError."""
-        with pytest.raises(AuthzError):
-            authz.grant("read", resource=("doc", ""), subject=("user", "alice"))
-
     def test_cycle_error_on_hierarchy_cycle(self, authz):
-        """Hierarchy cycle raises AuthzError."""
+        """Hierarchy cycle raises AuthzCycleError."""
         authz.add_hierarchy_rule("doc", "admin", "write")
         authz.add_hierarchy_rule("doc", "write", "read")
 
-        with pytest.raises(AuthzError):
+        with pytest.raises(AuthzCycleError) as exc_info:
             authz.add_hierarchy_rule("doc", "read", "admin")
+        assert exc_info.value.error_code == AuthzErrorCode.BIZ_CYCLE_HIERARCHY
 
 
 class TestDeleteValidation:
@@ -355,11 +372,6 @@ class TestNamespaceValidation:
             client = make_authz(ns)
             client.grant("read", resource=("doc", "1"), subject=("user", "alice"))
             assert client.check(("user", "alice"), "read", ("doc", "1"))
-
-    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
-    def test_rejects_invalid_namespace(self, make_authz, ns):
-        with pytest.raises(AuthzError):
-            make_authz(ns)
 
 
 class TestValidationErrorType:

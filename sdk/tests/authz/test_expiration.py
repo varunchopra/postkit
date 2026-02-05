@@ -11,13 +11,18 @@ class TestExpiringPermissions:
     """Test permissions with expiration."""
 
     def test_grant_with_expiration(self, authz):
-        """Grant with future expiration works."""
+        """Grant with future expiration works and stores the timestamp."""
         expires = datetime.now(timezone.utc) + timedelta(hours=1)
         authz.grant(
             "read", resource=("doc", "1"), subject=("user", "alice"), expires_at=expires
         )
 
         assert authz.check(("user", "alice"), "read", ("doc", "1")) is True
+
+        # Verify expiration was actually stored.
+        expiring = authz.list_expiring(within=timedelta(days=1))
+        assert len(expiring) == 1
+        assert abs((expiring[0]["expires_at"] - expires).total_seconds()) < 1
 
     def test_expired_permission_denied(self, authz, db_connection):
         """Expired permissions return false."""
@@ -171,6 +176,28 @@ class TestExpiringPermissions:
         assert authz.check(("user", "alice"), "admin", ("repo", "api"))
         assert authz.check(("user", "alice"), "write", ("repo", "api"))
         assert authz.check(("user", "alice"), "read", ("repo", "api"))
+
+    def test_expired_hierarchy_blocks_implied_permissions(self, authz, db_connection):
+        """Expired grant blocks all implied permissions through hierarchy."""
+        cursor = db_connection.cursor()
+
+        # admin implies write implies read
+        authz.set_hierarchy("repo", "admin", "write", "read")
+
+        # Insert expired admin grant (bypass validation).
+        cursor.execute(
+            """
+            INSERT INTO authz.tuples
+                (namespace, resource_type, resource_id, relation, subject_type, subject_id, expires_at)
+            VALUES (%s, 'repo', 'api', 'admin', 'user', 'alice', now() - interval '1 hour')
+        """,
+            (authz.namespace,),
+        )
+
+        # All implied permissions must also be denied.
+        assert authz.check(("user", "alice"), "admin", ("repo", "api")) is False
+        assert authz.check(("user", "alice"), "write", ("repo", "api")) is False
+        assert authz.check(("user", "alice"), "read", ("repo", "api")) is False
 
 
 class TestListExpiring:
@@ -359,6 +386,46 @@ class TestSetExpiration:
                 extension=timedelta(days=30),
             )
         assert exc_info.value.error_code == AuthzErrorCode.BIZ_GRANT_NO_EXPIRATION
+
+    def test_extend_already_expired_anchors_from_now(self, authz, db_connection):
+        """Extending an already-expired grant anchors from now(), not the past timestamp."""
+        cursor = db_connection.cursor()
+
+        # Insert a grant that expired 1 hour ago (bypass validation).
+        cursor.execute(
+            """
+            INSERT INTO authz.tuples
+                (namespace, resource_type, resource_id, relation, subject_type, subject_id, expires_at)
+            VALUES (%s, 'doc', '1', 'read', 'user', 'alice', now() - interval '1 hour')
+        """,
+            (authz.namespace,),
+        )
+
+        extension = timedelta(days=30)
+        new_expires = authz.extend_expiration(
+            "read",
+            resource=("doc", "1"),
+            subject=("user", "alice"),
+            extension=extension,
+        )
+
+        # Should be ~30 days from now, not ~29 days 23 hours ago + 30 days.
+        expected = datetime.now(timezone.utc) + extension
+        assert abs((new_expires - expected).total_seconds()) < 5
+
+    def test_set_expiration_rejects_past_timestamp(self, authz):
+        """set_expiration rejects timestamps in the past."""
+        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        with pytest.raises(CheckViolationError) as exc_info:
+            authz.set_expiration(
+                "read",
+                resource=("doc", "1"),
+                subject=("user", "alice"),
+                expires_at=past,
+            )
+        assert exc_info.value.error_code == AuthzErrorCode.VAL_EXPIRATION_FUTURE
 
 
 class TestExpirationWithBatchOperations:

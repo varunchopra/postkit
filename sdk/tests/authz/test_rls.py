@@ -1,7 +1,8 @@
-"""Row-Level Security tests.
+"""Row-Level Security tests for the authz module.
 
 RLS is enforced for non-superuser roles only. These tests create a
-separate role to verify RLS policies work correctly.
+separate role to verify RLS policies work correctly, including
+tenant context recovery after commits and in autocommit mode.
 """
 
 import psycopg
@@ -9,57 +10,35 @@ import pytest
 from postkit.authz import AuthzClient, AuthzError
 
 from tests.authz.helpers import cleanup_namespace
+from tests.helpers import connect_as_rls_user, ensure_rls_role
 
 
-class TestRowLevelSecurity:
-    """Verify RLS enforces tenant isolation."""
+class TestAuthzRowLevelSecurity:
+    """Verify RLS enforces tenant isolation for authz tables."""
 
     @pytest.fixture
     def rls_connection(self, db_connection):
-        """Create a non-superuser role for RLS testing."""
-        # Create role if not exists (superuser connection)
-        db_connection.execute(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rls_test_user') THEN
-                    CREATE ROLE rls_test_user LOGIN PASSWORD 'rls_test_pass';
-                END IF;
-            END $$;
+        """Non-superuser connection for RLS testing.
+
+        Uses autocommit=False because tenant context is transaction-local.
         """
-        )
-        db_connection.execute("GRANT USAGE ON SCHEMA authz TO rls_test_user")
-        db_connection.execute(
-            "GRANT ALL ON ALL TABLES IN SCHEMA authz TO rls_test_user"
-        )
-        db_connection.execute(
-            "GRANT ALL ON ALL SEQUENCES IN SCHEMA authz TO rls_test_user"
-        )
-        db_connection.execute(
-            "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA authz TO rls_test_user"
-        )
-
-        # Connect as the non-superuser (use same host/port as db_connection)
-        # Use autocommit=False because tenant context is transaction-local
-        info = db_connection.info
-        conn = psycopg.connect(
-            host=info.host,
-            port=info.port,
-            dbname=info.dbname,
-            user="rls_test_user",
-            password="rls_test_pass",
-            autocommit=False,
-        )
-
+        ensure_rls_role(db_connection, "authz")
+        conn = connect_as_rls_user(db_connection, "authz", autocommit=False)
         yield conn
-
         conn.close()
 
     @pytest.fixture(autouse=True)
     def cleanup(self, db_connection):
         """Remove test data after each test via superuser (bypasses RLS)."""
         yield
-        for ns in ("tenant-a", "tenant-b", "org-a", "org-b"):
+        for ns in (
+            "tenant-a",
+            "tenant-b",
+            "org-a",
+            "org-b",
+            "rls_commit",
+            "rls_autocommit",
+        ):
             cleanup_namespace(db_connection, ns)
 
     def test_no_tenant_returns_empty(self, rls_connection):
@@ -155,6 +134,49 @@ class TestRowLevelSecurity:
         # Filter to tenant-a events (should be none visible)
         cursor.execute("SELECT * FROM authz.audit_events WHERE namespace = 'tenant-a'")
         assert cursor.fetchall() == []
+
+    def test_context_survives_commit(self, rls_connection):
+        """SDK operations work after an explicit commit.
+
+        This is the core regression test. Before the fix, set_tenant was
+        called once in __init__ with is_local=true. After commit, the
+        transaction-local setting was gone and subsequent operations saw
+        an empty tenant_id, causing RLS to silently block everything.
+        """
+        cursor = rls_connection.cursor()
+        authz = AuthzClient(cursor, "rls_commit")
+
+        # First operation within the __init__ transaction.
+        authz.grant("read", resource=("doc", "commit-test"), subject=("user", "alice"))
+
+        rls_connection.commit()
+
+        # After commit, tenant context is gone at the PostgreSQL level.
+        # The SDK must re-apply it for subsequent operations.
+        has_permission = authz.check(("user", "alice"), "read", ("doc", "commit-test"))
+        assert has_permission is True
+
+    def test_autocommit_mode(self, db_connection):
+        """Each autocommit statement is its own transaction — context must be re-applied.
+
+        In autocommit mode, __init__'s set_tenant call commits immediately.
+        Every subsequent SDK call starts a fresh transaction with no tenant
+        context. The SDK must re-apply tenant context per operation.
+        """
+        ensure_rls_role(db_connection, "authz")
+        conn = connect_as_rls_user(db_connection, "authz", autocommit=True)
+        try:
+            cursor = conn.cursor()
+            authz = AuthzClient(cursor, "rls_autocommit")
+
+            # grant runs in a separate implicit transaction from __init__.
+            authz.grant("read", resource=("doc", "auto-test"), subject=("user", "bob"))
+
+            # Read operations also work.
+            has_permission = authz.check(("user", "bob"), "read", ("doc", "auto-test"))
+            assert has_permission is True
+        finally:
+            conn.close()
 
     def test_set_tenant_clears_on_commit(self, rls_connection):
         """Tenant context is transaction-local and clears on commit."""

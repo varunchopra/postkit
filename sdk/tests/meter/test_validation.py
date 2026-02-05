@@ -5,7 +5,6 @@ from datetime import date
 import pytest
 from postkit.meter import MeterError, MeterErrorCode, MeterValidationError
 from tests.helpers import (
-    INVALID_NAMESPACES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
 )
@@ -18,11 +17,6 @@ class TestNamespaceValidation:
         for ns in VALID_NAMESPACES:
             client = make_meter(ns)
             client.allocate("user-1", "api.calls", 100, "credits")
-
-    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
-    def test_rejects_invalid_namespace(self, make_meter, ns):
-        with pytest.raises(MeterError):
-            make_meter(ns)
 
 
 class TestFieldLimits:
@@ -41,6 +35,24 @@ class TestFieldLimits:
         with pytest.raises(MeterError) as exc_info:
             meter.allocate("user", "event", 100, "a" * 65)
         assert exc_info.value.error_code == MeterErrorCode.VAL_UNIT_TOO_LONG
+
+    def test_event_type_null_rejected(self, meter):
+        """event_type=None triggers VAL_EVENT_TYPE_NULL."""
+        with pytest.raises(MeterValidationError) as exc_info:
+            meter.allocate("user", None, 100, "unit")  # type: ignore[arg-type]
+        assert exc_info.value.error_code == MeterErrorCode.VAL_EVENT_TYPE_NULL
+
+    def test_unit_null_rejected(self, meter):
+        """unit=None triggers VAL_UNIT_NULL."""
+        with pytest.raises(MeterValidationError) as exc_info:
+            meter.allocate("user", "event", 100, None)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == MeterErrorCode.VAL_UNIT_NULL
+
+    def test_unit_empty_rejected(self, meter):
+        """Empty unit triggers VAL_UNIT_EMPTY."""
+        with pytest.raises(MeterValidationError) as exc_info:
+            meter.allocate("user", "event", 100, "")
+        assert exc_info.value.error_code == MeterErrorCode.VAL_UNIT_EMPTY
 
 
 class TestValidationErrorType:

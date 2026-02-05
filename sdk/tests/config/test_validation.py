@@ -4,7 +4,6 @@ import pytest
 from postkit.config import ConfigError, ConfigErrorCode, ConfigValidationError
 
 from tests.helpers import (
-    INVALID_NAMESPACES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
 )
@@ -18,11 +17,6 @@ class TestNamespaceValidation:
             client = make_config(ns)
             client.set("test.key", "value")
             assert client.get("test.key") is not None
-
-    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
-    def test_rejects_invalid_namespace(self, make_config, ns):
-        with pytest.raises(ConfigError):
-            make_config(ns)
 
 
 class TestValidationErrorType:

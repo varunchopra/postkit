@@ -13,6 +13,7 @@ from tests.helpers import (
     assert_partition_create,
     assert_partition_idempotent,
     assert_partition_rejects_invalid_month,
+    assert_partition_rejects_invalid_year,
     cleanup_partition,
 )
 
@@ -31,6 +32,10 @@ class TestCreateAuditPartition:
     def test_validates_month_bounds(self, test_helpers):
         """Month must be between 1 and 12."""
         assert_partition_rejects_invalid_month(test_helpers.cursor, "authn")
+
+    def test_validates_year_bounds(self, test_helpers):
+        """Year must be between 1970 and 9999."""
+        assert_partition_rejects_invalid_year(test_helpers.cursor, "authn")
 
     def test_partition_name_format(self, test_helpers):
         """Partition names use zero-padded year and month."""
@@ -440,29 +445,17 @@ class TestAuditPagination:
 
         # Get filtered events with pagination
         first_page = authn.get_audit_events(event_type="user_created", limit=2)
+        assert len(first_page) == 2
 
-        if len(first_page) == 2:
-            # Use opaque cursor
-            second_page = authn.get_audit_events(
-                event_type="user_created", limit=2, before=first_page[-1]["cursor"]
-            )
+        # Use opaque cursor
+        second_page = authn.get_audit_events(
+            event_type="user_created", limit=2, before=first_page[-1]["cursor"]
+        )
 
-            # Pages should not overlap
-            first_ids = {e["id"] for e in first_page}
-            second_ids = {e["id"] for e in second_page}
-            assert first_ids.isdisjoint(second_ids)
-
-    def test_events_include_cursor_field(self, authn):
-        """Events include opaque cursor field for pagination."""
-        authn.create_user("cursor-test@example.com", "hash")
-
-        events = authn.get_audit_events(limit=1)
-
-        assert len(events) >= 1
-        assert "cursor" in events[0]
-        # Cursor should be a non-empty string (opaque)
-        assert isinstance(events[0]["cursor"], str)
-        assert len(events[0]["cursor"]) > 0
+        # Pages should not overlap
+        first_ids = {e["id"] for e in first_page}
+        second_ids = {e["id"] for e in second_page}
+        assert first_ids.isdisjoint(second_ids)
 
     def test_invalid_cursor_raises_error(self, authn):
         """Invalid cursor raises clear error."""

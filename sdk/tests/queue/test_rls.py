@@ -9,45 +9,8 @@ import psycopg
 import pytest
 from postkit.queue import QueueClient
 
+from tests.helpers import connect_as_rls_user, ensure_rls_role
 from tests.queue.helpers import cleanup_namespace
-
-
-def _ensure_rls_role(db_connection):
-    """Create the non-superuser role and grant queue schema access.
-
-    Idempotent — safe to call multiple times per session.
-    """
-    db_connection.execute(
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'queue_rls_user') THEN
-                CREATE ROLE queue_rls_user LOGIN PASSWORD 'queue_rls_pass';
-            END IF;
-        END $$;
-    """
-    )
-    db_connection.execute("GRANT USAGE ON SCHEMA queue TO queue_rls_user")
-    db_connection.execute("GRANT ALL ON ALL TABLES IN SCHEMA queue TO queue_rls_user")
-    db_connection.execute(
-        "GRANT ALL ON ALL SEQUENCES IN SCHEMA queue TO queue_rls_user"
-    )
-    db_connection.execute(
-        "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA queue TO queue_rls_user"
-    )
-
-
-def _connect_as_rls_user(db_connection, *, autocommit: bool = False):
-    """Connect to the same database as a non-superuser."""
-    info = db_connection.info
-    return psycopg.connect(
-        host=info.host,
-        port=info.port,
-        dbname=info.dbname,
-        user="queue_rls_user",
-        password="queue_rls_pass",
-        autocommit=autocommit,
-    )
 
 
 class TestQueueRowLevelSecurity:
@@ -59,9 +22,8 @@ class TestQueueRowLevelSecurity:
 
         Uses autocommit=False because tenant context is transaction-local.
         """
-        _ensure_rls_role(db_connection)
-
-        conn = _connect_as_rls_user(db_connection, autocommit=False)
+        ensure_rls_role(db_connection, "queue")
+        conn = connect_as_rls_user(db_connection, "queue", autocommit=False)
         yield conn
         conn.close()
 
@@ -151,8 +113,8 @@ class TestQueueRowLevelSecurity:
         Every subsequent SDK call starts a fresh transaction with no tenant
         context. The SDK must re-apply tenant context per operation.
         """
-        _ensure_rls_role(db_connection)
-        conn = _connect_as_rls_user(db_connection, autocommit=True)
+        ensure_rls_role(db_connection, "queue")
+        conn = connect_as_rls_user(db_connection, "queue", autocommit=True)
         try:
             cursor = conn.cursor()
             q = QueueClient(cursor, "rls_autocommit")

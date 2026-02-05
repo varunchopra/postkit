@@ -51,6 +51,24 @@ class TestSet:
         assert config.get_value("settings/count") == 42
         assert config.get_value("settings/name") == "acme"
 
+    def test_validates_key_not_null(self, config):
+        """Null key is rejected."""
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.set(None, {"v": 1})
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEY_NULL
+
+    def test_validates_key_not_empty(self, config):
+        """Empty key is rejected."""
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.set("", {"v": 1})
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEY_EMPTY
+
+    def test_validates_key_max_length(self, config):
+        """Key exceeding 1024 characters is rejected."""
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.set("a" * 1025, {"v": 1})
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEY_TOO_LONG
+
     def test_validates_key_format(self, config):
         """Invalid key formats are rejected."""
         with pytest.raises(ConfigValidationError) as exc_info:

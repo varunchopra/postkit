@@ -5,7 +5,6 @@ import pytest
 from postkit.authn import AuthnError, AuthnErrorCode, AuthnValidationError
 
 from tests.helpers import (
-    INVALID_NAMESPACES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
 )
@@ -26,24 +25,40 @@ class TestEmailValidation:
             assert user_id is not None
 
     def test_rejects_null(self, authn):
-        with pytest.raises(AuthnError):
+        """Null email is rejected."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user(None, "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_NULL
 
     def test_rejects_empty(self, authn):
-        with pytest.raises(AuthnError):
+        """Empty email is rejected."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("", "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_EMPTY
 
     def test_rejects_whitespace_only(self, authn):
-        with pytest.raises(AuthnError):
+        """Whitespace-only email is rejected as empty after trim."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("   ", "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_EMPTY
 
     def test_rejects_no_at_sign(self, authn):
-        with pytest.raises(AuthnError):
+        """Email without @ sign has invalid format."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("no-at-sign", "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_INVALID_FORMAT
 
     def test_rejects_spaces(self, authn):
-        with pytest.raises(AuthnError):
+        """Email with spaces has invalid format."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("has space@example.com", "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_INVALID_FORMAT
+
+    def test_rejects_control_chars(self, authn):
+        """Emails with control characters are rejected."""
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.create_user("user\x01@example.com", "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_INVALID_CHARS
 
     def test_normalizes_to_lowercase(self, authn):
         user_id = authn.create_user("UPPER@EXAMPLE.COM", "hash")
@@ -69,17 +84,29 @@ class TestHashValidation:
         assert user_id is not None
 
     def test_rejects_empty_password(self, authn):
-        with pytest.raises(AuthnError):
+        """Empty password hash is rejected."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("alice@example.com", "")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_HASH_EMPTY
 
     def test_rejects_whitespace_only_password(self, authn):
-        with pytest.raises(AuthnError):
+        """Whitespace-only password hash is rejected as empty after trim."""
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("alice@example.com", "   ")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_HASH_EMPTY
 
     def test_rejects_empty_token_hash(self, authn):
+        """Empty token hash is rejected."""
         user_id = authn.create_user("alice@example.com", "hash")
-        with pytest.raises(AuthnError):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_session(user_id, "")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_HASH_EMPTY
+
+    def test_rejects_control_chars(self, authn):
+        """Password hashes with control characters are rejected."""
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.create_user("alice@example.com", "hash\x01value")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_HASH_INVALID_CHARS
 
 
 class TestTokenTypeValidation:
@@ -93,10 +120,20 @@ class TestTokenTypeValidation:
             assert token_id is not None
 
     def test_rejects_invalid_type(self, authn):
+        """Invalid token type is rejected."""
         user_id = authn.create_user("alice@example.com", "hash")
 
-        with pytest.raises(AuthnError):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_token(user_id, "hash", "invalid_type")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_TOKEN_TYPE_INVALID
+
+    def test_rejects_null_type(self, authn):
+        """Null token type is rejected."""
+        user_id = authn.create_user("alice@example.com", "hash")
+
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.create_token(user_id, "hash", None)
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_TOKEN_TYPE_NULL
 
 
 class TestCredentialTypeValidation:
@@ -117,10 +154,20 @@ class TestCredentialTypeValidation:
             assert cred_id is not None
 
     def test_rejects_invalid_type(self, authn):
+        """Invalid credential type is rejected."""
         user_id = authn.create_user("alice@example.com", "hash")
 
-        with pytest.raises(AuthnError):
+        with pytest.raises(AuthnValidationError) as exc_info:
             authn.add_credential(user_id, "invalid_type", secret_data="secret")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_CREDENTIAL_TYPE_INVALID
+
+    def test_rejects_null_type(self, authn):
+        """Null credential type is rejected."""
+        user_id = authn.create_user("alice@example.com", "hash")
+
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.add_credential(user_id, None, secret_data="secret")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_CREDENTIAL_TYPE_NULL
 
 
 class TestNamespaceValidation:
@@ -131,11 +178,6 @@ class TestNamespaceValidation:
             client = make_authn(ns)
             user_id = client.create_user("test@example.com", "hash")
             assert user_id is not None
-
-    @pytest.mark.parametrize("ns", INVALID_NAMESPACES)
-    def test_rejects_invalid_namespace(self, make_authn, ns):
-        with pytest.raises(AuthnError):
-            make_authn(ns)
 
 
 class TestEmailEdgeCases:
