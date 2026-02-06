@@ -187,7 +187,9 @@ class TestSaaSAuthentication:
 
         # 6. Extend session
         # Alice checks "keep me logged in" on her laptop.
-        authn.extend_session(session["token_hash"], timedelta(days=30))
+        assert (
+            authn.extend_session(session["token_hash"], timedelta(days=30)) is not None
+        )
 
         # 7. Logout
         # Alice logs out from her phone.
@@ -245,7 +247,7 @@ class TestSaaSAuthentication:
         assert acme.login("bob@company.com", "secure-password-123") is None
 
         # Admin clears the lockout after verifying it's really Bob
-        authn.clear_attempts("bob@company.com")
+        assert authn.clear_attempts("bob@company.com") == 5
         assert acme.login("bob@company.com", "secure-password-123") is not None
 
         # 2. Credential setup (TOTP)
@@ -283,7 +285,7 @@ class TestSaaSAuthentication:
 
         # Admin disables Dave's account
         authn.set_actor("admin@company.com", request_id="offboarding-dave")
-        authn.disable_user(dave_id)
+        assert authn.disable_user(dave_id)
         authn.clear_actor()
 
         # Dave's session is immediately revoked
@@ -299,5 +301,5 @@ class TestSaaSAuthentication:
         assert disable_event["request_id"] == "offboarding-dave"
 
         # Oops, Dave was just on leave. Admin re-enables.
-        authn.enable_user(dave_id)
+        assert authn.enable_user(dave_id)
         assert acme.login("dave@company.com", "password") is not None

@@ -156,6 +156,23 @@ class AuthnTestHelpers:
         )
         return str(self.cursor.fetchone()[0])
 
+    def insert_expired_api_key(
+        self,
+        user_id: str,
+        key_hash: str,
+        expired_ago: timedelta = timedelta(hours=1),
+    ) -> str:
+        """Insert an already-expired API key for testing."""
+        self.cursor.execute(
+            """
+            INSERT INTO authn.api_keys (namespace, user_id, key_hash, expires_at)
+            VALUES (%s, %s::uuid, %s, now() - %s)
+            RETURNING id
+            """,
+            (self.namespace, user_id, key_hash, expired_ago),
+        )
+        return str(self.cursor.fetchone()[0])
+
     def count_refresh_tokens(self, user_id: str | None = None) -> int:
         """Count refresh tokens, optionally filtered by user."""
         if user_id:

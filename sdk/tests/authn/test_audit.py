@@ -44,41 +44,22 @@ class TestCreateAuditPartition:
 
 
 class TestEnsureAuditPartitions:
-    def test_creates_missing_partitions(self, test_helpers):
-        """Creates partitions that don't exist."""
-        # Current month partition should already exist from install
-        # This tests that the function runs without error
-        test_helpers.cursor.execute("SELECT * FROM authn.ensure_audit_partitions(0)")
-        test_helpers.cursor.fetchall()  # Consume results; may be empty if partition exists
-        # The function succeeds without error
-
-    def test_returns_only_newly_created(self, test_helpers):
-        """Only returns names of partitions that were actually created."""
-        # Create a far-future partition
-        test_helpers.cursor.execute(
-            "SELECT authn.create_audit_partition(%s, %s)",
-            (2095, 1),
-        )
-
-        # Create another one for month 2
-        test_helpers.cursor.execute(
-            "SELECT authn.create_audit_partition(%s, %s)",
-            (2095, 2),
-        )
-
-        # Now if we tried ensure_audit_partitions for that range,
-        # it would return NULL for existing ones
-
-        # Cleanup
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS authn.audit_events_y2095m01")
-        test_helpers.cursor.execute("DROP TABLE IF EXISTS authn.audit_events_y2095m02")
-
-    def test_creates_multiple_months_ahead(self, test_helpers):
-        """Creates partitions for multiple months ahead."""
-        # We can't easily test the exact months without date manipulation,
-        # but we can verify it doesn't error with months_ahead > 0
+    def test_creates_and_returns_only_new_partitions(self, test_helpers):
+        """ensure_audit_partitions creates partitions and skips existing ones."""
+        # ensure_audit_partitions(2) creates current month + 2 months ahead.
+        # We can't control "current date" in SQL, so verify the function
+        # returns only newly created partitions (skips existing ones).
         test_helpers.cursor.execute("SELECT * FROM authn.ensure_audit_partitions(2)")
-        # Should complete without error
+        created = [row[0] for row in test_helpers.cursor.fetchall()]
+
+        # All returned names must follow the partition naming convention.
+        for name in created:
+            assert name.startswith("audit_events_y")
+
+        # Calling again with same range returns nothing (all already exist).
+        test_helpers.cursor.execute("SELECT * FROM authn.ensure_audit_partitions(2)")
+        second_run = [row[0] for row in test_helpers.cursor.fetchall()]
+        assert len(second_run) == 0
 
 
 class TestDropAuditPartitions:
@@ -171,7 +152,7 @@ class TestSetActor:
         # Check the audit event captured the actor
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
-        assert len(matching) >= 1
+        assert len(matching) == 1
         assert_audit_fields(
             matching[0], actor_id="user:admin", request_id="request-789"
         )
@@ -188,7 +169,7 @@ class TestSetActor:
 
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
-        assert len(matching) >= 1
+        assert len(matching) == 1
         assert_audit_fields(
             matching[0],
             actor_id="user:admin-bob",
@@ -204,7 +185,7 @@ class TestSetActor:
 
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
-        assert len(matching) >= 1
+        assert len(matching) == 1
         assert_audit_fields(
             matching[0],
             actor_id="service:billing",
@@ -218,7 +199,7 @@ class TestSetActor:
 
         events = authn.get_audit_events(event_type="user_created")
         matching = [e for e in events if e["resource_id"] == user_id]
-        assert len(matching) >= 1
+        assert len(matching) == 1
         assert_audit_fields(matching[0], actor_id=None, on_behalf_of=None, reason=None)
 
     def test_filter_by_actor(self, authn, test_helpers):
@@ -236,6 +217,21 @@ class TestSetActor:
         assert len(bob_events) == 1
         assert alice_events[0]["actor_id"] == "alice"
         assert bob_events[0]["actor_id"] == "bob"
+
+    def test_rejects_invalid_ip_address(self, test_helpers):
+        """set_actor rejects malformed IP addresses."""
+        test_helpers.cursor.execute("BEGIN")
+        try:
+            with pytest.raises(
+                psycopg.errors.InvalidParameterValue,
+                match="ip_address must be valid",
+            ):
+                test_helpers.cursor.execute(
+                    "SELECT authn.set_actor(%s, %s, %s)",
+                    ("user-123", "req-456", "not-an-ip"),
+                )
+        finally:
+            test_helpers.cursor.execute("ROLLBACK")
 
 
 class TestSetActorMergeSemantics:

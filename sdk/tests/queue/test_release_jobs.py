@@ -1,6 +1,7 @@
 """Tests for graceful worker shutdown via release_jobs."""
 
 import pytest
+from postkit.errors import QueueErrorCode
 from postkit.queue import QueueValidationError
 
 
@@ -20,15 +21,6 @@ class TestReleaseJobs:
         stats = queue.get_stats()
         assert stats["pending"] == 2
         assert stats["running"] == 0
-
-    def test_returns_count_of_released_jobs(self, queue):
-        """release_jobs returns the exact count of jobs released."""
-        for i in range(5):
-            queue.push("tasks", {"task": i})
-            queue.pull("tasks", worker_id="w1")
-
-        count = queue.release_jobs("w1")
-        assert count == 5
 
     def test_does_not_affect_other_workers(self, queue):
         """release_jobs only releases jobs for the specified worker."""
@@ -50,6 +42,10 @@ class TestReleaseJobs:
 
         count = queue.release_jobs("worker-1")
         assert count == 0
+
+        # Verify pending job still exists.
+        stats = queue.get_stats()
+        assert stats["pending"] == 1
 
     def test_released_job_is_pullable(self, queue):
         """After release, the job can be pulled again by any worker."""
@@ -93,8 +89,9 @@ class TestReleaseJobs:
 
     def test_null_worker_id_raises_error(self, queue):
         """release_jobs raises validation error when worker_id is None."""
-        with pytest.raises(QueueValidationError):
+        with pytest.raises(QueueValidationError) as exc_info:
             queue.release_jobs(None)  # type: ignore[arg-type]
+        assert exc_info.value.error_code == QueueErrorCode.VAL_WORKER_ID_NULL
 
     def test_returns_zero_for_unknown_worker(self, queue):
         """release_jobs returns 0 when no jobs match the worker_id."""

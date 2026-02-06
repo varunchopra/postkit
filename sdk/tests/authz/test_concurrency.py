@@ -40,8 +40,8 @@ class TestWriteSerialization:
         barrier = threading.Barrier(2)
 
         def transaction_1():
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 cur.execute(
@@ -50,13 +50,14 @@ class TestWriteSerialization:
                 )
                 conn.commit()
                 results["t1_done"] = True
-                conn.close()
             except Exception as e:
                 results["errors"].append(f"T1: {e}")
+            finally:
+                conn.close()
 
         def transaction_2():
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 cur.execute(
@@ -65,9 +66,10 @@ class TestWriteSerialization:
                 )
                 conn.commit()
                 results["t2_done"] = True
-                conn.close()
             except Exception as e:
                 results["errors"].append(f"T2: {e}")
+            finally:
+                conn.close()
 
         t1 = threading.Thread(target=transaction_1)
         t2 = threading.Thread(target=transaction_2)
@@ -104,8 +106,8 @@ class TestWriteSerialization:
         barrier = threading.Barrier(num_users)
 
         def grant_to_user(user_id):
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 cur.execute(
@@ -115,10 +117,11 @@ class TestWriteSerialization:
                 conn.commit()
                 with results_lock:
                     results["completed"] += 1
-                conn.close()
             except Exception as e:
                 with results_lock:
                     results["errors"].append(f"User {user_id}: {e}")
+            finally:
+                conn.close()
 
         threads = [
             threading.Thread(target=grant_to_user, args=(f"user-{i}",))
@@ -160,8 +163,8 @@ class TestNamespaceIsolation:
         barrier = threading.Barrier(2)
 
         def write_to_namespace(ns, thread_id):
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 results["start_times"][thread_id] = time.time()
@@ -173,9 +176,10 @@ class TestNamespaceIsolation:
                 cur.execute("SELECT pg_sleep(0.05)")
                 conn.commit()
                 results["end_times"][thread_id] = time.time()
-                conn.close()
             except Exception as e:
                 results["errors"].append(f"{thread_id}: {e}")
+            finally:
+                conn.close()
 
         t1 = threading.Thread(target=write_to_namespace, args=(ns1, "T1"))
         t2 = threading.Thread(target=write_to_namespace, args=(ns2, "T2"))
@@ -204,7 +208,7 @@ class TestNamespaceIsolation:
 class TestConcurrentHierarchyChanges:
     """Test hierarchy changes concurrent with tuple writes."""
 
-    def test_hierarchy_change_during_writes(self, make_authz):
+    def test_hierarchy_change_during_writes(self, make_authz, db_connection):
         """Hierarchy change while writes are happening stays consistent."""
         namespace = "test_concurrent_hierarchy"
         make_authz(namespace)
@@ -214,8 +218,8 @@ class TestConcurrentHierarchyChanges:
         barrier = threading.Barrier(3)
 
         def write_tuples(thread_id):
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 for i in range(20):
@@ -224,14 +228,15 @@ class TestConcurrentHierarchyChanges:
                         (f"doc-{thread_id}-{i}", namespace),
                     )
                     conn.commit()
-                conn.close()
             except Exception as e:
                 with results_lock:
                     results["errors"].append(f"writer-{thread_id}: {e}")
+            finally:
+                conn.close()
 
         def modify_hierarchy():
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 # Add, then remove, then add again
@@ -247,10 +252,11 @@ class TestConcurrentHierarchyChanges:
                         (namespace,),
                     )
                     conn.commit()
-                conn.close()
             except Exception as e:
                 with results_lock:
                     results["errors"].append(f"hierarchy: {e}")
+            finally:
+                conn.close()
 
         threads = [
             threading.Thread(target=write_tuples, args=(1,)),
@@ -263,6 +269,22 @@ class TestConcurrentHierarchyChanges:
             t.join()
 
         assert not results["errors"], f"Errors: {results['errors']}"
+
+        # Verify all 40 tuples were created (2 writers × 20 each)
+        cursor = db_connection.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM authz.tuples WHERE namespace = %s AND resource_type = 'doc'",
+            (namespace,),
+        )
+        count = cursor.fetchone()[0]
+        assert count == 40, f"Expected 40 tuples, got {count}"
+
+        # Verify tuples are queryable (lazy evaluation works)
+        cursor.execute(
+            "SELECT authz.check('user', 'alice', 'admin', 'doc', 'doc-1-0', %s)",
+            (namespace,),
+        )
+        assert cursor.fetchone()[0], "alice should have admin on doc-1-0"
 
 
 class TestConcurrentCyclePrevention:
@@ -293,8 +315,8 @@ class TestConcurrentCyclePrevention:
         barrier = threading.Barrier(2)
 
         def transaction_1():
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 cur.execute(
@@ -303,13 +325,14 @@ class TestConcurrentCyclePrevention:
                 )
                 conn.commit()
                 results["t1_success"] = True
-                conn.close()
             except Exception as e:
                 results["t1_error"] = str(e)
+            finally:
+                conn.close()
 
         def transaction_2():
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 cur.execute(
@@ -318,9 +341,87 @@ class TestConcurrentCyclePrevention:
                 )
                 conn.commit()
                 results["t2_success"] = True
-                conn.close()
             except Exception as e:
                 results["t2_error"] = str(e)
+            finally:
+                conn.close()
+
+        t1 = threading.Thread(target=transaction_1)
+        t2 = threading.Thread(target=transaction_2)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Exactly one should succeed, one should fail with cycle error
+        successes = sum([results["t1_success"], results["t2_success"]])
+        assert successes == 1, (
+            f"Expected exactly 1 success, got {successes}. "
+            f"T1: success={results['t1_success']}, error={results['t1_error']}. "
+            f"T2: success={results['t2_success']}, error={results['t2_error']}"
+        )
+
+        # The failure should be a cycle error
+        error = results["t1_error"] or results["t2_error"]
+        assert "circular" in error.lower(), f"Expected cycle error, got: {error}"
+
+        # Cleanup
+        cursor.execute("DELETE FROM authz.tuples WHERE namespace = %s", (namespace,))
+
+    def test_concurrent_parent_cycle_one_rejected(self, db_connection):
+        """
+        Two concurrent transactions cannot both create edges that form a parent cycle.
+
+        Scenario:
+        T1: write_tuple('folder', 'B', 'parent', 'folder', 'A')  -- A is parent of B
+        T2: write_tuple('folder', 'A', 'parent', 'folder', 'B')  -- B is parent of A
+
+        Only ONE should succeed. The other should be rejected by cycle detection.
+        """
+        namespace = "test_concurrent_parent_cycle"
+
+        cursor = db_connection.cursor()
+        cursor.execute("DELETE FROM authz.tuples WHERE namespace = %s", (namespace,))
+
+        results = {
+            "t1_success": False,
+            "t2_success": False,
+            "t1_error": None,
+            "t2_error": None,
+        }
+        barrier = threading.Barrier(2)
+
+        def transaction_1():
+            conn = psycopg.connect(DATABASE_URL)
+            try:
+                cur = conn.cursor()
+                barrier.wait()
+                cur.execute(
+                    "SELECT authz.write_tuple('folder', 'B', 'parent', 'folder', 'A', NULL, %s)",
+                    (namespace,),
+                )
+                conn.commit()
+                results["t1_success"] = True
+            except Exception as e:
+                results["t1_error"] = str(e)
+            finally:
+                conn.close()
+
+        def transaction_2():
+            conn = psycopg.connect(DATABASE_URL)
+            try:
+                cur = conn.cursor()
+                barrier.wait()
+                cur.execute(
+                    "SELECT authz.write_tuple('folder', 'A', 'parent', 'folder', 'B', NULL, %s)",
+                    (namespace,),
+                )
+                conn.commit()
+                results["t2_success"] = True
+            except Exception as e:
+                results["t2_error"] = str(e)
+            finally:
+                conn.close()
 
         t1 = threading.Thread(target=transaction_1)
         t2 = threading.Thread(target=transaction_2)
@@ -367,8 +468,8 @@ class TestConcurrentCyclePrevention:
 
         def attempt_cycle_edge(i):
             """Each thread tries to create one edge of a potential cycle."""
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 # Alternate direction to create potential cycles
                 if i % 2 == 0:
@@ -384,13 +485,14 @@ class TestConcurrentCyclePrevention:
                 conn.commit()
                 with lock:
                     results["successes"] += 1
-                conn.close()
             except Exception as e:
                 with lock:
                     if "circular" in str(e).lower():
                         results["cycle_errors"] += 1
                     else:
                         results["other_errors"].append(str(e))
+            finally:
+                conn.close()
 
         threads = [
             threading.Thread(target=attempt_cycle_edge, args=(i,))
@@ -433,8 +535,8 @@ class TestConcurrentIdempotency:
         lock = threading.Lock()
 
         def grant_same_permission(thread_id):
+            conn = psycopg.connect(DATABASE_URL)
             try:
-                conn = psycopg.connect(DATABASE_URL)
                 cur = conn.cursor()
                 barrier.wait()
                 cur.execute(
@@ -445,10 +547,11 @@ class TestConcurrentIdempotency:
                 conn.commit()
                 with lock:
                     results["ids"].append(tuple_id)
-                conn.close()
             except Exception as e:
                 with lock:
                     results["errors"].append(str(e))
+            finally:
+                conn.close()
 
         threads = [
             threading.Thread(target=grant_same_permission, args=(i,)) for i in range(5)

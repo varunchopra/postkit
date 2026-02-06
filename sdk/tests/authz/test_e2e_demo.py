@@ -42,10 +42,6 @@ class AcmeAuthz:
         """Add a user to a team."""
         self.client.grant("member", resource=("team", team), subject=("user", user))
 
-    def remove_from_team(self, user: str, team: str):
-        """Remove a user from a team."""
-        self.client.revoke("member", resource=("team", team), subject=("user", user))
-
     def team_owns(self, team: str, resource: tuple, permission: str = "admin"):
         """Grant a team ownership (or other permission) on a resource."""
         self.client.grant(permission, resource=resource, subject=("team", team))
@@ -109,14 +105,17 @@ class TestInternalDevPlatform:
             ("user", "alice"), "write", ("repo", "payments-api")
         )
 
-        assert len(explanations) > 0
+        assert len(explanations) == 1
         assert any("HIERARCHY" in exp for exp in explanations)
 
         # 5. Dynamic grant: On-call incident access
         # It's 3am. Incident! Alice is on-call and needs write access.
         # This is a direct grant, not via team.
-        authz.grant(
-            "write", resource=("incident", "inc-123"), subject=("user", "alice")
+        assert (
+            authz.grant(
+                "write", resource=("incident", "inc-123"), subject=("user", "alice")
+            )
+            > 0
         )
 
         assert authz.check(("user", "alice"), "write", ("incident", "inc-123"))
@@ -125,8 +124,11 @@ class TestInternalDevPlatform:
         # 6. Contractor access
         # Charlie is a contractor who needs to review the code.
         # Direct grant, not team membership.
-        authz.grant(
-            "read", resource=("repo", "payments-api"), subject=("user", "charlie")
+        assert (
+            authz.grant(
+                "read", resource=("repo", "payments-api"), subject=("user", "charlie")
+            )
+            > 0
         )
 
         assert authz.check(("user", "charlie"), "read", ("repo", "payments-api"))
@@ -135,21 +137,23 @@ class TestInternalDevPlatform:
         # 7. List operations
         # Security review: who has access? what can someone access?
         subjects = authz.list_subjects("read", ("repo", "payments-api"))
+        assert len(subjects) == 3
         assert ("user", "alice") in subjects
         assert ("user", "bob") in subjects
         assert ("user", "charlie") in subjects
 
         repos = authz.list_resources(("user", "alice"), "repo", "read")
+        assert len(repos) == 1
         assert "payments-api" in repos
 
         # 8. Revoke
         # Incident resolved. Contractor done. Clean up access.
-        authz.revoke(
+        assert authz.revoke(
             "write", resource=("incident", "inc-123"), subject=("user", "alice")
         )
         assert not authz.check(("user", "alice"), "write", ("incident", "inc-123"))
 
-        authz.revoke(
+        assert authz.revoke(
             "read", resource=("repo", "payments-api"), subject=("user", "charlie")
         )
         assert not authz.check(("user", "charlie"), "read", ("repo", "payments-api"))

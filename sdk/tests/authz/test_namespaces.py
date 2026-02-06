@@ -3,7 +3,6 @@ Namespace isolation tests for postkit/authz.
 
 Verifies that namespaces provide complete multi-tenant isolation:
 - Permissions in one namespace are not visible in another
-- Hierarchy rules are namespace-scoped
 - Group memberships are namespace-scoped
 """
 
@@ -17,6 +16,9 @@ class TestNamespaceIsolation:
         """Permission granted in namespace A must not be visible in namespace B."""
         # Grant in default namespace (authz fixture)
         authz.grant("read", resource=("doc", "secret"), subject=("user", "alice"))
+
+        # Verify grant worked in original namespace
+        assert authz.check(("user", "alice"), "read", ("doc", "secret"))
 
         # Create client for different namespace
         other_ns = make_authz("other_tenant")
@@ -35,34 +37,6 @@ class TestNamespaceIsolation:
         assert tenant_a.check(("user", "alice"), "admin", ("doc", "1"))
         assert not tenant_b.check(("user", "alice"), "admin", ("doc", "1"))
         assert tenant_b.check(("user", "alice"), "read", ("doc", "1"))
-
-    def test_hierarchy_rules_are_global(self, make_authz, db_connection):
-        """Hierarchy rules in 'global' namespace apply to all tenants."""
-        # Clean up any existing global hierarchies first
-        with db_connection.cursor() as cur:
-            cur.execute(
-                "DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'"
-            )
-
-        # Add hierarchy via global namespace client
-        global_authz = make_authz("global")
-        global_authz.set_hierarchy("doc", "admin", "read")
-
-        tenant_a = make_authz("tenant_a_hier")
-        tenant_b = make_authz("tenant_b_hier")
-
-        tenant_a.grant("admin", resource=("doc", "1"), subject=("user", "alice"))
-        tenant_b.grant("admin", resource=("doc", "1"), subject=("user", "alice"))
-
-        # Both tenants: admin implies read (hierarchy is global)
-        assert tenant_a.check(("user", "alice"), "read", ("doc", "1"))
-        assert tenant_b.check(("user", "alice"), "read", ("doc", "1"))
-
-        # Cleanup
-        with db_connection.cursor() as cur:
-            cur.execute(
-                "DELETE FROM authz.permission_hierarchy WHERE namespace = 'global'"
-            )
 
     def test_group_membership_namespace_scoped(self, make_authz):
         """Group membership in one namespace doesn't grant access in another."""

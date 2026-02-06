@@ -94,7 +94,9 @@ class AuthzClient(BaseClient):
         """
         self._viewer = subject
         subject_type, subject_id = subject
-        # Store both type and id for RLS policy
+        # Session-scoped (false) is intentional. Unlike tenant context (transaction-local),
+        # viewer context is set outside _with_context() and must survive into the query's
+        # transaction. Call clear_viewer() before returning pooled connections.
         self.cursor.execute(
             "SELECT set_config('authz.viewer_type', %s, false), "
             "set_config('authz.viewer_id', %s, false)",

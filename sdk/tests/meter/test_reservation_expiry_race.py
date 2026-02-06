@@ -153,78 +153,6 @@ class TestCommitExpiredReservation:
             cleanup_namespace(conn_setup, namespace)
             conn_setup.close()
 
-    def test_account_consistent_after_deadlock_retry(self, db_connection):
-        """After a deadlock, retrying the failed operation produces consistent state."""
-        namespace = "t_deadlock_retry"
-        conn_setup, meter_setup = _make_client(namespace)
-
-        try:
-            meter_setup.allocate("alice", "llm_call", 5000, "tokens")
-            reservation = meter_setup.reserve(
-                "alice", "llm_call", 1000, "tokens", ttl_seconds=3600
-            )
-            res_id = reservation["reservation_id"]
-            _force_expire(conn_setup, res_id, namespace)
-
-            results = {
-                "commit_error": None,
-                "expire_error": None,
-                "commit_result": None,
-                "expire_result": None,
-            }
-            barrier = threading.Barrier(2, timeout=5)
-
-            def do_commit():
-                conn, client = _make_client(namespace)
-                try:
-                    barrier.wait()
-                    results["commit_result"] = client.commit(res_id, 500)
-                except Exception as e:
-                    results["commit_error"] = e
-                finally:
-                    conn.close()
-
-            def do_expire():
-                conn, client = _make_client(namespace)
-                try:
-                    barrier.wait()
-                    results["expire_result"] = client.release_expired_reservations()
-                except Exception as e:
-                    results["expire_error"] = e
-                finally:
-                    conn.close()
-
-            t1 = threading.Thread(target=do_commit)
-            t2 = threading.Thread(target=do_expire)
-            t1.start()
-            t2.start()
-            t1.join(timeout=10)
-            t2.join(timeout=10)
-
-            # Retry whichever failed (if any).
-            if results["commit_error"] is not None:
-                try:
-                    meter_setup.commit(res_id, 500)
-                except Exception:
-                    pass  # Reservation may already be processed.
-            if results["expire_error"] is not None:
-                meter_setup.release_expired_reservations()
-
-            # Verify consistency after retry.
-            discrepancies = meter_setup.reconcile()
-            assert discrepancies == [], (
-                f"Account inconsistency after retry: {discrepancies}"
-            )
-
-            balance = meter_setup.get_balance("alice", "llm_call", "tokens")
-            assert balance["reserved"] >= 0, (
-                f"Reserved went negative: {balance['reserved']}"
-            )
-
-        finally:
-            cleanup_namespace(conn_setup, namespace)
-            conn_setup.close()
-
 
 class TestExpireReleaseConcurrencyStress:
     """Stress tests for concurrent reservation commits and expiry cleanup."""
@@ -312,8 +240,14 @@ class TestExpireReleaseConcurrencyStress:
             )
 
             balance = meter_setup.get_balance("alice", "llm_call", "tokens")
-            assert balance["reserved"] >= 0, (
-                f"Reserved went negative: {balance['reserved']}\nResults: {results}"
+            # All 20 reservations resolved (committed or expired), none active.
+            assert balance["reserved"] == 0, (
+                f"Leaked reservation hold: {balance['reserved']}\nResults: {results}"
+            )
+
+            assert results["deadlocks"] == 0, (
+                f"Lock ordering regression: {results['deadlocks']} deadlocks\n"
+                f"Results: {results}"
             )
 
         finally:

@@ -488,7 +488,9 @@ def _extract_params(block: str) -> dict[str, str]:
 def _extract_examples(block: str) -> list[str]:
     """Extract @example tags from a doc block."""
     examples = []
-    for match in re.finditer(r"--\s*@example\s+(.+?)(?=--\s*@|\Z)", block, re.DOTALL):
+    for match in re.finditer(
+        r"--\s*@example\s+(.+?)(?=--\s*@|\n--\s*\n|\Z)", block, re.DOTALL
+    ):
         example = re.sub(r"\n--\s*", "\n", match.group(1).strip())
         examples.append(example.strip())
     return examples

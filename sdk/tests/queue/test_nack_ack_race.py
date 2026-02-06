@@ -62,12 +62,7 @@ class TestConcurrentFail:
         conn_setup, _ = _make_client(namespace)
 
         try:
-            duplicates_observed = False
-
             for attempt in range(10):
-                if duplicates_observed:
-                    break
-
                 job_id = _push_and_pull(conn_setup, namespace)
 
                 results: dict = {"fail1": None, "fail2": None}
@@ -96,9 +91,10 @@ class TestConcurrentFail:
                     "WHERE namespace = %s AND original_job_id = %s",
                     (namespace, job_id),
                 ).fetchone()[0]
-
-                if count > 1:
-                    duplicates_observed = True
+                assert count == 1, (
+                    f"Expected exactly 1 dead letter for job {job_id}, "
+                    f"got {count} (attempt {attempt})"
+                )
 
                 # Clean up for next attempt.
                 conn_setup.execute(
@@ -108,11 +104,6 @@ class TestConcurrentFail:
                 conn_setup.execute(
                     "DELETE FROM queue.jobs WHERE namespace = %s", (namespace,)
                 )
-
-            assert not duplicates_observed, (
-                "Race condition: concurrent fail() created duplicate "
-                "dead_letters entries."
-            )
 
         finally:
             _cleanup(conn_setup, namespace)
@@ -124,12 +115,7 @@ class TestConcurrentFail:
         conn_setup, _ = _make_client(namespace)
 
         try:
-            both_true_observed = False
-
             for attempt in range(10):
-                if both_true_observed:
-                    break
-
                 job_id = _push_and_pull(conn_setup, namespace)
 
                 results: dict = {"fail1": None, "fail2": None}
@@ -152,10 +138,12 @@ class TestConcurrentFail:
                 t1.join(timeout=10)
                 t2.join(timeout=10)
 
-                # At most one should return True.
+                # Exactly one should return True (winner), other False (loser).
                 true_count = sum(1 for v in results.values() if v is True)
-                if true_count > 1:
-                    both_true_observed = True
+                assert true_count == 1, (
+                    f"Expected exactly 1 True from concurrent fail(), "
+                    f"got {true_count}: {results} (attempt {attempt})"
+                )
 
                 # Clean up for next attempt.
                 conn_setup.execute(
@@ -165,10 +153,6 @@ class TestConcurrentFail:
                 conn_setup.execute(
                     "DELETE FROM queue.jobs WHERE namespace = %s", (namespace,)
                 )
-
-            assert not both_true_observed, (
-                "Race condition: both concurrent fail() calls returned True."
-            )
 
         finally:
             _cleanup(conn_setup, namespace)
@@ -188,15 +172,12 @@ class TestNackStatusGuard:
         conn_setup, _ = _make_client(namespace)
 
         try:
-            corruption_observed = False
+            fail_won_count = 0
 
             for attempt in range(10):
-                if corruption_observed:
-                    break
-
                 job_id = _push_and_pull(conn_setup, namespace)
 
-                results: dict = {"fail_result": None, "nack_error": None}
+                results: dict = {"fail_result": None}
                 barrier = threading.Barrier(2, timeout=5)
 
                 def do_fail():
@@ -214,8 +195,8 @@ class TestNackStatusGuard:
                     try:
                         barrier.wait()
                         client.nack(job_id, error="temporary")
-                    except Exception as e:
-                        results["nack_error"] = e
+                    except Exception:
+                        pass  # Expected: BIZ_JOB_NOT_RUNNING when fail wins
                     finally:
                         conn.close()
 
@@ -226,17 +207,20 @@ class TestNackStatusGuard:
                 t1.join(timeout=10)
                 t2.join(timeout=10)
 
-                # Verify state consistency: if fail returned True, job must be
-                # 'dead', not 'pending' (nack must not have overwritten it).
+                # If fail won the race, job must be 'dead' — nack must not
+                # have overwritten it back to 'pending'.
                 if results["fail_result"] is True:
+                    fail_won_count += 1
                     row = conn_setup.execute(
                         "SELECT status FROM queue.jobs "
                         "WHERE namespace = %s AND id = %s",
                         (namespace, job_id),
                     ).fetchone()
-
-                    if row and row[0] == "pending":
-                        corruption_observed = True
+                    assert row is not None
+                    assert row[0] == "dead", (
+                        f"Job status is '{row[0]}' after fail() returned True — "
+                        f"nack overwrote dead status (attempt {attempt})"
+                    )
 
                 # Clean up for next attempt.
                 conn_setup.execute(
@@ -247,9 +231,8 @@ class TestNackStatusGuard:
                     "DELETE FROM queue.jobs WHERE namespace = %s", (namespace,)
                 )
 
-            assert not corruption_observed, (
-                "Race condition: nack() overwrote a dead job back to pending "
-                "after fail() had already committed."
+            assert fail_won_count > 0, (
+                "fail() never won the race in 10 iterations — test verified nothing"
             )
 
         finally:

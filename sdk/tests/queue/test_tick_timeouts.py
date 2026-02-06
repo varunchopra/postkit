@@ -38,7 +38,9 @@ class TestTickTimeouts:
         """Reclaimed job keeps its attempts counter (not reset)."""
         job = self._make_stuck_job(queue)
 
-        queue.tick_timeouts()
+        results = queue.tick_timeouts()
+        assert len(results) == 1
+        assert results[0]["job_id"] == job["id"]
 
         queue.cursor.execute(
             "SELECT attempts FROM queue.jobs WHERE namespace = %s AND id = %s",
@@ -52,7 +54,9 @@ class TestTickTimeouts:
         """Reclaimed job has NULL locked_by, locked_at, visibility_timeout_at."""
         job = self._make_stuck_job(queue)
 
-        queue.tick_timeouts()
+        results = queue.tick_timeouts()
+        assert len(results) == 1
+        assert results[0]["job_id"] == job["id"]
 
         queue.cursor.execute(
             "SELECT locked_by, locked_at, visibility_timeout_at "

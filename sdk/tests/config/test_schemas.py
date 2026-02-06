@@ -8,17 +8,21 @@ from postkit.config import (
     SchemaViolationError,
 )
 
+from tests.config.helpers import cleanup_namespace
+from tests.helpers import make_namespace
+
 
 @pytest.fixture
-def admin_config(db_connection):
+def admin_config(db_connection, request):
     """Admin ConfigClient for schema management. Cleans up after each test."""
+    namespace = make_namespace(request)
     cursor = db_connection.cursor()
-    client = ConfigClient(cursor, namespace="admin_test")
+    client = ConfigClient(cursor, namespace)
 
     yield client
 
     cursor.execute("DELETE FROM config.schemas")
-    cursor.execute("DELETE FROM config.entries WHERE namespace = 'admin_test'")
+    cleanup_namespace(cursor, namespace)
     cursor.close()
 
 

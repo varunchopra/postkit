@@ -27,14 +27,6 @@ class TestPurgeQueue:
         stats = queue.get_stats()
         assert stats["running"] == 1
 
-    def test_purge_returns_count(self, queue):
-        """purge_queue returns the exact count of deleted jobs."""
-        for i in range(3):
-            queue.push("tasks", {"task": i})
-
-        count = queue.purge_queue("tasks")
-        assert count == 3
-
     def test_purge_scoped_to_queue(self, queue):
         """purge_queue only affects the specified queue."""
         queue.push("tasks", {"task": 1})

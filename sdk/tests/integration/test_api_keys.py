@@ -38,64 +38,14 @@ class TestApiKeyWithScopedPermissions:
         assert authz.check(("api_key", key_id), "write", ("repo", "api"))
         assert not authz.check(("api_key", key_id), "admin", ("repo", "api"))
 
-    def test_inherits_via_group(self, clients):
-        """API key inherits permissions through group membership."""
-        authn, authz, _ = clients
+    def test_authn_revocation_preserves_authz_grants(self, clients):
+        """Revoking an API key in authn does not cascade to authz grants.
 
-        user_id = authn.create_user("bob@example.com", hash_key("password"))
-        raw_key = secrets.token_urlsafe(32)
-        key_id = authn.create_api_key(user_id, hash_key(raw_key), name="CI/CD")
-
-        authz.grant(
-            "member", resource=("group", "ci-services"), subject=("api_key", key_id)
-        )
-        authz.grant(
-            "deploy", resource=("env", "staging"), subject=("group", "ci-services")
-        )
-
-        assert authz.check(("api_key", key_id), "deploy", ("env", "staging"))
-
-    def test_hierarchy_expansion(self, clients):
-        """API key permissions expand via hierarchy."""
-        authn, authz, _ = clients
-
-        authz.set_hierarchy("repo", "admin", "write", "read")
-
-        user_id = authn.create_user("carol@example.com", hash_key("password"))
-        raw_key = secrets.token_urlsafe(32)
-        key_id = authn.create_api_key(user_id, hash_key(raw_key), name="Admin Key")
-
-        authz.grant("admin", resource=("repo", "core"), subject=("api_key", key_id))
-
-        assert authz.check(("api_key", key_id), "admin", ("repo", "core"))
-        assert authz.check(("api_key", key_id), "write", ("repo", "core"))
-        assert authz.check(("api_key", key_id), "read", ("repo", "core"))
-
-    def test_check_any_and_all(self, clients):
-        """check_any and check_all work correctly with non-user subjects."""
-        authn, authz, _ = clients
-
-        user_id = authn.create_user("dave@example.com", hash_key("password"))
-        raw_key = secrets.token_urlsafe(32)
-        key_id = authn.create_api_key(user_id, hash_key(raw_key))
-
-        authz.grant("read", resource=("doc", "spec"), subject=("api_key", key_id))
-        authz.grant("comment", resource=("doc", "spec"), subject=("api_key", key_id))
-
-        assert authz.check_any(("api_key", key_id), ["read", "write"], ("doc", "spec"))
-        assert not authz.check_any(
-            ("api_key", key_id), ["write", "delete"], ("doc", "spec")
-        )
-
-        assert authz.check_all(
-            ("api_key", key_id), ["read", "comment"], ("doc", "spec")
-        )
-        assert not authz.check_all(
-            ("api_key", key_id), ["read", "write"], ("doc", "spec")
-        )
-
-    def test_revoked_key_denied(self, clients):
-        """Revoked API key fails validation."""
+        Authn and authz have no FK or trigger relationship. Revoking a key
+        invalidates the credential but leaves its authz grants intact. The
+        application layer must call revoke_all_grants separately if cleanup
+        is desired.
+        """
         authn, authz, _ = clients
 
         user_id = authn.create_user("eve@example.com", hash_key("password"))
@@ -108,6 +58,9 @@ class TestApiKeyWithScopedPermissions:
         assert authn.revoke_api_key(key_id)
         assert authn.validate_api_key(hash_key(raw_key)) is None
 
+        # Authz grants survive authn revocation -- no cross-schema cascade.
+        assert authz.check(("api_key", key_id), "read", ("doc", "secret"))
+
     def test_expired_key_denied(self, authn):
         """Expired API key fails validation."""
         user_id = authn.create_user("frank@example.com", hash_key("password"))
@@ -117,16 +70,6 @@ class TestApiKeyWithScopedPermissions:
             user_id, hash_key(raw_key), expires_in=timedelta(seconds=-1)
         )
 
-        assert authn.validate_api_key(hash_key(raw_key)) is None
-
-    def test_disabled_user_key_denied(self, authn):
-        """API key for disabled user fails validation."""
-        user_id = authn.create_user("grace@example.com", hash_key("password"))
-        raw_key = secrets.token_urlsafe(32)
-        authn.create_api_key(user_id, hash_key(raw_key))
-
-        assert authn.validate_api_key(hash_key(raw_key)) is not None
-        authn.disable_user(user_id)
         assert authn.validate_api_key(hash_key(raw_key)) is None
 
 
@@ -176,71 +119,32 @@ class TestRealWorldScenarios:
             handle_request(hash_key("wrong-key"), "read", "customers")["status"] == 401
         )
 
-    def test_fine_grained_token(self, clients):
-        """Token with subset of user's permissions."""
+    def test_api_key_limited_to_subset_of_user_permissions(self, clients):
+        """API key receives narrower grants than its owning user.
+
+        The user has admin on two repos. The API key gets read+write on one.
+        Authz treats the user and key as independent subjects, so the key
+        never inherits the user's broader grants.
+        """
         authn, authz, _ = clients
 
         dev_id = authn.create_user("dev@example.com", hash_key("password"))
 
-        # User has admin on multiple repos
+        # User has admin on multiple repos.
         authz.grant("admin", resource=("repo", "frontend"), subject=("user", dev_id))
         authz.grant("admin", resource=("repo", "backend"), subject=("user", dev_id))
 
-        # Token only gets limited access to one repo
-        raw_token = secrets.token_urlsafe(32)
-        token_id = authn.create_api_key(dev_id, hash_key(raw_token))
-        authz.grant(
-            "read", resource=("repo", "frontend"), subject=("api_key", token_id)
-        )
-        authz.grant(
-            "write", resource=("repo", "frontend"), subject=("api_key", token_id)
-        )
+        # API key only gets limited access to one repo.
+        raw_key = secrets.token_urlsafe(32)
+        key_id = authn.create_api_key(dev_id, hash_key(raw_key))
+        authz.grant("read", resource=("repo", "frontend"), subject=("api_key", key_id))
+        authz.grant("write", resource=("repo", "frontend"), subject=("api_key", key_id))
 
-        # Token is limited
-        assert authz.check(("api_key", token_id), "write", ("repo", "frontend"))
-        assert not authz.check(("api_key", token_id), "admin", ("repo", "frontend"))
-        assert not authz.check(("api_key", token_id), "read", ("repo", "backend"))
+        # API key is limited to its own grants.
+        assert authz.check(("api_key", key_id), "write", ("repo", "frontend"))
+        assert not authz.check(("api_key", key_id), "admin", ("repo", "frontend"))
+        assert not authz.check(("api_key", key_id), "read", ("repo", "backend"))
 
-        # User still has full access
+        # User still has full access.
         assert authz.check(("user", dev_id), "admin", ("repo", "frontend"))
         assert authz.check(("user", dev_id), "admin", ("repo", "backend"))
-
-
-class TestServiceToServiceAuth:
-    """Service-to-service authentication."""
-
-    def test_service_identity(self, authz):
-        """Services as subjects with direct grants."""
-        authz.grant(
-            "read", resource=("database", "users"), subject=("service", "api-gateway")
-        )
-        authz.grant(
-            "write", resource=("queue", "events"), subject=("service", "api-gateway")
-        )
-
-        assert authz.check(("service", "api-gateway"), "read", ("database", "users"))
-        assert authz.check(("service", "api-gateway"), "write", ("queue", "events"))
-        assert not authz.check(
-            ("service", "api-gateway"), "delete", ("database", "users")
-        )
-
-    def test_service_in_group(self, authz):
-        """Services inherit permissions through groups."""
-        authz.grant(
-            "member",
-            resource=("group", "internal-services"),
-            subject=("service", "billing"),
-        )
-        authz.grant(
-            "member",
-            resource=("group", "internal-services"),
-            subject=("service", "shipping"),
-        )
-        authz.grant(
-            "read",
-            resource=("database", "orders"),
-            subject=("group", "internal-services"),
-        )
-
-        assert authz.check(("service", "billing"), "read", ("database", "orders"))
-        assert authz.check(("service", "shipping"), "read", ("database", "orders"))

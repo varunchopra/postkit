@@ -173,4 +173,63 @@ class TestQueueRowLevelSecurity:
         # Switch to rls_b context — superuser still sees rls_a data.
         QueueClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM queue.jobs WHERE namespace = 'rls_a'")
-        assert len(cursor.fetchall()) >= 1
+        assert len(cursor.fetchall()) == 1
+
+    def test_dead_letters_rls(self, rls_connection, db_connection):
+        """Dead letters table respects RLS."""
+        su = db_connection.cursor()
+        q = QueueClient(su, "rls_a")
+        q.push("tasks", {"data": "test"})
+        job = q.pull("tasks")
+        q.fail(job["id"], error="test failure")
+
+        cursor = rls_connection.cursor()
+        QueueClient(cursor, "rls_b")
+        cursor.execute("SELECT * FROM queue.dead_letters WHERE namespace = 'rls_a'")
+        assert cursor.fetchall() == []
+
+    def test_schedules_rls(self, rls_connection, db_connection):
+        """Schedules table respects RLS."""
+        su = db_connection.cursor()
+        q = QueueClient(su, "rls_a")
+        q.create_schedule(
+            "hourly-test", "tasks", {"data": "test"}, cron_expression="0 * * * *"
+        )
+
+        cursor = rls_connection.cursor()
+        QueueClient(cursor, "rls_b")
+        cursor.execute("SELECT * FROM queue.schedules WHERE namespace = 'rls_a'")
+        assert cursor.fetchall() == []
+
+    def test_config_rls(self, rls_connection, db_connection):
+        """Config table respects tenant isolation."""
+        su = db_connection.cursor()
+        su.execute(
+            "INSERT INTO queue.config (namespace) VALUES ('rls_a') "
+            "ON CONFLICT DO NOTHING"
+        )
+
+        cursor = rls_connection.cursor()
+        QueueClient(cursor, "rls_b")
+        cursor.execute("SELECT * FROM queue.config WHERE namespace = 'rls_a'")
+        assert cursor.fetchall() == []
+
+    def test_config_global_write_blocked(self, rls_connection):
+        """Tenants can read global config but cannot modify it.
+
+        config_global_read grants SELECT on the global row. But no permissive
+        policy grants UPDATE/DELETE on it, so the row is invisible for writes.
+        The RESTRICTIVE config_global_write_protection is belt-and-suspenders.
+        """
+        cursor = rls_connection.cursor()
+        QueueClient(cursor, "rls_a")
+
+        # Global config is readable via config_global_read policy.
+        cursor.execute("SELECT * FROM queue.config WHERE namespace = 'global'")
+        assert len(cursor.fetchall()) == 1
+
+        # Global config is not writable — row invisible for UPDATE.
+        cursor.execute(
+            "UPDATE queue.config SET notify_on_push = false WHERE namespace = 'global'"
+        )
+        assert cursor.rowcount == 0

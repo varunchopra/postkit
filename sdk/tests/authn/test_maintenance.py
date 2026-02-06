@@ -31,7 +31,7 @@ class TestCleanupExpired:
 
         result = authn.cleanup_expired()
 
-        assert result["tokens_deleted"] >= 1
+        assert result["tokens_deleted"] == 1
 
     def test_deletes_old_login_attempts(self, authn, test_helpers):
         # Insert old attempts
@@ -90,6 +90,131 @@ class TestCleanupExpired:
         # token1 and token2 were replaced
         assert result["refresh_tokens_deleted"] == 2
         assert authn.validate_refresh_token("token3") is not None
+
+    def test_deletes_revoked_api_keys(self, authn):
+        user_id = authn.create_user("alice@example.com", "hash")
+        key1_id = authn.create_api_key(user_id, "key_hash_1", "Active Key")
+        key2_id = authn.create_api_key(user_id, "key_hash_2", "To Revoke")
+        authn.revoke_api_key(key2_id)
+
+        result = authn.cleanup_expired()
+
+        assert result["api_keys_deleted"] == 1
+        keys = authn.list_api_keys(user_id)
+        assert len(keys) == 1
+        assert str(keys[0]["key_id"]) == key1_id
+
+    def test_deletes_expired_api_keys(self, authn, test_helpers):
+        user_id = authn.create_user("alice@example.com", "hash")
+        authn.create_api_key(user_id, "active_key_hash", "Active Key")
+        test_helpers.insert_expired_api_key(user_id, "expired_key_hash")
+
+        result = authn.cleanup_expired()
+
+        assert result["api_keys_deleted"] == 1
+        keys = authn.list_api_keys(user_id)
+        assert len(keys) == 1
+
+    def test_deletes_ended_impersonation_sessions(self, authn):
+        admin_id = authn.create_user("admin@example.com", "hash1")
+        target_id = authn.create_user("target@example.com", "hash2")
+        admin_session = authn.create_session(admin_id, "admin_token")
+
+        imp = authn.start_impersonation(
+            admin_session, target_id, "Support ticket", token_hash="imp_token_1"
+        )
+        authn.end_impersonation(str(imp["impersonation_id"]))
+
+        authn.start_impersonation(
+            admin_session, target_id, "Active support", token_hash="imp_token_2"
+        )
+
+        result = authn.cleanup_expired()
+
+        assert result["impersonations_deleted"] == 1
+        active = authn.list_active_impersonations()
+        assert len(active) == 1
+
+    def test_deletes_expired_impersonation_sessions(self, authn):
+        admin_id = authn.create_user("admin@example.com", "hash1")
+        target_id = authn.create_user("target@example.com", "hash2")
+        admin_session = authn.create_session(admin_id, "admin_token")
+
+        authn.start_impersonation(
+            admin_session, target_id, "Support ticket", token_hash="imp_token"
+        )
+        authn.cursor.execute(
+            "UPDATE authn.impersonation_sessions SET expires_at = now() - interval '1 minute' WHERE namespace = %s",
+            (authn.namespace,),
+        )
+
+        result = authn.cleanup_expired()
+
+        assert result["impersonations_deleted"] == 1
+
+    def test_deletes_ended_operator_impersonation_sessions(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        imp = platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token_1",
+            reason="Support ticket",
+        )
+        platform.end_operator_impersonation(str(imp["impersonation_id"]))
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token_2",
+            reason="Active support",
+        )
+
+        result = platform.cleanup_expired()
+
+        assert result["operator_impersonations_deleted"] == 1
+        active = platform.list_active_operator_impersonations()
+        assert len(active) == 1
+
+    def test_deletes_expired_operator_impersonation_sessions(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+
+        operator_id = platform.create_user("operator@platform.com", "hash1")
+        operator_session = platform.create_session(operator_id, "operator_token")
+        target_id = customer.create_user("target@customer.com", "hash2")
+
+        platform.start_operator_impersonation(
+            operator_session_id=operator_session,
+            target_user_id=target_id,
+            target_namespace="customer",
+            token_hash="imp_token",
+            reason="Support ticket",
+        )
+        platform.cursor.execute(
+            "UPDATE authn.operator_impersonation_sessions SET expires_at = now() - interval '1 minute'"
+        )
+
+        result = platform.cleanup_expired()
+
+        assert result["operator_impersonations_deleted"] == 1
+
+    def test_deletes_expired_tokens(self, authn, test_helpers):
+        user_id = authn.create_user("alice@example.com", "hash")
+        authn.create_token(user_id, "active_token", "password_reset")
+        test_helpers.insert_expired_token(user_id, "expired_token", "password_reset")
+
+        result = authn.cleanup_expired()
+
+        assert result["tokens_deleted"] == 1
+        assert test_helpers.count_tokens(user_id) == 1
 
 
 class TestGetStats:

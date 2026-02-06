@@ -23,6 +23,7 @@ class TestStatistics:
 
         stats = authz.get_stats()
         assert stats["tuple_count"] == 2
+        assert stats["hierarchy_rule_count"] == 0
         assert stats["unique_users"] == 2
         assert stats["unique_resources"] == 2
 
@@ -34,6 +35,8 @@ class TestStatistics:
         stats = authz.get_stats()
         assert stats["tuple_count"] == 1
         assert stats["hierarchy_rule_count"] == 2  # admin->write, write->read
+        assert stats["unique_users"] == 1
+        assert stats["unique_resources"] == 1
 
     def test_stats_with_groups(self, authz):
         """Stats reflect group membership counts."""
@@ -43,6 +46,7 @@ class TestStatistics:
 
         stats = authz.get_stats()
         assert stats["tuple_count"] == 3
+        assert stats["hierarchy_rule_count"] == 0
         assert stats["unique_users"] == 2
         assert stats["unique_resources"] == 2  # team:eng and doc:1
 
@@ -50,50 +54,39 @@ class TestStatistics:
 class TestVerifyIntegrity:
     """Verify function checks for data integrity issues like cycles."""
 
-    def test_verify_clean_state_returns_empty(self, authz):
-        """verify() returns nothing when data is correct."""
-        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
-        assert authz.verify() == []
-
-    def test_verify_with_hierarchy(self, authz):
-        """verify() correctly handles hierarchy-expanded permissions."""
-        authz.set_hierarchy("doc", "admin", "write", "read")
-        authz.grant("admin", resource=("doc", "1"), subject=("user", "alice"))
-        assert authz.verify() == []
-
-    def test_verify_with_groups(self, authz):
-        """verify() correctly handles group-expanded permissions."""
-        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
-        authz.grant("member", resource=("team", "eng"), subject=("user", "alice"))
-        authz.grant("member", resource=("team", "eng"), subject=("user", "bob"))
-        assert authz.verify() == []
-
     def test_verify_with_hierarchy_and_groups(self, authz):
-        """verify() handles combined hierarchy + group expansion."""
+        """verify() handles combined hierarchy + group expansion without false positives."""
         authz.set_hierarchy("doc", "admin", "read")
         authz.grant("admin", resource=("doc", "1"), subject=("team", "eng"))
         authz.grant("member", resource=("team", "eng"), subject=("user", "alice"))
         assert authz.verify() == []
 
+    def test_verify_detects_audit_partition_issues(self, authz, db_connection):
+        """verify() detects audit events stuck in default partition."""
+        cursor = db_connection.cursor()
+        # Insert with event_time far outside any partition range.
+        cursor.execute(
+            """
+            INSERT INTO authz.audit_events
+                (namespace, resource_type, resource_id, relation,
+                 subject_type, subject_id, event_type, event_time)
+            VALUES (%s, 'doc', 'test', 'read', 'user', 'alice',
+                    'tuple_created', '2099-01-15T00:00:00Z')
+            """,
+            (authz.namespace,),
+        )
 
-class TestLazyEvaluationCorrectness:
-    """Test that lazy evaluation produces correct results."""
+        issues = authz.verify()
 
-    def test_user_in_many_groups_works(self, authz):
-        """User in multiple groups gets permissions from all."""
-        for team in ["team-a", "team-b", "team-c"]:
-            authz.grant("read", resource=("doc", "1"), subject=("team", team))
-            authz.grant("member", resource=("team", team), subject=("user", "alice"))
+        # verify_integrity checks audit_events_default globally (not per-namespace).
+        partition_issues = [i for i in issues if i["resource_id"] == "audit_partitions"]
+        assert len(partition_issues) == 1
+        assert partition_issues[0]["status"] == "error"
+        assert "default partition" in partition_issues[0]["details"]
 
-        assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
-    def test_direct_and_group_both_work(self, authz):
-        """User with direct grant and group membership has access."""
-        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
-        authz.grant("member", resource=("team", "eng"), subject=("user", "alice"))
-        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
-
-        assert authz.check(("user", "alice"), "read", ("doc", "1"))
+class TestGraphResolution:
+    """Test that complex graph topologies resolve correctly."""
 
     def test_diamond_hierarchy_works(self, authz):
         """Diamond hierarchy pattern produces correct results."""

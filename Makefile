@@ -39,9 +39,10 @@ build:
 
 test: db build
 ifdef TEST
-	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v $(TEST)
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly $(TEST)
 else
-	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly -n auto --dist loadgroup --ignore=tests/integration
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly tests/integration
 	@cd scripts && uv run --with pglast --with pytest pytest gendocs/
 endif
 

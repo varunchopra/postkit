@@ -44,10 +44,14 @@ class TestNamespaceIsolation:
         tenant_a.set("prompts/shared", {"owner": "a"})
         tenant_b.set("prompts/shared", {"owner": "b"})
 
-        # Delete from tenant_a
-        tenant_a.delete("prompts/shared")
+        # Delete from tenant_a - assert return value confirms deletion
+        deleted_count = tenant_a.delete("prompts/shared")
+        assert deleted_count == 1
 
-        # tenant_b still has their copy
+        # Verify tenant_a's entry is actually gone
+        assert tenant_a.get_value("prompts/shared") is None
+
+        # Verify tenant_b still has their copy
         assert tenant_b.get_value("prompts/shared")["owner"] == "b"
 
     def test_stats_scoped_to_namespace(self, make_config):

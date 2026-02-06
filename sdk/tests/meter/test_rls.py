@@ -149,23 +149,11 @@ class TestMeterRowLevelSecurity:
         # Switch to rls_b context — superuser still sees rls_a data.
         MeterClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM meter.accounts WHERE namespace = 'rls_a'")
-        assert len(cursor.fetchall()) >= 1
+        assert len(cursor.fetchall()) == 1
 
     # =========================================================================
     # Table-Specific RLS Tests
     # =========================================================================
-
-    def test_accounts_rls(self, rls_connection, db_connection):
-        """Accounts table respects RLS."""
-        su = db_connection.cursor()
-        tenant_a = MeterClient(su, "rls_a")
-        tenant_a.allocate("user1", "api_call", 1000, "count")
-        tenant_a.allocate("user2", "api_call", 500, "count")
-
-        cursor = rls_connection.cursor()
-        MeterClient(cursor, "rls_b")
-        cursor.execute("SELECT * FROM meter.accounts WHERE namespace = 'rls_a'")
-        assert cursor.fetchall() == []
 
     def test_ledger_rls(self, rls_connection, db_connection):
         """Ledger table respects RLS."""

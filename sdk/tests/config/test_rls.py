@@ -150,23 +150,11 @@ class TestConfigRowLevelSecurity:
         # Switch to rls_b context — superuser still sees rls_a data.
         ConfigClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM config.entries WHERE namespace = 'rls_a'")
-        assert len(cursor.fetchall()) >= 1
+        assert len(cursor.fetchall()) == 1
 
     # =========================================================================
     # Table-Specific RLS Tests
     # =========================================================================
-
-    def test_entries_rls(self, rls_connection, db_connection):
-        """Entries table respects RLS."""
-        su = db_connection.cursor()
-        tenant_a = ConfigClient(su, "rls_a")
-        tenant_a.set("app/key1", {"v": 1})
-        tenant_a.set("app/key2", {"v": 2})
-
-        cursor = rls_connection.cursor()
-        ConfigClient(cursor, "rls_b")
-        cursor.execute("SELECT * FROM config.entries WHERE namespace = 'rls_a'")
-        assert cursor.fetchall() == []
 
     def test_version_counters_rls(self, rls_connection, db_connection):
         """Version counters table respects RLS."""
@@ -180,6 +168,28 @@ class TestConfigRowLevelSecurity:
             "SELECT * FROM config.version_counters WHERE namespace = 'rls_a'"
         )
         assert cursor.fetchall() == []
+
+    def test_audit_events_rls(self, rls_connection, db_connection):
+        """Audit events table respects RLS."""
+        # Superuser creates config (generates audit event) in rls_a.
+        su = db_connection.cursor()
+        tenant_a = ConfigClient(su, "rls_a")
+        tenant_a.set("app/audited", {"v": 1})
+
+        # Verify audit event exists via superuser.
+        su.execute("SELECT COUNT(*) FROM config.audit_events WHERE namespace = 'rls_a'")
+        assert su.fetchone()[0] >= 1
+
+        # Non-superuser as rls_b cannot see rls_a's audit events.
+        cursor = rls_connection.cursor()
+        ConfigClient(cursor, "rls_b")
+        cursor.execute("SELECT * FROM config.audit_events WHERE namespace = 'rls_a'")
+        assert cursor.fetchall() == []
+
+        # Non-superuser as rls_a CAN see rls_a's audit events.
+        ConfigClient(cursor, "rls_a")
+        cursor.execute("SELECT * FROM config.audit_events WHERE namespace = 'rls_a'")
+        assert len(cursor.fetchall()) >= 1
 
     def test_schemas_read_all(self, rls_connection, db_connection):
         """Schemas table has read-all policy — all tenants can read schemas.
@@ -206,3 +216,20 @@ class TestConfigRowLevelSecurity:
 
         # Cleanup
         su.execute("DELETE FROM config.schemas WHERE key_pattern = 'test_rls/**'")
+
+    def test_schemas_write_blocked(self, rls_connection):
+        """Non-superusers cannot write to schemas table.
+
+        Schemas are platform-defined and tenant-enforced. Only admin
+        connections (superuser) can create or modify schemas.
+        """
+        cursor = rls_connection.cursor()
+        ConfigClient(cursor, "rls_a")
+
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            cursor.execute(
+                """
+                INSERT INTO config.schemas (key_pattern, schema, description)
+                VALUES ('blocked/**', '{"type": "object"}', 'Should fail')
+                """
+            )

@@ -108,6 +108,24 @@ class TestNestedTeamMembership:
 
         assert authz.check(("user", "alice"), "admin", ("repo", "api")) is True
 
+    def test_revoke_mid_chain_breaks_access(self, authz):
+        """Revoking mid-chain team membership severs derived access."""
+        authz.grant("member", resource=("team", "infra"), subject=("user", "alice"))
+        authz.grant("member", resource=("team", "platform"), subject=("team", "infra"))
+        authz.grant("admin", resource=("repo", "api"), subject=("team", "platform"))
+
+        # Verify alice has access via chain: alice -> infra -> platform -> repo
+        assert authz.check(("user", "alice"), "admin", ("repo", "api")) is True
+
+        # Revoke infra's membership in platform
+        result = authz.revoke(
+            "member", resource=("team", "platform"), subject=("team", "infra")
+        )
+        assert result is True
+
+        # Alice loses access (chain is broken)
+        assert authz.check(("user", "alice"), "admin", ("repo", "api")) is False
+
 
 class TestCycleDetection:
     """Test cycle detection in nested teams."""
@@ -291,8 +309,7 @@ class TestListWithNestedTeams:
 
         subjects = authz.list_subjects("read", ("doc", "1"))
 
-        assert ("user", "alice") in subjects
-        assert ("user", "bob") in subjects
+        assert set(subjects) == {("user", "alice"), ("user", "bob")}
 
     def test_list_subjects_deep_nesting(self, authz):
         """list_subjects works with deeply nested teams."""
@@ -304,7 +321,7 @@ class TestListWithNestedTeams:
         authz.grant("read", resource=("doc", "1"), subject=("team", "c"))
 
         subjects = authz.list_subjects("read", ("doc", "1"))
-        assert ("user", "alice") in subjects
+        assert subjects == [("user", "alice")]
 
     def test_list_resources_via_nested_teams(self, authz):
         """list_resources returns resources accessible via nested teams."""
@@ -318,8 +335,7 @@ class TestListWithNestedTeams:
 
         resources = authz.list_resources(("user", "alice"), "doc", "read")
 
-        assert "1" in resources
-        assert "2" in resources
+        assert set(resources) == {"1", "2"}
 
     def test_filter_authorized_with_nested_teams(self, authz):
         """filter_authorized works with nested team access."""

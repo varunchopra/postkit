@@ -158,7 +158,7 @@ class TestOrderProcessing:
         app.place_order("ORD-103", ["pav bhaji"], order_type="dine_in", table="T-5")
         bad_order = queue.pull("orders", worker_id="kitchen-display-2")
 
-        queue.fail(bad_order["id"], error="pav bhaji unavailable tonight")
+        assert queue.fail(bad_order["id"], error="pav bhaji unavailable tonight")
 
         # 6. Batch dispatch
         # Evening rush: multiple delivery orders are ready for riders.
@@ -204,7 +204,7 @@ class TestOrderProcessing:
 
         # Pull and fail one order to populate the dead letter queue.
         job = queue.pull("orders", worker_id="kitchen-display-1")
-        queue.fail(job["id"], error="kitchen closed unexpectedly")
+        assert queue.fail(job["id"], error="kitchen closed unexpectedly")
 
         stats = queue.get_queue_stats()
         by_queue = {s["queue"]: s for s in stats}
@@ -337,6 +337,8 @@ class TestOrderProcessing:
         assert row[0] == "manager_priya"
         assert row[1] == "customer escalation"
 
+        queue.clear_actor()
+
     def test_multi_tenant_isolation(self, make_queue):
         """Two restaurants on the same platform cannot see each other's orders."""
         mumbai = make_queue("foodflow_mumbai")
@@ -361,6 +363,8 @@ class TestOrderProcessing:
         del_stats = delhi.get_stats()
 
         assert mum_stats["pending"] == 0
+        assert mum_stats["dead"] == 0
+        assert del_stats["pending"] == 0
         assert del_stats["dead"] == 1
 
         # Delhi's dead letter is invisible to Mumbai.

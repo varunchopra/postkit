@@ -1,6 +1,11 @@
 """Tests for docstring and SQL doc block parsers."""
 
-from gendocs.extractors import _extract_params, _extract_tag, _parse_docstring
+from gendocs.extractors import (
+    _extract_examples,
+    _extract_params,
+    _extract_tag,
+    _parse_docstring,
+)
 
 
 def test_brief():
@@ -308,3 +313,23 @@ def test_extract_params_stops_at_next_tag():
     block = "-- @param p_id The ID\n-- @returns The result\n"
     params = _extract_params(block)
     assert params["p_id"] == "The ID"
+
+
+def test_extract_examples_simple():
+    """Extract a single-line @example."""
+    block = "-- @brief Do something.\n-- @example SELECT do_something();\n"
+    examples = _extract_examples(block)
+    assert len(examples) == 1
+    assert examples[0] == "SELECT do_something();"
+
+
+def test_extract_examples_stops_at_blank_comment_line():
+    """@example does not bleed through a blank -- line into prose below."""
+    block = (
+        "-- @example SELECT do_something();\n"
+        "--\n"
+        "-- This is extended prose, not part of the example.\n"
+    )
+    examples = _extract_examples(block)
+    assert len(examples) == 1
+    assert examples[0] == "SELECT do_something();"
