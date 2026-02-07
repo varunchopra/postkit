@@ -127,7 +127,7 @@ Delete all versions of a config entry
 SELECT config.delete('prompts/deprecated-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:365*
+*Source: config/src/functions/010_entries.sql:376*
 
 ---
 
@@ -146,7 +146,7 @@ Delete a specific version (cannot delete active version)
 SELECT config.delete_version('prompts/support-bot', 1);
 ```
 
-*Source: config/src/functions/010_entries.sql:404*
+*Source: config/src/functions/010_entries.sql:415*
 
 ---
 
@@ -165,7 +165,7 @@ Check if a config key exists (has an active version)
 IF config.exists('flags/new-checkout') THEN ...
 ```
 
-*Source: config/src/functions/010_entries.sql:455*
+*Source: config/src/functions/010_entries.sql:466*
 
 ---
 
@@ -235,7 +235,7 @@ SELECT config.get_path('prompts/bot', ARRAY['temperature']);
 SELECT config.get_path('flags/checkout', ARRAY['rollout']);
 ```
 
-*Source: config/src/functions/010_entries.sql:477*
+*Source: config/src/functions/010_entries.sql:488*
 
 ---
 
@@ -254,7 +254,7 @@ Get version history for a key
 SELECT * FROM config.history('prompts/support-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:329*
+*Source: config/src/functions/010_entries.sql:340*
 
 ---
 
@@ -280,7 +280,7 @@ SELECT * FROM config.list('prompts/');
 SELECT * FROM config.list('flags/');
 ```
 
-*Source: config/src/functions/010_entries.sql:286*
+*Source: config/src/functions/010_entries.sql:297*
 
 ---
 
@@ -304,7 +304,7 @@ SELECT config.merge('prompts/bot', '{"temperature": 0.8}');
 SELECT config.merge('flags/checkout', '{"rollout": 0.75}');
 ```
 
-*Source: config/src/functions/010_entries.sql:507*
+*Source: config/src/functions/010_entries.sql:518*
 
 ---
 
@@ -323,7 +323,7 @@ Activate the previous version
 SELECT config.rollback('prompts/support-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:241*
+*Source: config/src/functions/010_entries.sql:252*
 
 ---
 
@@ -347,7 +347,7 @@ SELECT * FROM config.search('{"enabled": true}');
 SELECT * FROM config.search('{"model": "claude-sonnet-4-20250514"}', 'prompts/');
 ```
 
-*Source: config/src/functions/010_entries.sql:547*
+*Source: config/src/functions/010_entries.sql:558*
 
 ---
 

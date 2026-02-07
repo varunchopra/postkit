@@ -219,12 +219,23 @@ BEGIN
         RETURN false;
     END IF;
 
-    -- Single UPDATE: deactivate old and activate new
+    -- Deactivate current active version first, then activate target.
+    -- Two separate UPDATEs because a single UPDATE that flips is_active
+    -- on two rows can violate entries_single_active_idx — PostgreSQL
+    -- checks unique indexes per-row, not per-statement, so row
+    -- processing order determines whether the constraint sees a
+    -- transient duplicate.
     UPDATE config.entries
-    SET is_active = (version = p_version)
+    SET is_active = false
     WHERE namespace = p_namespace
       AND key = p_key
-      AND (is_active = true OR version = p_version);
+      AND is_active = true;
+
+    UPDATE config.entries
+    SET is_active = true
+    WHERE namespace = p_namespace
+      AND key = p_key
+      AND version = p_version;
 
     GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
 

@@ -94,7 +94,7 @@ class BaseClient(ABC):
     - Actor context for audit logging
 
     Subclasses must define:
-    - _schema: The PostgreSQL schema name ("authn", "authz", "config", "meter")
+    - _schema: The PostgreSQL schema name ("authn", "authz", "config", "meter", "queue")
     - _error_class: The exception class to raise on errors
     - _apply_actor_context(): How to apply actor context via SQL
 
