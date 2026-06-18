@@ -1387,6 +1387,26 @@ SELECT * FROM authn.verify_email('a1b2c3...token_hash');
 
 ## Users
 
+### authn.count_users
+
+```sql
+authn.count_users(p_namespace: text, p_search: text) -> int8
+```
+
+Count users, optionally filtered by an email substring
+
+**Parameters:**
+- `p_search`: Case-insensitive email substring; NULL counts all users
+
+**Example:**
+```sql
+SELECT authn.count_users('default', 'acme');
+```
+
+*Source: authn/src/functions/010_users.sql:356*
+
+---
+
 ### authn.create_user
 
 ```sql
@@ -1485,7 +1505,7 @@ Atomically get existing user or create new one (for SSO flows)
 SELECT * FROM authn.get_or_create_user('alice@example.com', NULL, 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:381*
+*Source: authn/src/functions/010_users.sql:421*
 
 ---
 
@@ -1542,28 +1562,29 @@ Get multiple users by ID in a single query
 SELECT * FROM authn.get_users_batch(ARRAY['uuid1', 'uuid2']::uuid[], 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:344*
+*Source: authn/src/functions/010_users.sql:384*
 
 ---
 
 ### authn.list_users
 
 ```sql
-authn.list_users(p_namespace: text, p_limit: int4, p_cursor: uuid) -> table(user_id: uuid, email: text, email_verified_at: timestamptz, disabled_at: timestamptz, created_at: timestamptz, updated_at: timestamptz)
+authn.list_users(p_namespace: text, p_search: text, p_limit: int4, p_offset: int4) -> table(user_id: uuid, email: text, email_verified_at: timestamptz, disabled_at: timestamptz, created_at: timestamptz, updated_at: timestamptz)
 ```
 
-List users with cursor-based pagination
+List users, optionally filtered by an email substring (ordered by email)
 
 **Parameters:**
+- `p_search`: Case-insensitive email substring; NULL returns all users
 - `p_limit`: Max users per page (default 100, max 1000)
-- `p_cursor`: User ID to start after (for pagination)
+- `p_offset`: Rows to skip, for pagination (default 0)
 
 **Example:**
 ```sql
-SELECT * FROM authn.list_users('default', 50, NULL); -- First page
+SELECT * FROM authn.list_users('default', 'acme', 20, 0);
 ```
 
-*Source: authn/src/functions/010_users.sql:300*
+*Source: authn/src/functions/010_users.sql:304*
 
 ---
 

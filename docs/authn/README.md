@@ -10,6 +10,7 @@
 | [`clear_attempts`](sdk.md#clear_attempts) | Clear login attempts for an email. Returns count deleted. |
 | [`consume_credential`](sdk.md#consume_credential) | Consume a one-time credential (e.g., recovery code). |
 | [`consume_token`](sdk.md#consume_token) | Consume a one-time token. |
+| [`count_users`](sdk.md#count_users) | Count users matching an optional email substring. |
 | [`create_api_key`](sdk.md#create_api_key) | Create an API key for programmatic access. |
 | [`create_refresh_token`](sdk.md#create_refresh_token) | Create a refresh token for a session. |
 | [`create_session`](sdk.md#create_session) | Create a new session. |
@@ -49,7 +50,7 @@
 | [`list_refresh_tokens`](sdk.md#list_refresh_tokens) | List active refresh tokens for a user. |
 | [`list_sessions`](sdk.md#list_sessions) | List active sessions for a user. Does not return token_hash. |
 | [`list_user_credentials`](sdk.md#list_user_credentials) | List credentials for settings UI. Does NOT return secrets. |
-| [`list_users`](sdk.md#list_users) | List users with pagination. |
+| [`list_users`](sdk.md#list_users) | List users matching an optional email substring, ordered by email. |
 | [`record_credential_use`](sdk.md#record_credential_use) | Record credential usage (lazy update: only if >1hr since last). |
 | [`record_login_attempt`](sdk.md#record_login_attempt) | Record a login attempt. |
 | [`remove_credential`](sdk.md#remove_credential) | Hard-delete a credential (user self-service). |
@@ -139,6 +140,7 @@
 | [`authn.create_token`](sql.md#authncreate_token) | Create a one-time token for password reset, email verification, or magic link |
 | [`authn.invalidate_tokens`](sql.md#authninvalidate_tokens) | Invalidate unused tokens (e.g., after password change, invalidate reset tokens) |
 | [`authn.verify_email`](sql.md#authnverify_email) | Verify email address using token from email link |
+| [`authn.count_users`](sql.md#authncount_users) | Count users, optionally filtered by an email substring |
 | [`authn.create_user`](sql.md#authncreate_user) | Create a new user account |
 | [`authn.delete_user`](sql.md#authndelete_user) | Permanently delete user and all their data (sessions, tokens, credentials) |
 | [`authn.disable_user`](sql.md#authndisable_user) | Disable user and revoke all credentials (sessions, API keys, refresh tokens, impersonations, tokens) |
@@ -147,5 +149,5 @@
 | [`authn.get_user`](sql.md#authnget_user) | Get user by ID (does not return password hash) |
 | [`authn.get_user_by_email`](sql.md#authnget_user_by_email) | Look up user by email (normalized to lowercase) |
 | [`authn.get_users_batch`](sql.md#authnget_users_batch) | Get multiple users by ID in a single query |
-| [`authn.list_users`](sql.md#authnlist_users) | List users with cursor-based pagination |
+| [`authn.list_users`](sql.md#authnlist_users) | List users, optionally filtered by an email substring (ordered by email) |
 | [`authn.update_email`](sql.md#authnupdate_email) | Change user's email address (clears email_verified_at) |

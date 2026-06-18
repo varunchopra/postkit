@@ -214,49 +214,204 @@ class TestDeleteUser:
 
 
 class TestListUsers:
-    def test_lists_users(self, authn):
+    def test_lists_users_with_total(self, authn):
         authn.create_user("alice@example.com", "hash")
         authn.create_user("bob@example.com", "hash")
 
-        users = authn.list_users()
+        users, total = authn.list_users()
 
-        assert len(users) == 2
-        emails = {u["email"] for u in users}
-        assert "alice@example.com" in emails
-        assert "bob@example.com" in emails
+        assert total == 2
+        assert {u["email"] for u in users} == {"alice@example.com", "bob@example.com"}
 
-    def test_respects_limit(self, authn):
+    def test_orders_by_email(self, authn):
+        authn.create_user("charlie@example.com", "hash")
+        authn.create_user("alice@example.com", "hash")
+        authn.create_user("bob@example.com", "hash")
+
+        users, _ = authn.list_users()
+
+        assert [u["email"] for u in users] == [
+            "alice@example.com",
+            "bob@example.com",
+            "charlie@example.com",
+        ]
+
+    def test_total_is_full_match_count_not_page_size(self, authn):
         for i in range(5):
             authn.create_user(f"user{i}@example.com", "hash")
 
-        users = authn.list_users(limit=2)
-        assert len(users) == 2
+        users, total = authn.list_users(limit=2)
 
-    def test_supports_cursor_pagination(self, authn):
+        assert len(users) == 2
+        assert total == 5
+
+    def test_offset_paginates_in_email_order(self, authn):
         for i in range(5):
             authn.create_user(f"user{i}@example.com", "hash")
 
-        page1 = authn.list_users(limit=2)
-        assert len(page1) == 2
+        page1, total1 = authn.list_users(limit=2, offset=0)
+        page2, total2 = authn.list_users(limit=2, offset=2)
 
-        page2 = authn.list_users(limit=2, cursor=page1[-1]["user_id"])
-        assert len(page2) == 2
-
-        # Pages should be different
-        ids1 = {u["user_id"] for u in page1}
-        ids2 = {u["user_id"] for u in page2}
-        assert ids1.isdisjoint(ids2)
+        assert total1 == total2 == 5
+        assert [u["email"] for u in page1] == ["user0@example.com", "user1@example.com"]
+        assert [u["email"] for u in page2] == ["user2@example.com", "user3@example.com"]
+        assert {u["user_id"] for u in page1}.isdisjoint(u["user_id"] for u in page2)
 
     def test_clamps_limit_to_maximum(self, authn):
-        """Limit values above 1000 are clamped to 1000."""
-        # Create a few users to verify function works correctly
+        """Limits above 1000 are clamped rather than erroring."""
         for i in range(3):
             authn.create_user(f"limituser{i}@example.com", "hash")
 
-        # Request with limit exceeding max - should not error
-        users = authn.list_users(limit=5000)
-        # Should get all 3 users (less than clamped limit of 1000)
+        users, total = authn.list_users(limit=5000)
+
         assert len(users) == 3
+        assert total == 3
+
+    def test_search_filters_by_email_substring(self, authn):
+        authn.create_user("alice@acme.com", "hash")
+        authn.create_user("bob@acme.com", "hash")
+        authn.create_user("carol@other.com", "hash")
+
+        users, total = authn.list_users(search="acme")
+
+        assert total == 2
+        assert {u["email"] for u in users} == {"alice@acme.com", "bob@acme.com"}
+
+    def test_search_matches_local_part_and_domain(self, authn):
+        """Substring match, not prefix: 'acme' finds it in the local part or domain."""
+        authn.create_user("acme@example.com", "hash")
+        authn.create_user("user@acme.com", "hash")
+
+        _, total = authn.list_users(search="acme")
+
+        assert total == 2
+
+    def test_search_is_case_insensitive(self, authn):
+        authn.create_user("Alice@Example.com", "hash")  # stored lowercased
+
+        users, total = authn.list_users(search="ALICE")
+
+        assert total == 1
+        assert users[0]["email"] == "alice@example.com"
+
+    def test_search_no_match_returns_empty_and_zero(self, authn):
+        authn.create_user("alice@example.com", "hash")
+
+        users, total = authn.list_users(search="zzz")
+
+        assert users == []
+        assert total == 0
+
+    @pytest.mark.parametrize("local", ["a_b", "a%b"], ids=["underscore", "percent"])
+    def test_search_treats_like_wildcards_as_literals(self, authn, local):
+        """Operator-typed _ and % match literally, not as SQL LIKE wildcards."""
+        authn.create_user(f"{local}@example.com", "hash")
+        authn.create_user(
+            "axb@example.com", "hash"
+        )  # would match if _/% were wildcards
+
+        users, total = authn.list_users(search=local)
+
+        assert total == 1
+        assert users[0]["email"] == f"{local}@example.com"
+
+    def test_search_finds_matches_beyond_the_page(self, authn):
+        """Filtering happens before LIMIT, so matches past the first page are
+        counted and reachable (the original bug filtered in memory after a
+        capped fetch, silently dropping them)."""
+        for name in ("amy", "ben", "cara"):
+            authn.create_user(f"{name}@acme.com", "hash")
+        authn.create_user("dan@other.com", "hash")
+
+        page, total = authn.list_users(search="acme", limit=2)
+        rest, _ = authn.list_users(search="acme", limit=2, offset=2)
+
+        assert total == 3  # all matches counted, not capped at the limit
+        assert len(page) == 2
+        assert len(rest) == 1  # the third match is reachable, not lost
+        assert {u["email"] for u in page + rest} == {
+            "amy@acme.com",
+            "ben@acme.com",
+            "cara@acme.com",
+        }
+
+    def test_includes_disabled_users(self, authn):
+        user_id = authn.create_user("alice@example.com", "hash")
+        authn.disable_user(user_id)
+
+        users, total = authn.list_users(search="alice")
+
+        assert total == 1
+        assert users[0]["disabled_at"] is not None
+
+    def test_excludes_password_hash(self, authn):
+        authn.create_user("alice@example.com", "secret_hash")
+
+        users, _ = authn.list_users()
+
+        assert "password_hash" not in users[0]
+
+    def test_respects_namespace_isolation(self, make_authn):
+        tenant_a = make_authn("tenant_a")
+        tenant_b = make_authn("tenant_b")
+        tenant_a.create_user("alice@acme.com", "hash")
+        tenant_b.create_user("bob@acme.com", "hash")
+
+        users, total = tenant_a.list_users(search="acme")
+
+        assert total == 1
+        assert users[0]["email"] == "alice@acme.com"
+
+
+class TestCountUsers:
+    def test_counts_all_users(self, authn):
+        for i in range(3):
+            authn.create_user(f"user{i}@example.com", "hash")
+
+        assert authn.count_users() == 3
+
+    def test_counts_zero_for_empty_namespace(self, authn):
+        assert authn.count_users() == 0
+
+    def test_counts_matching_search(self, authn):
+        authn.create_user("alice@acme.com", "hash")
+        authn.create_user("bob@acme.com", "hash")
+        authn.create_user("carol@other.com", "hash")
+
+        assert authn.count_users(search="acme") == 2
+
+    def test_count_zero_when_no_match(self, authn):
+        authn.create_user("alice@example.com", "hash")
+
+        assert authn.count_users(search="zzz") == 0
+
+    def test_count_equals_list_total(self, authn):
+        for name in ("amy", "ben", "cara"):
+            authn.create_user(f"{name}@acme.com", "hash")
+        authn.create_user("dan@other.com", "hash")
+
+        _, total = authn.list_users(search="acme")
+
+        assert authn.count_users(search="acme") == total == 3
+
+    def test_count_is_case_insensitive(self, authn):
+        authn.create_user("Alice@Example.com", "hash")
+
+        assert authn.count_users(search="ALICE") == 1
+
+    def test_count_treats_underscore_as_literal(self, authn):
+        authn.create_user("a_b@example.com", "hash")
+        authn.create_user("axb@example.com", "hash")
+
+        assert authn.count_users(search="a_b") == 1
+
+    def test_count_respects_namespace_isolation(self, make_authn):
+        tenant_a = make_authn("tenant_a")
+        tenant_b = make_authn("tenant_b")
+        tenant_a.create_user("alice@acme.com", "hash")
+        tenant_b.create_user("bob@acme.com", "hash")
+
+        assert tenant_a.count_users(search="acme") == 1
 
 
 class TestGetUsersBatch:

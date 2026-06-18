@@ -299,15 +299,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 
+-- list_users changed signature; drop the old overload so re-applying this file
+-- doesn't leave two list_users that collide on default-arg calls.
+DROP FUNCTION IF EXISTS authn.list_users(text, int, uuid);
+
 -- @function authn.list_users
--- @brief List users with cursor-based pagination
+-- @brief List users, optionally filtered by an email substring (ordered by email)
+-- @param p_search Case-insensitive email substring; NULL returns all users
 -- @param p_limit Max users per page (default 100, max 1000)
--- @param p_cursor User ID to start after (for pagination)
--- @example SELECT * FROM authn.list_users('default', 50, NULL); -- First page
+-- @param p_offset Rows to skip, for pagination (default 0)
+-- @example SELECT * FROM authn.list_users('default', 'acme', 20, 0);
 CREATE OR REPLACE FUNCTION authn.list_users(
     p_namespace text DEFAULT 'default',
+    p_search text DEFAULT NULL,
     p_limit int DEFAULT 100,
-    p_cursor uuid DEFAULT NULL
+    p_offset int DEFAULT 0
 )
 RETURNS TABLE(
     user_id uuid,
@@ -318,6 +324,11 @@ RETURNS TABLE(
     updated_at timestamptz
 )
 AS $$
+DECLARE
+    -- Substring match, case-insensitive (email is stored lowercased), LIKE
+    -- wildcards escaped so they match literally. Mirrored in count_users.
+    v_pattern text := '%' || replace(replace(replace(
+        lower(p_search), '\', '\\'), '%', '\%'), '_', '\_') || '%';
 BEGIN
     PERFORM authn._validate_namespace(p_namespace);
     PERFORM authn._warn_namespace_mismatch(p_namespace);
@@ -337,9 +348,38 @@ BEGIN
         u.updated_at
     FROM authn.users u
     WHERE u.namespace = p_namespace
-      AND (p_cursor IS NULL OR u.id > p_cursor)
-    ORDER BY u.id
-    LIMIT p_limit;
+      AND (p_search IS NULL OR u.email LIKE v_pattern ESCAPE '\')
+    ORDER BY u.email
+    LIMIT p_limit
+    OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
+
+-- @function authn.count_users
+-- @brief Count users, optionally filtered by an email substring
+-- @param p_search Case-insensitive email substring; NULL counts all users
+-- @example SELECT authn.count_users('default', 'acme');
+CREATE OR REPLACE FUNCTION authn.count_users(
+    p_namespace text DEFAULT 'default',
+    p_search text DEFAULT NULL
+)
+RETURNS bigint
+AS $$
+DECLARE
+    -- Same filter as list_users.
+    v_pattern text := '%' || replace(replace(replace(
+        lower(p_search), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+    v_count bigint;
+BEGIN
+    PERFORM authn._validate_namespace(p_namespace);
+    PERFORM authn._warn_namespace_mismatch(p_namespace);
+
+    SELECT COUNT(*) INTO v_count
+    FROM authn.users u
+    WHERE u.namespace = p_namespace
+      AND (p_search IS NULL OR u.email LIKE v_pattern ESCAPE '\');
+
+    RETURN v_count;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
 

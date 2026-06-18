@@ -164,12 +164,42 @@ class AuthnClient(BaseClient):
             )
         )
 
-    def list_users(self, limit: int = 100, cursor: str | None = None) -> list[dict]:
-        """List users with pagination."""
-        return self._fetch_all(
-            "SELECT * FROM authn.list_users(%s, %s, %s)",
-            (self.namespace, limit, cursor),
+    def list_users(
+        self, search: str | None = None, limit: int = 100, offset: int = 0
+    ) -> tuple[list[dict], int]:
+        """List users matching an optional email substring, ordered by email.
+
+        Args:
+            search: Case-insensitive email substring. None returns all users.
+            limit: Max users per page (default 100, max 1000)
+            offset: Number of matching users to skip, for pagination
+
+        Returns:
+            Tuple of (users, total): the page of user dicts (no password_hash)
+            and the full match count for the search, for "showing X of Y".
+        """
+        users = self._fetch_all(
+            "SELECT * FROM authn.list_users(%s, %s, %s, %s)",
+            (self.namespace, search, limit, offset),
         )
+        return users, self.count_users(search)
+
+    def count_users(self, search: str | None = None) -> int:
+        """Count users matching an optional email substring.
+
+        Args:
+            search: Case-insensitive email substring. None counts all users.
+
+        Returns:
+            Total number of matching users.
+        """
+        result = self._fetch_val(
+            "SELECT authn.count_users(%s, %s)",
+            (self.namespace, search),
+        )
+        if result is None:
+            raise AuthnError("authn.count_users returned no value")
+        return int(result)
 
     def get_users_batch(self, user_ids: list[str]) -> dict[str, dict]:
         """Get multiple users by ID in a single query.
