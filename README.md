@@ -21,7 +21,7 @@ Each module is independent -- use what you need.
 Requires PostgreSQL 14+. Load the SQL from the latest release:
 
 ```bash
-curl -sL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql "$DATABASE_URL"
+curl -fsSL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql -v ON_ERROR_STOP=1 "$DATABASE_URL"
 ```
 
 Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `meter.sql`, `queue.sql`) are
@@ -58,6 +58,7 @@ pip install postkit
 
 ```python
 # authz: permission checks
+authz.set_hierarchy("repo", "admin", "write", "read")
 authz.grant("admin", resource=("repo", "api"), subject=("user", "alice"))
 authz.check(("user", "alice"), "read", ("repo", "api"))  # True
 
