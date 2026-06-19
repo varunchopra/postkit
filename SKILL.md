@@ -27,7 +27,7 @@ psql $DATABASE_URL -f postkit/dist/postkit.sql
 For the optional Python SDK:
 
 ```bash
-pip install -e "./postkit/sdk[binary]"
+pip install postkit
 ```
 
 ## Requirements

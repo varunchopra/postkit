@@ -19,7 +19,7 @@ psql $DATABASE_URL -f dist/meter.sql             # usage metering
 psql $DATABASE_URL -f dist/queue.sql             # job queues
 ```
 
-For the optional Python SDK: `pip install -e "./sdk[binary]"`
+For the optional Python SDK: `pip install postkit`
 
 ## Multi-Tenancy
 

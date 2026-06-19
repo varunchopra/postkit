@@ -5,7 +5,7 @@ Python client for postkit.
 ## Installation
 
 ```bash
-pip install git+https://github.com/varunchopra/postkit.git#subdirectory=sdk
+pip install postkit
 ```
 
 ## Usage

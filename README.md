@@ -1,5 +1,7 @@
 # postkit
 
+[![PyPI](https://img.shields.io/pypi/v/postkit)](https://pypi.org/project/postkit/)
+
 Postgres-native identity, configuration, metering, and job queues. Auth, permissions, versioned config, usage tracking, and scheduled tasks - no external services.
 
 ## Modules
@@ -16,23 +18,19 @@ Each module is independent -- use what you need.
 
 ## Install
 
-Requires PostgreSQL 14+.
+Requires PostgreSQL 14+. Load the SQL from the latest release:
 
 ```bash
-git clone https://github.com/varunchopra/postkit.git
-cd postkit
-make build
-
-# Install everything
-psql $DATABASE_URL -f dist/postkit.sql
-
-# Or individual modules
-psql $DATABASE_URL -f dist/authz.sql
-psql $DATABASE_URL -f dist/authn.sql
-psql $DATABASE_URL -f dist/config.sql
-psql $DATABASE_URL -f dist/meter.sql
-psql $DATABASE_URL -f dist/queue.sql
+curl -sL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql "$DATABASE_URL"
 ```
+
+Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `meter.sql`, `queue.sql`) are
+attached to each [release](https://github.com/varunchopra/postkit/releases). To build from
+source instead, see [Development](#development).
+
+To pin a version, install from a specific tag:
+`https://github.com/varunchopra/postkit/releases/download/vX.Y.Z/postkit.sql` for the SQL,
+`pip install postkit==X.Y.Z` for the SDK.
 
 ## Usage
 
@@ -55,7 +53,7 @@ db.QueryRow(ctx, "SELECT authz.check($1, $2, $3, $4, $5)", "user", userID, "read
 Optional typed client (requires Python 3.10+):
 
 ```bash
-pip install git+https://github.com/varunchopra/postkit.git#subdirectory=sdk
+pip install postkit
 ```
 
 ```python
