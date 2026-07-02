@@ -17,6 +17,7 @@ psql $DATABASE_URL -f dist/authz.sql             # permissions
 psql $DATABASE_URL -f dist/config.sql            # versioned config
 psql $DATABASE_URL -f dist/lease.sql             # leases, fencing, leader election
 psql $DATABASE_URL -f dist/meter.sql             # usage metering
+psql $DATABASE_URL -f dist/outbox.sql            # transactional event feed
 psql $DATABASE_URL -f dist/queue.sql             # job queues
 ```
 
@@ -53,6 +54,8 @@ Common operations by module. All require tenant context — call `{module}.set_t
 
 **Leases:** [`acquire`](docs/lease/sql.md#leaseacquire) · [`renew`](docs/lease/sql.md#leaserenew) · [`verify`](docs/lease/sql.md#leaseverify) · [`release`](docs/lease/sql.md#leaserelease) — [full reference](docs/lease/sql.md)
 
+**Events:** [`emit`](docs/outbox/sql.md#outboxemit) · [`subscribe`](docs/outbox/sql.md#outboxsubscribe) · [`poll`](docs/outbox/sql.md#outboxpoll) · [`ack`](docs/outbox/sql.md#outboxack) — [full reference](docs/outbox/sql.md)
+
 **Queues:** [`push`](docs/queue/sql.md#queuepush) · [`pull`](docs/queue/sql.md#queuepull) · [`ack`](docs/queue/sql.md#queueack) — [full reference](docs/queue/sql.md)
 
 ## Python SDK (Optional)
@@ -67,6 +70,7 @@ from postkit.authz import AuthzClient
 from postkit.config import ConfigClient
 from postkit.lease import LeaseClient
 from postkit.meter import MeterClient
+from postkit.outbox import OutboxClient
 from postkit.queue import QueueClient
 
 conn = psycopg.connect("postgresql://localhost/myapp")
@@ -77,6 +81,7 @@ authz = AuthzClient(cursor, namespace="my-app")
 config = ConfigClient(cursor, namespace="my-app")
 lease = LeaseClient(cursor, namespace="my-app")
 meter = MeterClient(cursor, namespace="my-app")
+outbox = OutboxClient(cursor, namespace="my-app")
 queue = QueueClient(cursor, namespace="my-app")
 ```
 
@@ -91,6 +96,8 @@ queue = QueueClient(cursor, namespace="my-app")
 **Metering:** [`allocate`](docs/meter/sdk.md#allocate) · [`reserve`](docs/meter/sdk.md#reserve) · [`commit`](docs/meter/sdk.md#commit) — [full reference](docs/meter/sdk.md)
 
 **Leases:** [`acquire`](docs/lease/sdk.md#acquire) · [`renew`](docs/lease/sdk.md#renew) · [`verify`](docs/lease/sdk.md#verify) · [`release`](docs/lease/sdk.md#release) — [full reference](docs/lease/sdk.md)
+
+**Events:** [`emit`](docs/outbox/sdk.md#emit) · [`subscribe`](docs/outbox/sdk.md#subscribe) · [`poll`](docs/outbox/sdk.md#poll) · [`ack`](docs/outbox/sdk.md#ack) — [full reference](docs/outbox/sdk.md)
 
 **Queues:** [`push`](docs/queue/sdk.md#push) · [`pull`](docs/queue/sdk.md#pull) · [`ack`](docs/queue/sdk.md#ack) — [full reference](docs/queue/sdk.md)
 
@@ -109,6 +116,8 @@ queue = QueueClient(cursor, namespace="my-app")
 
 **Audit context.** [`set_actor`](docs/authn/sql.md#authnset_actor) tags write operations with who made the change and why. Optional but recommended.
 
+**Outbox delivery is database-global.** Outbox reads return only events whose transaction has finished, and that horizon spans the whole database: one tenant's long-open transaction delays event delivery for every tenant. Set `idle_in_transaction_session_timeout` in multi-tenant deployments and watch the `horizon` column of [`lag`](docs/outbox/sql.md#outboxlag): a stalled horizon joined against `pg_stat_activity` identifies the session responsible.
+
 ## Modules
 
 | Module | Schema | SQL Reference | Python SDK | Purpose |
@@ -118,6 +127,7 @@ queue = QueueClient(cursor, namespace="my-app")
 | config | `config` | [sql.md](docs/config/sql.md) | [sdk.md](docs/config/sdk.md) | Versioned key-value, JSON schema validation |
 | lease | `lease` | [sql.md](docs/lease/sql.md) | [sdk.md](docs/lease/sdk.md) | TTL leases, fencing tokens, leader election |
 | meter | `meter` | [sql.md](docs/meter/sql.md) | [sdk.md](docs/meter/sdk.md) | Usage tracking, reservations, billing periods |
+| outbox | `outbox` | [sql.md](docs/outbox/sql.md) | [sdk.md](docs/outbox/sdk.md) | Transactional event feed, fan-out, durable cursors |
 | queue | `queue` | [sql.md](docs/queue/sql.md) | [sdk.md](docs/queue/sdk.md) | Job queues, scheduling, retries, dead letters |
 
 Each module's [README](docs/README.md) has a function index with deep links. For usage examples: `sdk/tests/{module}/`.

@@ -4,7 +4,7 @@ Postgres-native job queues with retries, scheduling, and dead letter handling. J
 
 **Good fit:** Background tasks, email sending, webhook delivery, periodic maintenance, or any work that needs retries and should survive app restarts.
 
-**Not a fit:** Sub-second latency requirements, millions of jobs per second, or fan-out pub/sub. Use Redis or a message broker for those.
+**Not a fit:** Sub-second latency requirements, millions of jobs per second, or fan-out where every consumer needs every event (that is [outbox](../outbox/) - queue jobs are consumed once, by whichever worker pulls them).
 
 ## Install
 

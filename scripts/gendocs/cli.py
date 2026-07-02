@@ -37,6 +37,7 @@ def main():
     (docs_dir / "config").mkdir(parents=True)
     (docs_dir / "lease").mkdir(parents=True)
     (docs_dir / "meter").mkdir(parents=True)
+    (docs_dir / "outbox").mkdir(parents=True)
     (docs_dir / "queue").mkdir(parents=True)
 
     print("Extracting Python docs...")
@@ -83,6 +84,14 @@ def main():
         python_results["meter"] = result
         documented = sum(1 for f in result.functions if f.brief)
         print(f"  ✓ meter: {documented}/{len(result.all_public_functions)} functions")
+
+    # outbox Python
+    outbox_client = root / "sdk" / "src" / "postkit" / "outbox" / "client.py"
+    if outbox_client.exists():
+        result = extract_python_docs(outbox_client, root)
+        python_results["outbox"] = result
+        documented = sum(1 for f in result.functions if f.brief)
+        print(f"  ✓ outbox: {documented}/{len(result.all_public_functions)} functions")
 
     # queue Python
     queue_client = root / "sdk" / "src" / "postkit" / "queue" / "client.py"
@@ -155,6 +164,19 @@ def main():
         groups = sorted(set(f.group for f in result.functions if f.group))
         print(
             f"  ✓ meter: {documented}/{len(result.all_public_functions)} SQL functions"
+        )
+        if groups:
+            print(f"    Groups: {', '.join(groups)}")
+
+    # outbox SQL
+    outbox_sql_dir = root / "outbox" / "src" / "functions"
+    if outbox_sql_dir.exists():
+        result = extract_sql_docs(outbox_sql_dir, root)
+        sql_results["outbox"] = result
+        documented = sum(1 for f in result.functions if f.brief)
+        groups = sorted(set(f.group for f in result.functions if f.group))
+        print(
+            f"  ✓ outbox: {documented}/{len(result.all_public_functions)} SQL functions"
         )
         if groups:
             print(f"    Groups: {', '.join(groups)}")
