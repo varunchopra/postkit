@@ -11,6 +11,7 @@ Postgres-native identity, configuration, metering, and job queues. Auth, permiss
 | [authz](authz/) | `authz` | Authorization (ReBAC permissions) |
 | [authn](authn/) | `authn` | Authentication (users, sessions, tokens) |
 | [config](config/) | `config` | Versioned configuration (prompts, flags, secrets) |
+| [lease](lease/) | `lease` | TTL leases with fencing tokens (locks, leader election) |
 | [meter](meter/) | `meter` | Usage metering (quotas, reservations, ledger) |
 | [queue](queue/) | `queue` | Job queues (scheduling, retries, dead letters) |
 
@@ -24,7 +25,7 @@ Requires PostgreSQL 14+. Load the SQL from the latest release:
 curl -fsSL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql -v ON_ERROR_STOP=1 "$DATABASE_URL"
 ```
 
-Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `meter.sql`, `queue.sql`) are
+Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `lease.sql`, `meter.sql`, `queue.sql`) are
 attached to each [release](https://github.com/varunchopra/postkit/releases). To build from
 source instead, see [Development](#development).
 
@@ -75,6 +76,11 @@ meter.allocate("alice", "llm_call", 10000, "tokens")
 res = meter.reserve("alice", "llm_call", 4000, "tokens")
 meter.commit(res["reservation_id"], 2347)
 
+# lease: locks and leader election with fencing
+got = lease.acquire("scheduler", holder="worker-1")
+lease.verify("scheduler", "worker-1", got["fence_token"])  # inside protected tx
+lease.release("scheduler", "worker-1", got["fence_token"])
+
 # queue: job scheduling
 queue.push("email", {"to": "alice@example.com", "subject": "Welcome"})
 job = queue.pull("email", worker_id="worker-1")
@@ -97,7 +103,7 @@ See [docs/](docs/) for full API reference with function signatures, parameters, 
 
 ```bash
 make setup   # Start Postgres in Docker
-make build   # Build dist/postkit.sql, dist/authz.sql, dist/authn.sql, dist/config.sql, dist/meter.sql, dist/queue.sql
+make build   # Build dist/postkit.sql, dist/authz.sql, dist/authn.sql, dist/config.sql, dist/lease.sql, dist/meter.sql, dist/queue.sql
 make test    # Run tests
 make docs    # Generate API documentation
 make clean   # Cleanup

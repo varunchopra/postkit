@@ -33,6 +33,7 @@ build:
 	@./scripts/build.sh authz > dist/authz.sql
 	@./scripts/build.sh authn > dist/authn.sql
 	@./scripts/build.sh config > dist/config.sql
+	@./scripts/build.sh lease > dist/lease.sql
 	@./scripts/build.sh meter > dist/meter.sql
 	@./scripts/build.sh queue > dist/queue.sql
 	@echo "$(GREEN)✓ Built dist/*.sql$(NC)"

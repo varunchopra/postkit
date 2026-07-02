@@ -35,6 +35,7 @@ def main():
     (docs_dir / "authz").mkdir(parents=True)
     (docs_dir / "authn").mkdir(parents=True)
     (docs_dir / "config").mkdir(parents=True)
+    (docs_dir / "lease").mkdir(parents=True)
     (docs_dir / "meter").mkdir(parents=True)
     (docs_dir / "queue").mkdir(parents=True)
 
@@ -66,6 +67,14 @@ def main():
         python_results["config"] = result
         documented = sum(1 for f in result.functions if f.brief)
         print(f"  ✓ config: {documented}/{len(result.all_public_functions)} functions")
+
+    # lease Python
+    lease_client = root / "sdk" / "src" / "postkit" / "lease" / "client.py"
+    if lease_client.exists():
+        result = extract_python_docs(lease_client, root)
+        python_results["lease"] = result
+        documented = sum(1 for f in result.functions if f.brief)
+        print(f"  ✓ lease: {documented}/{len(result.all_public_functions)} functions")
 
     # meter Python
     meter_client = root / "sdk" / "src" / "postkit" / "meter" / "client.py"
@@ -120,6 +129,19 @@ def main():
         groups = sorted(set(f.group for f in result.functions if f.group))
         print(
             f"  ✓ config: {documented}/{len(result.all_public_functions)} SQL functions"
+        )
+        if groups:
+            print(f"    Groups: {', '.join(groups)}")
+
+    # lease SQL
+    lease_sql_dir = root / "lease" / "src" / "functions"
+    if lease_sql_dir.exists():
+        result = extract_sql_docs(lease_sql_dir, root)
+        sql_results["lease"] = result
+        documented = sum(1 for f in result.functions if f.brief)
+        groups = sorted(set(f.group for f in result.functions if f.group))
+        print(
+            f"  ✓ lease: {documented}/{len(result.all_public_functions)} SQL functions"
         )
         if groups:
             print(f"    Groups: {', '.join(groups)}")

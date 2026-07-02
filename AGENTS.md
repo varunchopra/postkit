@@ -15,6 +15,7 @@ psql $DATABASE_URL -f dist/postkit.sql           # all modules
 psql $DATABASE_URL -f dist/authn.sql             # users, sessions, tokens
 psql $DATABASE_URL -f dist/authz.sql             # permissions
 psql $DATABASE_URL -f dist/config.sql            # versioned config
+psql $DATABASE_URL -f dist/lease.sql             # leases, fencing, leader election
 psql $DATABASE_URL -f dist/meter.sql             # usage metering
 psql $DATABASE_URL -f dist/queue.sql             # job queues
 ```
@@ -50,6 +51,8 @@ Common operations by module. All require tenant context — call `{module}.set_t
 
 **Metering:** [`allocate`](docs/meter/sql.md#meterallocate) · [`reserve`](docs/meter/sql.md#meterreserve) · [`commit`](docs/meter/sql.md#metercommit) — [full reference](docs/meter/sql.md)
 
+**Leases:** [`acquire`](docs/lease/sql.md#leaseacquire) · [`renew`](docs/lease/sql.md#leaserenew) · [`verify`](docs/lease/sql.md#leaseverify) · [`release`](docs/lease/sql.md#leaserelease) — [full reference](docs/lease/sql.md)
+
 **Queues:** [`push`](docs/queue/sql.md#queuepush) · [`pull`](docs/queue/sql.md#queuepull) · [`ack`](docs/queue/sql.md#queueack) — [full reference](docs/queue/sql.md)
 
 ## Python SDK (Optional)
@@ -62,6 +65,7 @@ import psycopg
 from postkit.authn import AuthnClient
 from postkit.authz import AuthzClient
 from postkit.config import ConfigClient
+from postkit.lease import LeaseClient
 from postkit.meter import MeterClient
 from postkit.queue import QueueClient
 
@@ -71,6 +75,7 @@ cursor = conn.cursor()  # default tuple factory — do NOT use dict_row
 authn = AuthnClient(cursor, namespace="my-app")
 authz = AuthzClient(cursor, namespace="my-app")
 config = ConfigClient(cursor, namespace="my-app")
+lease = LeaseClient(cursor, namespace="my-app")
 meter = MeterClient(cursor, namespace="my-app")
 queue = QueueClient(cursor, namespace="my-app")
 ```
@@ -84,6 +89,8 @@ queue = QueueClient(cursor, namespace="my-app")
 **Config:** [`set`](docs/config/sdk.md#set) · [`get`](docs/config/sdk.md#get) · [`rollback`](docs/config/sdk.md#rollback) — [full reference](docs/config/sdk.md)
 
 **Metering:** [`allocate`](docs/meter/sdk.md#allocate) · [`reserve`](docs/meter/sdk.md#reserve) · [`commit`](docs/meter/sdk.md#commit) — [full reference](docs/meter/sdk.md)
+
+**Leases:** [`acquire`](docs/lease/sdk.md#acquire) · [`renew`](docs/lease/sdk.md#renew) · [`verify`](docs/lease/sdk.md#verify) · [`release`](docs/lease/sdk.md#release) — [full reference](docs/lease/sdk.md)
 
 **Queues:** [`push`](docs/queue/sdk.md#push) · [`pull`](docs/queue/sdk.md#pull) · [`ack`](docs/queue/sdk.md#ack) — [full reference](docs/queue/sdk.md)
 
@@ -109,6 +116,7 @@ queue = QueueClient(cursor, namespace="my-app")
 | authn | `authn` | [sql.md](docs/authn/sql.md) | [sdk.md](docs/authn/sdk.md) | Users, sessions, tokens, MFA, impersonation |
 | authz | `authz` | [sql.md](docs/authz/sql.md) | [sdk.md](docs/authz/sdk.md) | ReBAC permissions, hierarchies, cross-tenant sharing |
 | config | `config` | [sql.md](docs/config/sql.md) | [sdk.md](docs/config/sdk.md) | Versioned key-value, JSON schema validation |
+| lease | `lease` | [sql.md](docs/lease/sql.md) | [sdk.md](docs/lease/sdk.md) | TTL leases, fencing tokens, leader election |
 | meter | `meter` | [sql.md](docs/meter/sql.md) | [sdk.md](docs/meter/sdk.md) | Usage tracking, reservations, billing periods |
 | queue | `queue` | [sql.md](docs/queue/sql.md) | [sdk.md](docs/queue/sdk.md) | Job queues, scheduling, retries, dead letters |
 
