@@ -56,7 +56,7 @@ Returns the row even when past its expiry (compare expires_at to judge liveness)
 **Returns:** Dict with holder_id, fence_token, expires_at, metadata,
 or None when no lease row exists
 
-*Source: sdk/src/postkit/lease/client.py:232*
+*Source: sdk/src/postkit/lease/client.py:233*
 
 ---
 
@@ -75,7 +75,7 @@ Read the lease event log, newest first.
 **Returns:** List of event dicts (acquired, released, taken_over) with
 actor context
 
-*Source: sdk/src/postkit/lease/client.py:262*
+*Source: sdk/src/postkit/lease/client.py:263*
 
 ---
 
@@ -90,7 +90,7 @@ Get namespace-wide lease statistics.
 **Returns:** Dict with total_leases, live, expired, total_names (every lease
 name ever used), and total_events counts
 
-*Source: sdk/src/postkit/lease/client.py:249*
+*Source: sdk/src/postkit/lease/client.py:250*
 
 ---
 
@@ -107,7 +107,7 @@ List leases in the namespace, most recently acquired first.
 
 **Returns:** List of lease row dicts
 
-*Source: sdk/src/postkit/lease/client.py:305*
+*Source: sdk/src/postkit/lease/client.py:308*
 
 ---
 
@@ -128,7 +128,7 @@ The event log is the module's audit surface, so retention has no default – pas
 
 **Returns:** Count of deleted events
 
-*Source: sdk/src/postkit/lease/client.py:280*
+*Source: sdk/src/postkit/lease/client.py:281*
 
 ---
 
@@ -149,7 +149,7 @@ Idempotent: releasing a lease you no longer hold returns False, never raises.
 
 **Returns:** True if released, False if not held with this holder and fence
 
-*Source: sdk/src/postkit/lease/client.py:172*
+*Source: sdk/src/postkit/lease/client.py:174*
 
 ---
 
@@ -171,7 +171,7 @@ Fails (renewed=False) once the lease is past its expiry – even if nobody else 
 
 **Returns:** Dict with renewed (bool) and expires_at (None when not renewed)
 
-*Source: sdk/src/postkit/lease/client.py:135*
+*Source: sdk/src/postkit/lease/client.py:136*
 
 ---
 
@@ -217,6 +217,6 @@ Do not call verify() then acquire() on the same name inside one transaction: und
 - `holder`: Holder identity (must match the lease)
 - `fence`: Fence token from acquire (must match the lease)
 
-*Source: sdk/src/postkit/lease/client.py:193*
+*Source: sdk/src/postkit/lease/client.py:195*
 
 ---

@@ -181,9 +181,6 @@ $$
 LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = authz, pg_temp;
 
--- =============================================================================
--- INITIALIZE PARTITIONS
--- =============================================================================
 -- Create initial partitions (current month + 3 months ahead)
 SELECT
     authz.ensure_audit_partitions (3);

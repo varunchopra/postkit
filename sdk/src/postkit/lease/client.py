@@ -129,7 +129,8 @@ class LeaseClient(BaseClient):
             ),
             write=True,
         )
-        assert result is not None
+        if result is None:
+            raise LeaseError("lease.acquire returned no row")
         return result
 
     def renew(
@@ -166,7 +167,8 @@ class LeaseClient(BaseClient):
             (self.namespace, name, holder, fence, ttl),
             write=True,
         )
-        assert result is not None
+        if result is None:
+            raise LeaseError("lease.renew returned no row")
         return result
 
     def release(self, name: str, holder: str, fence: int) -> bool:
@@ -221,8 +223,7 @@ class LeaseClient(BaseClient):
                 "verify() requires an open transaction: without one the "
                 "fence lock is released immediately and protects nothing. "
                 "Open a transaction around verify() and the writes it "
-                "protects.",
-                hint="postkit:lease:BIZ_VERIFY_NO_TRANSACTION",
+                "protects."
             )
         self._fetch_val(
             "SELECT lease.verify(%s, %s, %s, %s)",
@@ -300,7 +301,9 @@ class LeaseClient(BaseClient):
             (self.namespace, older_than, name, limit),
             write=True,
         )
-        return int(result or 0)
+        if result is None:
+            raise LeaseError("lease.prune_events returned no value")
+        return int(result)
 
     def list_leases(self, *, include_expired: bool = True) -> list[dict[str, Any]]:
         """List leases in the namespace, most recently acquired first.

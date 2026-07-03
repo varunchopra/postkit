@@ -221,7 +221,7 @@ BEGIN
 
     -- Deactivate current active version first, then activate target.
     -- Two separate UPDATEs because a single UPDATE that flips is_active
-    -- on two rows can violate entries_single_active_idx — PostgreSQL
+    -- on two rows can violate entries_single_active_idx - PostgreSQL
     -- checks unique indexes per-row, not per-statement, so row
     -- processing order determines whether the constraint sees a
     -- transient duplicate.

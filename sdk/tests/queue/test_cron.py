@@ -163,7 +163,7 @@ class TestCronPosixOr:
         assert result == datetime(2025, 1, 20, 9, 0, tzinfo=timezone.utc)
 
     def test_step_on_wildcard_is_restricted(self, raw_cursor):
-        """Step expressions like */2 are restricted — POSIX OR still applies.
+        """Step expressions like */2 are restricted - POSIX OR still applies.
 
         '0 0 */2 * 5' = midnight on odd-numbered days OR Fridays.
         From Sat Jan 4 2025 at 01:00: next odd day is Jan 5 (Sun),

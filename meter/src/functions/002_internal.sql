@@ -1,5 +1,16 @@
 -- @group Internal
 
+-- @function meter._hash64
+-- @brief Generate a 64-bit hash from a text key using md5
+-- @param p_key Text to hash
+-- @returns bigint hash value
+-- Uses first 16 hex chars of md5 (64 bits) for better collision resistance than hashtext (32 bits).
+CREATE FUNCTION meter._hash64(p_key text)
+RETURNS bigint AS $$
+    SELECT ('x' || substr(md5(p_key), 1, 16))::bit(64)::bigint;
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE SECURITY INVOKER;
+
+
 -- @function meter._idempotency_lock
 -- @brief Acquire advisory lock for idempotency key to prevent race conditions
 -- @param p_namespace Namespace
@@ -9,7 +20,7 @@ CREATE FUNCTION meter._idempotency_lock(p_namespace text, p_idempotency_key text
 RETURNS void AS $$
 BEGIN
     -- Advisory lock scoped to transaction, automatically released on commit/rollback
-    PERFORM pg_advisory_xact_lock(hashtext(p_namespace || ':' || p_idempotency_key));
+    PERFORM pg_advisory_xact_lock(meter._hash64(p_namespace || ':' || p_idempotency_key));
 END;
 $$ LANGUAGE plpgsql;
 

@@ -22,7 +22,10 @@
 -- answered by a lock-free fast path, so contended acquires do not queue
 -- behind each other or behind open verify transactions; only the paths that
 -- may grant take locks, and those waits are bounded by a 2 second lock
--- timeout that surfaces as a plain miss.
+-- timeout that surfaces as a plain miss. The 2 seconds is a default, not a
+-- fixed policy: deployments tune it with ALTER FUNCTION lease.acquire SET
+-- lock_timeout = '...' (re-apply after reloading the function files, which
+-- resets it).
 --
 -- Expiry uses the wall clock (clock_timestamp), not the transaction start
 -- time, so acquiring inside a long transaction cannot backdate or stretch a

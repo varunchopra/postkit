@@ -1,7 +1,4 @@
 -- @group Hierarchy
--- =============================================================================
--- PERMISSION HIERARCHY FUNCTIONS
--- =============================================================================
 --
 -- TWO-TIER HIERARCHY SYSTEM:
 --
@@ -24,7 +21,6 @@
 --   - RLS ensures tenants can only modify their own rules, not global ones
 --
 -- See 001_tables.sql for full architecture documentation.
--- =============================================================================
 
 -- @function authz.add_hierarchy
 -- @brief Define that one permission implies another (e.g., admin implies write)

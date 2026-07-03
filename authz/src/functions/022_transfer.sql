@@ -48,7 +48,7 @@ BEGIN
 
     -- Lock the source row to prevent concurrent transfers from both
     -- succeeding. Without FOR UPDATE, two transactions can read the same
-    -- row, both proceed past this check, and both create target grants —
+    -- row, both proceed past this check, and both create target grants -
     -- duplicating a permission that should be exclusive.
     SELECT t.id, t.expires_at INTO v_source_id, v_expires_at
     FROM authz.tuples t

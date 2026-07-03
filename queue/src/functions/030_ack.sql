@@ -256,7 +256,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 --
 -- Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd,
 -- or failed. Cancelled jobs are deleted (not archived) because they were
--- never processed — there is no completion state to retain.
+-- never processed - there is no completion state to retain.
 CREATE OR REPLACE FUNCTION queue.cancel(
     p_namespace text,
     p_job_id bigint
@@ -341,7 +341,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 -- @param p_queue Queue name
 -- @returns Count of deleted jobs
 --
--- Only deletes pending jobs. Running jobs are held by workers — use
+-- Only deletes pending jobs. Running jobs are held by workers - use
 -- release_jobs to return them first, or wait for visibility timeout.
 -- Completed and dead jobs are historical and not affected.
 CREATE OR REPLACE FUNCTION queue.purge_queue(

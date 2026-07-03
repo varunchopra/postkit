@@ -1,8 +1,5 @@
 -- @group Impersonation
 
--- =============================================================================
--- IMPERSONATION FUNCTIONS
--- =============================================================================
 -- Admin impersonation with full audit trail.
 -- Creates real sessions as target user while preserving actor context.
 -- All actions during impersonation are automatically tagged in audit.

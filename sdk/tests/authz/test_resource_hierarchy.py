@@ -96,7 +96,7 @@ class TestResourceHierarchyWithPermissionHierarchy:
 
     def test_admin_on_folder_gives_read_on_doc(self, authz):
         """Admin on folder grants read on docs via permission hierarchy."""
-        # Set up permission hierarchy (doc type only — the check target is doc:readme)
+        # Set up permission hierarchy (doc type only - the check target is doc:readme)
         authz.add_hierarchy_rule("doc", "admin", "read")
 
         # doc:readme is inside folder:docs

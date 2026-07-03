@@ -66,7 +66,7 @@ class TestReleaseJobs:
 
         queue.release_jobs("worker-1")
 
-        # Pull again — attempts should increment to 2.
+        # Pull again - attempts should increment to 2.
         repulled = queue.pull("tasks", worker_id="worker-2")
         assert repulled["attempts"] == 2
 

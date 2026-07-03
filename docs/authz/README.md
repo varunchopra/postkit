@@ -37,6 +37,7 @@
 | [`set_viewer`](sdk.md#set_viewer) | Set the viewer context for cross-namespace queries. |
 | [`transfer_grant`](sdk.md#transfer_grant) | Transfer a grant from one subject to another. |
 | [`verify`](sdk.md#verify) | Check for data integrity issues (e.g., group membership cycles). |
+| [`viewer_context`](sdk.md#viewer_context) | Set the viewer context for the duration of a block. |
 
 ## SQL Functions
 

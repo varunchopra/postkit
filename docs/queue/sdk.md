@@ -44,7 +44,7 @@ cancel(job_id: int) -> bool
 
 Cancel a pending job by deleting it.
 
-Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd, or failed. Cancelled jobs are deleted — they were never processed, so there is no completion state to retain.
+Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd, or failed. Cancelled jobs are deleted - they were never processed, so there is no completion state to retain.
 
 **Parameters:**
 - `job_id`: Job ID
@@ -347,7 +347,7 @@ purge_queue(queue: str) -> int
 
 Delete all pending jobs from a queue.
 
-Only deletes pending jobs. Running jobs are held by workers — use release_jobs to return them first, or wait for visibility timeout.
+Only deletes pending jobs. Running jobs are held by workers - use release_jobs to return them first, or wait for visibility timeout.
 
 **Parameters:**
 - `queue`: Queue name

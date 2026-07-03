@@ -157,7 +157,7 @@ SELECT * FROM authz.explain_text('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain_text('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/025_explain.sql:202*
+*Source: authz/src/functions/025_explain.sql:194*
 
 ---
 
@@ -351,7 +351,7 @@ Remove all hierarchy rules for a resource type (start fresh)
 SELECT authz.clear_hierarchy('repo', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:133*
+*Source: authz/src/functions/030_hierarchy.sql:129*
 
 ---
 
@@ -368,7 +368,7 @@ Remove a permission implication rule
 SELECT authz.remove_hierarchy('repo', 'admin', 'write', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:106*
+*Source: authz/src/functions/030_hierarchy.sql:102*
 
 ---
 
@@ -615,7 +615,7 @@ SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/023_check.sql:84*
+*Source: authz/src/functions/023_check.sql:81*
 
 ---
 
@@ -641,7 +641,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:148*
+*Source: authz/src/functions/023_check.sql:145*
 
 ---
 
@@ -667,7 +667,7 @@ Check if a subject has any of the specified permissions
 SELECT authz.check_any('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:119*
+*Source: authz/src/functions/023_check.sql:116*
 
 ---
 

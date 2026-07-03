@@ -1,8 +1,5 @@
 -- @group Operator Impersonation
 
--- =============================================================================
--- OPERATOR IMPERSONATION FUNCTIONS
--- =============================================================================
 -- Cross-namespace operator impersonation for platform support staff.
 --
 -- MECHANISM vs POLICY:
@@ -31,11 +28,7 @@
 -- SECURITY DEFINER functions. Putting pg_catalog first ensures built-in functions
 -- like now() and jsonb_build_object() cannot be shadowed by user-defined functions,
 -- providing defense-in-depth for privileged operations.
--- =============================================================================
 
--- =============================================================================
--- CONFIG FUNCTIONS
--- =============================================================================
 
 -- @function authn._operator_impersonation_default_duration
 -- @brief Returns default operator impersonation duration
@@ -69,9 +62,6 @@ END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SET search_path = authn, pg_catalog, pg_temp;
 
 
--- =============================================================================
--- INTERNAL HELPERS
--- =============================================================================
 
 -- @function authn._log_operator_audit_event
 -- @brief Internal helper that inserts operator audit events
@@ -144,9 +134,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, authn;
 
 
--- =============================================================================
--- MAIN FUNCTIONS
--- =============================================================================
 
 -- @function authn.start_operator_impersonation
 -- @brief Start cross-namespace operator impersonation

@@ -41,7 +41,7 @@ class ConfigClient(BaseClient):
     """Client for Postkit config module.
 
     Manages versioned configuration including prompts, feature flags, secrets,
-    and settings. All config types use the same API — differentiate by key
+    and settings. All config types use the same API - differentiate by key
     naming conventions.
 
     Example:

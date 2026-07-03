@@ -110,7 +110,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 -- Workers that crash or hang leave jobs stuck in 'running' status. This
 -- function finds those jobs (visibility_timeout_at < now()) and returns them
 -- to 'pending' for re-delivery. Attempt count is preserved so the next
--- pull increments it normally. Does NOT check max_attempts — the next
+-- pull increments it normally. Does NOT check max_attempts - the next
 -- nack cycle handles DLQ routing, keeping that decision in one place.
 --
 -- Call periodically alongside tick_schedules(). Uses FOR UPDATE SKIP LOCKED

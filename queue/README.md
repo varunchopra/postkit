@@ -46,7 +46,7 @@ Jobs move through four states:
 - **completed** - acknowledged by worker (deleted or archived per config)
 - **dead** - moved to dead letter queue after max attempts or explicit fail
 
-If a worker crashes, the visibility timeout expires and the job returns to pending automatically.
+If a worker crashes, its job stays in running until the visibility timeout expires and the next `queue.tick_timeouts` call returns it to pending. Nothing reclaims jobs on its own: until that tick runs, the job is delayed, not lost. Schedule `tick_timeouts` from the same cron that runs `tick_schedules`.
 
 ## Schedules
 
@@ -67,9 +67,12 @@ SELECT queue.create_schedule(
     p_every_interval := '2 hours'
 );
 
--- Process due schedules (call from an external cron or timer)
+-- Process due schedules (call from an external cron or timer, together
+-- with tick_timeouts, which reclaims timed-out jobs)
 SELECT * FROM queue.tick_schedules('acme');
 -- -> schedule_name, job_id, next_run_at for each fired schedule
+SELECT * FROM queue.tick_timeouts('acme');
+-- -> job_id, queue, stuck_duration for each reclaimed job
 ```
 
 Pause and resume without losing schedule definitions:

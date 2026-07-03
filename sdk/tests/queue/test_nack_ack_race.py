@@ -56,7 +56,7 @@ class TestConcurrentFail:
         """Two concurrent fail() calls must produce exactly one dead letter entry.
 
         Without FOR UPDATE, both threads read the running job, both insert into
-        dead_letters, and both update to 'dead' — creating duplicate entries.
+        dead_letters, and both update to 'dead' - creating duplicate entries.
         """
         namespace = "t_race_double_fail"
         conn_setup, _ = _make_client(namespace)
@@ -207,7 +207,7 @@ class TestNackStatusGuard:
                 t1.join(timeout=10)
                 t2.join(timeout=10)
 
-                # If fail won the race, job must be 'dead' — nack must not
+                # If fail won the race, job must be 'dead' - nack must not
                 # have overwritten it back to 'pending'.
                 if results["fail_result"] is True:
                     fail_won_count += 1
@@ -218,7 +218,7 @@ class TestNackStatusGuard:
                     ).fetchone()
                     assert row is not None
                     assert row[0] == "dead", (
-                        f"Job status is '{row[0]}' after fail() returned True — "
+                        f"Job status is '{row[0]}' after fail() returned True - "
                         f"nack overwrote dead status (attempt {attempt})"
                     )
 
@@ -232,7 +232,7 @@ class TestNackStatusGuard:
                 )
 
             assert fail_won_count > 0, (
-                "fail() never won the race in 10 iterations — test verified nothing"
+                "fail() never won the race in 10 iterations - test verified nothing"
             )
 
         finally:

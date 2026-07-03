@@ -235,7 +235,7 @@ DECLARE
     v_count int;
 BEGIN
     -- Prevent concurrent calls for the same namespace
-    PERFORM pg_advisory_xact_lock(hashtext('meter.release_expired:' || COALESCE(p_namespace, '*')));
+    PERFORM pg_advisory_xact_lock(meter._hash64('meter.release_expired:' || COALESCE(p_namespace, '*')));
 
     -- Mark expired reservations and release holds in one atomic statement.
     -- Lock ordering: reservations first (UPDATE in CTE), accounts second (outer UPDATE).

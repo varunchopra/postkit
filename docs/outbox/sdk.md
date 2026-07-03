@@ -20,7 +20,7 @@ Pass the xid and id of the last event processed, straight from the polled row: e
 
 **Returns:** True if the cursor advanced, False if the pair was not ahead of it
 
-*Source: sdk/src/postkit/outbox/client.py:214*
+*Source: sdk/src/postkit/outbox/client.py:215*
 
 ---
 
@@ -69,7 +69,7 @@ Get namespace-wide outbox statistics.
 **Returns:** Dict with total_events, total_topics, total_consumers, and
 max_lag_events counts
 
-*Source: sdk/src/postkit/outbox/client.py:319*
+*Source: sdk/src/postkit/outbox/client.py:320*
 
 ---
 
@@ -87,7 +87,7 @@ Per-consumer backlog, plus the current visibility horizon.
 **Returns:** One dict per consumer: position_xid, position_id, lag_events,
 lag_time, horizon
 
-*Source: sdk/src/postkit/outbox/client.py:305*
+*Source: sdk/src/postkit/outbox/client.py:306*
 
 ---
 
@@ -104,7 +104,7 @@ List consumer cursors in the namespace.
 
 **Returns:** List of cursor row dicts
 
-*Source: sdk/src/postkit/outbox/client.py:331*
+*Source: sdk/src/postkit/outbox/client.py:332*
 
 ---
 
@@ -144,7 +144,7 @@ Read the next events for a consumer. Does not advance the cursor.
 **Returns:** Event dicts in delivery order; each carries the xid and id that
 together form its ack position
 
-*Source: sdk/src/postkit/outbox/client.py:191*
+*Source: sdk/src/postkit/outbox/client.py:192*
 
 ---
 
@@ -166,7 +166,7 @@ Store both components of the last row read (its xid and id) and pass them back; 
 
 **Returns:** Event dicts in delivery order
 
-*Source: sdk/src/postkit/outbox/client.py:236*
+*Source: sdk/src/postkit/outbox/client.py:237*
 
 ---
 
@@ -186,7 +186,7 @@ Take the pair from a previously polled row, from a CURSOR_LOST message, or (0, 0
 - `xid`: Transaction component of the new position
 - `id`: Id component (events after the pair are delivered again)
 
-*Source: sdk/src/postkit/outbox/client.py:264*
+*Source: sdk/src/postkit/outbox/client.py:265*
 
 ---
 
@@ -249,6 +249,6 @@ Delete old events. Retention has no default; pass it explicitly.
 
 **Returns:** One dict per topic touched, with the deleted count
 
-*Source: sdk/src/postkit/outbox/client.py:282*
+*Source: sdk/src/postkit/outbox/client.py:283*
 
 ---

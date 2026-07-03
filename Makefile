@@ -61,6 +61,7 @@ clean:
 lint:
 	@uvx ruff check .
 	@uvx --with 'psycopg[binary]' --with jsonschema ty check sdk/src/
+	@if git grep -nI "$$(printf '\342\200\224')"; then echo "$(RED)em dashes found: use ' - '$(NC)"; exit 1; fi
 	@echo "$(GREEN)✓ Lint passed$(NC)"
 
 format:

@@ -2,7 +2,7 @@
 -- SCHEMA AND TABLES FOR POSTKIT/CONFIG
 -- =============================================================================
 -- Versioned configuration storage for prompts, feature flags, secrets, settings.
--- All config types use the same table — differentiated by key naming conventions.
+-- All config types use the same table - differentiated by key naming conventions.
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS config;

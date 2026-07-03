@@ -292,6 +292,11 @@ def extract_python_docs(client_path: Path, root: Path) -> ExtractionResult:
         for name, method in inspect.getmembers(cls, _is_public_method):
             all_public.append(name)
 
+            # Decorated methods (e.g. @contextmanager) otherwise resolve to
+            # the decorator's own file - an absolute interpreter path that
+            # differs per machine and makes the generated docs unstable.
+            method = inspect.unwrap(method)
+
             sig = inspect.signature(method)
             signature = _format_signature(name, sig)
 

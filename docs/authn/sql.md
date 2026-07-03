@@ -563,7 +563,7 @@ End an impersonation session early (revokes the impersonation session)
 SELECT authn.end_impersonation(impersonation_id);
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:161*
+*Source: authn/src/functions/075_impersonation.sql:158*
 
 ---
 
@@ -585,7 +585,7 @@ Get impersonation context for a session (is this an impersonated session?)
 SELECT * FROM authn.get_impersonation_context(session_id);
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:230*
+*Source: authn/src/functions/075_impersonation.sql:227*
 
 ---
 
@@ -607,7 +607,7 @@ List all active impersonations in a namespace (admin dashboard)
 SELECT * FROM authn.list_active_impersonations('production');
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:292*
+*Source: authn/src/functions/075_impersonation.sql:289*
 
 ---
 
@@ -632,7 +632,7 @@ List impersonation history for audit (includes ended impersonations)
 SELECT * FROM authn.list_impersonation_history('production', 100);
 ```
 
-*Source: authn/src/functions/075_impersonation.sql:342*
+*Source: authn/src/functions/075_impersonation.sql:339*
 
 ---
 
@@ -854,7 +854,7 @@ End an operator impersonation session early
 SELECT authn.end_operator_impersonation(impersonation_id);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:331*
+*Source: authn/src/functions/085_operator_impersonation.sql:318*
 
 ---
 
@@ -879,7 +879,7 @@ Query operator audit events
 SELECT * FROM authn.get_operator_audit_events(100, NULL, NULL, 'customer_ns');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:658*
+*Source: authn/src/functions/085_operator_impersonation.sql:645*
 
 ---
 
@@ -901,7 +901,7 @@ Get operator impersonation context for a session
 SELECT * FROM authn.get_operator_impersonation_context(session_id);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:399*
+*Source: authn/src/functions/085_operator_impersonation.sql:386*
 
 ---
 
@@ -923,7 +923,7 @@ List all active operator impersonations (platform admin view)
 SELECT * FROM authn.list_active_operator_impersonations(100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:599*
+*Source: authn/src/functions/085_operator_impersonation.sql:586*
 
 ---
 
@@ -947,7 +947,7 @@ List impersonations performed by an operator
 SELECT * FROM authn.list_operator_impersonations_by_operator(operator_id, 'platform');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:539*
+*Source: authn/src/functions/085_operator_impersonation.sql:526*
 
 ---
 
@@ -971,7 +971,7 @@ List operator impersonation history affecting a target namespace
 SELECT * FROM authn.list_operator_impersonations_for_target('customer_ns', 100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:475*
+*Source: authn/src/functions/085_operator_impersonation.sql:462*
 
 ---
 
@@ -1003,7 +1003,7 @@ operator_session_id, target_user_id, 'customer_ns', token_hash,
 );
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:144*
+*Source: authn/src/functions/085_operator_impersonation.sql:134*
 
 ---
 

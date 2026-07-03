@@ -1,6 +1,6 @@
-# Postkit — Agent Guide
+# Postkit - Agent Guide
 
-PostgreSQL-native auth, permissions, versioned config, usage tracking, and job queues. Pure SQL functions — works with any language or driver.
+PostgreSQL-native auth, permissions, versioned config, usage tracking, and job queues. Pure SQL functions - works with any language or driver.
 
 ## Setup
 
@@ -25,42 +25,42 @@ For the optional Python SDK: `pip install postkit`
 
 ## Multi-Tenancy
 
-Postkit uses Row-Level Security for tenant isolation. Every query runs in the context of a namespace set via [`set_tenant`](docs/authn/sql.md#authnset_tenant) inside a transaction. Context is transaction-local (SET LOCAL) — it clears on commit. Without `set_tenant`, queries return nothing (fail-closed).
+Postkit uses Row-Level Security for tenant isolation. Every query runs in the context of a namespace set via [`set_tenant`](docs/authn/sql.md#authnset_tenant) inside a transaction. Context is transaction-local (SET LOCAL) - it clears on commit. Without `set_tenant`, queries return nothing (fail-closed).
 
 Functions that write data need the `p_namespace` parameter to match the tenant context. `set_tenant()` controls RLS visibility; `p_namespace` controls what gets stored.
 
-Each module has [`set_tenant`](docs/authn/sql.md#authnset_tenant) / [`clear_tenant`](docs/authn/sql.md#authnclear_tenant). Call `clear_tenant()` before returning connections to a pool. The Python SDK handles tenant context automatically — pass `namespace` to the constructor.
+Each module has [`set_tenant`](docs/authn/sql.md#authnset_tenant) / [`clear_tenant`](docs/authn/sql.md#authnclear_tenant). Call `clear_tenant()` before returning connections to a pool. The Python SDK handles tenant context automatically - pass `namespace` to the constructor.
 
 ## Hashing
 
 Postkit stores hashes, never plaintext. This applies in every language.
 
-- **Passwords:** Hash with argon2 or bcrypt. The parameter is named `p_password_hash` — see [`create_user`](docs/authn/sql.md#authncreate_user). Pass `NULL` for SSO-only users.
-- **Session tokens, API keys, refresh tokens:** SHA-256. Generate a random token, hash it, store the hash in Postkit, send the raw token to the client — see [`create_session`](docs/authn/sql.md#authncreate_session).
+- **Passwords:** Hash with argon2 or bcrypt. The parameter is named `p_password_hash` - see [`create_user`](docs/authn/sql.md#authncreate_user). Pass `NULL` for SSO-only users.
+- **Session tokens, API keys, refresh tokens:** SHA-256. Generate a random token, hash it, store the hash in Postkit, send the raw token to the client - see [`create_session`](docs/authn/sql.md#authncreate_session).
 
 ## SQL Quick Reference
 
-Common operations by module. All require tenant context — call `{module}.set_tenant(namespace)` in a transaction first (see Multi-Tenancy). Queue takes namespace as first parameter; other modules default to `'default'`. Each function's docs include full signatures, parameters, and usage examples — read them before integrating.
+Common operations by module. All require tenant context - call `{module}.set_tenant(namespace)` in a transaction first (see Multi-Tenancy). Queue takes namespace as first parameter; other modules default to `'default'`. Each function's docs include full signatures, parameters, and usage examples - read them before integrating.
 
-**Auth:** [`create_user`](docs/authn/sql.md#authncreate_user) · [`create_session`](docs/authn/sql.md#authncreate_session) · [`validate_session`](docs/authn/sql.md#authnvalidate_session) · [`revoke_session`](docs/authn/sql.md#authnrevoke_session) — [full reference](docs/authn/sql.md)
+**Auth:** [`create_user`](docs/authn/sql.md#authncreate_user) · [`create_session`](docs/authn/sql.md#authncreate_session) · [`validate_session`](docs/authn/sql.md#authnvalidate_session) · [`revoke_session`](docs/authn/sql.md#authnrevoke_session) - [full reference](docs/authn/sql.md)
 
 **Login flow:** [`is_locked_out`](docs/authn/sql.md#authnis_locked_out) → [`get_credentials`](docs/authn/sql.md#authnget_credentials) → verify hash + check `disabled_at` → [`record_login_attempt`](docs/authn/sql.md#authnrecord_login_attempt) → [`create_session`](docs/authn/sql.md#authncreate_session)
 
-**Permissions:** [`write_tuple`](docs/authz/sql.md#authzwrite_tuple) · [`check`](docs/authz/sql.md#authzcheck) · [`add_hierarchy`](docs/authz/sql.md#authzadd_hierarchy) — [full reference](docs/authz/sql.md)
+**Permissions:** [`write_tuple`](docs/authz/sql.md#authzwrite_tuple) · [`check`](docs/authz/sql.md#authzcheck) · [`add_hierarchy`](docs/authz/sql.md#authzadd_hierarchy) - [full reference](docs/authz/sql.md)
 
-**Config:** [`set`](docs/config/sql.md#configset) · [`get`](docs/config/sql.md#configget) · [`rollback`](docs/config/sql.md#configrollback) — [full reference](docs/config/sql.md)
+**Config:** [`set`](docs/config/sql.md#configset) · [`get`](docs/config/sql.md#configget) · [`rollback`](docs/config/sql.md#configrollback) - [full reference](docs/config/sql.md)
 
-**Metering:** [`allocate`](docs/meter/sql.md#meterallocate) · [`reserve`](docs/meter/sql.md#meterreserve) · [`commit`](docs/meter/sql.md#metercommit) — [full reference](docs/meter/sql.md)
+**Metering:** [`allocate`](docs/meter/sql.md#meterallocate) · [`reserve`](docs/meter/sql.md#meterreserve) · [`commit`](docs/meter/sql.md#metercommit) - [full reference](docs/meter/sql.md)
 
-**Leases:** [`acquire`](docs/lease/sql.md#leaseacquire) · [`renew`](docs/lease/sql.md#leaserenew) · [`verify`](docs/lease/sql.md#leaseverify) · [`release`](docs/lease/sql.md#leaserelease) — [full reference](docs/lease/sql.md)
+**Leases:** [`acquire`](docs/lease/sql.md#leaseacquire) · [`renew`](docs/lease/sql.md#leaserenew) · [`verify`](docs/lease/sql.md#leaseverify) · [`release`](docs/lease/sql.md#leaserelease) - [full reference](docs/lease/sql.md)
 
-**Events:** [`emit`](docs/outbox/sql.md#outboxemit) · [`subscribe`](docs/outbox/sql.md#outboxsubscribe) · [`poll`](docs/outbox/sql.md#outboxpoll) · [`ack`](docs/outbox/sql.md#outboxack) — [full reference](docs/outbox/sql.md)
+**Events:** [`emit`](docs/outbox/sql.md#outboxemit) · [`subscribe`](docs/outbox/sql.md#outboxsubscribe) · [`poll`](docs/outbox/sql.md#outboxpoll) · [`ack`](docs/outbox/sql.md#outboxack) - [full reference](docs/outbox/sql.md)
 
-**Queues:** [`push`](docs/queue/sql.md#queuepush) · [`pull`](docs/queue/sql.md#queuepull) · [`ack`](docs/queue/sql.md#queueack) — [full reference](docs/queue/sql.md)
+**Queues:** [`push`](docs/queue/sql.md#queuepush) · [`pull`](docs/queue/sql.md#queuepull) · [`ack`](docs/queue/sql.md#queueack) - [full reference](docs/queue/sql.md)
 
 ## Python SDK (Optional)
 
-The SDK wraps every SQL function 1:1 with type hints, automatic tenant context, error mapping, and dict returns. Requires psycopg3 with the default tuple row_factory. Each function's docs include full signatures, parameters, and usage examples — read the relevant [module docs](#modules) before integrating.
+The SDK wraps every SQL function 1:1 with type hints, automatic tenant context, error mapping, and dict returns. Requires psycopg3 with the default tuple row_factory. Each function's docs include full signatures, parameters, and usage examples - read the relevant [module docs](#modules) before integrating.
 
 **Setup:**
 ```python
@@ -74,7 +74,7 @@ from postkit.outbox import OutboxClient
 from postkit.queue import QueueClient
 
 conn = psycopg.connect("postgresql://localhost/myapp")
-cursor = conn.cursor()  # default tuple factory — do NOT use dict_row
+cursor = conn.cursor()  # default tuple factory - do NOT use dict_row
 
 authn = AuthnClient(cursor, namespace="my-app")
 authz = AuthzClient(cursor, namespace="my-app")
@@ -85,26 +85,26 @@ outbox = OutboxClient(cursor, namespace="my-app")
 queue = QueueClient(cursor, namespace="my-app")
 ```
 
-**Auth:** [`create_user`](docs/authn/sdk.md#create_user) · [`create_session`](docs/authn/sdk.md#create_session) · [`validate_session`](docs/authn/sdk.md#validate_session) · [`revoke_session`](docs/authn/sdk.md#revoke_session) — [full reference](docs/authn/sdk.md)
+**Auth:** [`create_user`](docs/authn/sdk.md#create_user) · [`create_session`](docs/authn/sdk.md#create_session) · [`validate_session`](docs/authn/sdk.md#validate_session) · [`revoke_session`](docs/authn/sdk.md#revoke_session) - [full reference](docs/authn/sdk.md)
 
 **Login flow:** [`is_locked_out`](docs/authn/sdk.md#is_locked_out) → [`get_credentials`](docs/authn/sdk.md#get_credentials) → verify hash + check `disabled_at` → [`record_login_attempt`](docs/authn/sdk.md#record_login_attempt) → [`create_session`](docs/authn/sdk.md#create_session)
 
-**Permissions:** [`grant`](docs/authz/sdk.md#grant) · [`check`](docs/authz/sdk.md#check) · [`set_hierarchy`](docs/authz/sdk.md#set_hierarchy) — [full reference](docs/authz/sdk.md)
+**Permissions:** [`grant`](docs/authz/sdk.md#grant) · [`check`](docs/authz/sdk.md#check) · [`set_hierarchy`](docs/authz/sdk.md#set_hierarchy) - [full reference](docs/authz/sdk.md)
 
-**Config:** [`set`](docs/config/sdk.md#set) · [`get`](docs/config/sdk.md#get) · [`rollback`](docs/config/sdk.md#rollback) — [full reference](docs/config/sdk.md)
+**Config:** [`set`](docs/config/sdk.md#set) · [`get`](docs/config/sdk.md#get) · [`rollback`](docs/config/sdk.md#rollback) - [full reference](docs/config/sdk.md)
 
-**Metering:** [`allocate`](docs/meter/sdk.md#allocate) · [`reserve`](docs/meter/sdk.md#reserve) · [`commit`](docs/meter/sdk.md#commit) — [full reference](docs/meter/sdk.md)
+**Metering:** [`allocate`](docs/meter/sdk.md#allocate) · [`reserve`](docs/meter/sdk.md#reserve) · [`commit`](docs/meter/sdk.md#commit) - [full reference](docs/meter/sdk.md)
 
-**Leases:** [`acquire`](docs/lease/sdk.md#acquire) · [`renew`](docs/lease/sdk.md#renew) · [`verify`](docs/lease/sdk.md#verify) · [`release`](docs/lease/sdk.md#release) — [full reference](docs/lease/sdk.md)
+**Leases:** [`acquire`](docs/lease/sdk.md#acquire) · [`renew`](docs/lease/sdk.md#renew) · [`verify`](docs/lease/sdk.md#verify) · [`release`](docs/lease/sdk.md#release) - [full reference](docs/lease/sdk.md)
 
-**Events:** [`emit`](docs/outbox/sdk.md#emit) · [`subscribe`](docs/outbox/sdk.md#subscribe) · [`poll`](docs/outbox/sdk.md#poll) · [`ack`](docs/outbox/sdk.md#ack) — [full reference](docs/outbox/sdk.md)
+**Events:** [`emit`](docs/outbox/sdk.md#emit) · [`subscribe`](docs/outbox/sdk.md#subscribe) · [`poll`](docs/outbox/sdk.md#poll) · [`ack`](docs/outbox/sdk.md#ack) - [full reference](docs/outbox/sdk.md)
 
-**Queues:** [`push`](docs/queue/sdk.md#push) · [`pull`](docs/queue/sdk.md#pull) · [`ack`](docs/queue/sdk.md#ack) — [full reference](docs/queue/sdk.md)
+**Queues:** [`push`](docs/queue/sdk.md#push) · [`pull`](docs/queue/sdk.md#pull) · [`ack`](docs/queue/sdk.md#ack) - [full reference](docs/queue/sdk.md)
 
 **SDK-specific gotchas:**
 
-- `psycopg>=3.1.0` required (not psycopg2) — `import psycopg`
-- Default `conn.cursor()` only — `row_factory=dict_row` raises `ValueError`
+- `psycopg>=3.1.0` required (not psycopg2) - `import psycopg`
+- Default `conn.cursor()` only - `row_factory=dict_row` raises `ValueError`
 - Namespace is a required constructor argument
 - Call `client.clear_actor()` / `authz.clear_viewer()` before returning pooled connections
 
@@ -157,6 +157,12 @@ SQL documentation tags:
 -- @returns True if permitted
 -- @example SELECT authz.check('user', 'alice', 'read', 'doc', '1');
 ```
+
+Section banners (`-- ====`) belong in schema files only. Function files carry a `-- @group` header plus the documentation tags above; anything a banner would say goes in the doc comment prose.
+
+The SQL surface is the contract, and the `postkit:module:CODE` namespace belongs to it exclusively: every such code must be raised by SQL, and `sdk/tests/test_error_codes.py` enforces that the SDK constants mirror it exactly. SDK clients may add client-side checks where they help (config validates values against stored schemas, lease and outbox refuse calls that need an open transaction), but such checks raise a typed module exception with a plain message - they never mint a `postkit:` code, because codes the database cannot raise falsify the contract for raw SQL callers and other-language SDKs.
+
+Adding a module means registering it everywhere a module list is hardcoded: `scripts/build.sh` (build loop, case arm, usage string), `Makefile` (dist target), `scripts/gendocs/cli.py` (extraction block), `README.md` (install line, module table), this file (install line, SQL quick reference, SDK example, module table), `sdk/src/postkit/errors.py` (error-code class), and `sdk/tests/test_error_codes.py` (`MODULE_CONFIG`). `docs/` regenerates via `make docs`.
 
 Development: `make setup` (Postgres in Docker), `make build`, `make test`, `make lint`, `make format`.
 

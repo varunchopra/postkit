@@ -102,7 +102,7 @@ class TestConfigRowLevelSecurity:
         assert value["value"] == 1
 
     def test_autocommit_mode(self, db_connection):
-        """Each autocommit statement is its own transaction — context must be re-applied.
+        """Each autocommit statement is its own transaction - context must be re-applied.
 
         In autocommit mode, __init__'s set_tenant call commits immediately.
         Every subsequent SDK call starts a fresh transaction with no tenant
@@ -147,7 +147,7 @@ class TestConfigRowLevelSecurity:
 
         ConfigClient(cursor, "rls_a").set("app/setting", {"owner": "a"})
 
-        # Switch to rls_b context — superuser still sees rls_a data.
+        # Switch to rls_b context - superuser still sees rls_a data.
         ConfigClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM config.entries WHERE namespace = 'rls_a'")
         assert len(cursor.fetchall()) == 1
@@ -192,7 +192,7 @@ class TestConfigRowLevelSecurity:
         assert len(cursor.fetchall()) >= 1
 
     def test_schemas_read_all(self, rls_connection, db_connection):
-        """Schemas table has read-all policy — all tenants can read schemas.
+        """Schemas table has read-all policy - all tenants can read schemas.
 
         Note: schemas_read_all policy uses USING (true) for SELECT only.
         There are no INSERT/UPDATE/DELETE policies, so writes are blocked.

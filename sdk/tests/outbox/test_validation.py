@@ -97,9 +97,8 @@ class TestEmitTransactionGuard:
     state change, so the client refuses to run it."""
 
     def test_emit_without_transaction_raises(self, outbox):
-        with pytest.raises(OutboxError) as exc_info:
+        with pytest.raises(OutboxError, match="requires an open transaction"):
             outbox.emit("orders", "order.created", {"n": 1})
-        assert exc_info.value.error_code == OutboxErrorCode.BIZ_EMIT_NO_TRANSACTION
 
     def test_emit_inside_transaction_succeeds(self, outbox, db_connection):
         with db_connection.transaction():

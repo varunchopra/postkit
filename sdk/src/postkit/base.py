@@ -200,7 +200,7 @@ class BaseClient(ABC):
         context automatically clears on commit, preventing cross-tenant
         leakage in connection pools.
 
-        Safe to call repeatedly within the same transaction — set_config
+        Safe to call repeatedly within the same transaction - set_config
         with the same value is a no-op at the PostgreSQL level.
         """
         try:

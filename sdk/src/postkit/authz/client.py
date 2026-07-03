@@ -9,6 +9,8 @@ This module provides:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import psycopg
@@ -84,6 +86,17 @@ class AuthzClient(BaseClient):
         to see grants where they are the recipient across ALL namespaces.
         Required for "Shared with me" / external resources functionality.
 
+        The setting is session-scoped. With an in-process connection pool,
+        prefer viewer_context(), which clears it however the block exits.
+        Behind PgBouncer in session pooling mode, DISCARD ALL between
+        clients also clears it; in transaction pooling mode session-scoped
+        settings are unsafe (they persist on some server connection for a
+        later client) AND unreliable (your next statement may run on a
+        different server connection), so do not use set_viewer there - set
+        the context transaction-locally instead (inside a transaction, run
+        set_config('authz.viewer_type', ..., true) and the same for
+        viewer_id).
+
         Args:
             subject: The subject as (type, id) tuple (e.g., ("user", "alice"))
 
@@ -115,6 +128,35 @@ class AuthzClient(BaseClient):
             "SELECT set_config('authz.viewer_type', '', false), "
             "set_config('authz.viewer_id', '', false)"
         )
+
+    @contextmanager
+    def viewer_context(self, subject: Entity) -> Iterator[None]:
+        """Set the viewer context for the duration of a block.
+
+        Equivalent to set_viewer() followed by a guaranteed clear_viewer(),
+        so the session-scoped viewer identity cannot leak to the next user
+        of a pooled connection, whichever way the block exits. Exiting
+        clears the viewer entirely; it does not restore one that was set
+        before the block.
+
+        If the connection died inside the block, the clearing call raises
+        too; the original exception is chained as its __context__, and a
+        dead session cannot leak, so nothing is suppressed here.
+
+        Args:
+            subject: The subject as (type, id) tuple (e.g., ("user", "alice"))
+
+        Example:
+            with authz.viewer_context(("user", "alice")):
+                shared = authz.list_external_resources(
+                    ("user", "alice"), "note", "view"
+                )
+        """
+        self.set_viewer(subject)
+        try:
+            yield
+        finally:
+            self.clear_viewer()
 
     def _apply_actor_context(self) -> None:
         """Apply actor context via authz.set_actor()."""

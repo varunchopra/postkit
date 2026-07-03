@@ -1,8 +1,5 @@
 -- @group Permission Checks
 
--- =============================================================================
--- PERMISSION CHECKS
--- =============================================================================
 -- Core permission check functions for any subject type (user, api_key, service, etc.)
 -- Note: _expand_subject_memberships is in 010_helpers.sql
 

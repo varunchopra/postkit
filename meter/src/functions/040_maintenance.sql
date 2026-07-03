@@ -236,9 +236,6 @@ END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = meter, pg_temp;
 
 
--- =============================================================================
--- INITIALIZE PARTITIONS
--- =============================================================================
 -- Create partitions for current month and 3 months ahead on schema installation.
 
 SELECT meter.ensure_partitions(3);

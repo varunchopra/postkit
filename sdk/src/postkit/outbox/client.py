@@ -151,8 +151,7 @@ class OutboxClient(BaseClient):
             raise OutboxError(
                 "emit() requires an open transaction: an event emitted on "
                 "its own describes no committed state change. Open a "
-                "transaction around the state change and the emit.",
-                hint="postkit:outbox:BIZ_EMIT_NO_TRANSACTION",
+                "transaction around the state change and the emit."
             )
         result = self._fetch_val(
             """SELECT outbox.emit(
@@ -165,7 +164,8 @@ class OutboxClient(BaseClient):
             (self.namespace, topic, type, json.dumps(payload), key),
             write=True,
         )
-        assert result is not None
+        if result is None:
+            raise OutboxError("outbox.emit returned no value")
         return result
 
     def subscribe(self, topic: str, consumer: str, *, from_: str) -> dict[str, int]:
@@ -185,7 +185,8 @@ class OutboxClient(BaseClient):
             (self.namespace, topic, consumer, from_),
             write=True,
         )
-        assert result is not None
+        if result is None:
+            raise OutboxError("outbox.subscribe returned no row")
         return result
 
     def poll(

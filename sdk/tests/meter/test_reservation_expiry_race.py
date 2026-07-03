@@ -53,7 +53,7 @@ class TestCommitExpiredReservation:
         # Force expiration without running the cleanup job.
         test_helpers.set_reservation_expired(reservation["reservation_id"])
 
-        # Commit should succeed — it checks status='active', not expires_at.
+        # Commit should succeed - it checks status='active', not expires_at.
         result = meter.commit(reservation["reservation_id"], 150)
         assert result["success"] is True
         assert result["consumed"] == 150
@@ -145,7 +145,7 @@ class TestCommitExpiredReservation:
             )
 
             assert not deadlock_observed, (
-                "Deadlock between commit() and release_expired_reservations() — "
+                "Deadlock between commit() and release_expired_reservations() - "
                 "lock ordering regression."
             )
 

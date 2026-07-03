@@ -7,7 +7,9 @@ from postkit.errors import (
     AuthnErrorCode,
     AuthzErrorCode,
     ConfigErrorCode,
+    LeaseErrorCode,
     MeterErrorCode,
+    OutboxErrorCode,
     QueueErrorCode,
 )
 
@@ -17,7 +19,9 @@ MODULE_CONFIG = {
     "authn": {"sql_dir": REPO_ROOT / "authn" / "src", "cls": AuthnErrorCode},
     "authz": {"sql_dir": REPO_ROOT / "authz" / "src", "cls": AuthzErrorCode},
     "config": {"sql_dir": REPO_ROOT / "config" / "src", "cls": ConfigErrorCode},
+    "lease": {"sql_dir": REPO_ROOT / "lease" / "src", "cls": LeaseErrorCode},
     "meter": {"sql_dir": REPO_ROOT / "meter" / "src", "cls": MeterErrorCode},
+    "outbox": {"sql_dir": REPO_ROOT / "outbox" / "src", "cls": OutboxErrorCode},
     "queue": {"sql_dir": REPO_ROOT / "queue" / "src", "cls": QueueErrorCode},
 }
 

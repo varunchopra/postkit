@@ -275,7 +275,7 @@ class TestReservation:
         assert balance["available"] == 1000
 
     def test_commit_already_committed_returns_failure(self, meter):
-        """Second commit on same reservation fails — status is no longer active."""
+        """Second commit on same reservation fails - status is no longer active."""
         meter.allocate("alice", "llm_call", 1000, "tokens")
         res = meter.reserve("alice", "llm_call", 400, "tokens")
 

@@ -286,6 +286,25 @@ class TestViewerContext:
         assert result[0] == ""
         assert result[1] == ""
 
+    def _current_viewer(self, authz):
+        authz.cursor.execute(
+            "SELECT current_setting('authz.viewer_type', true), current_setting('authz.viewer_id', true)"
+        )
+        return authz.cursor.fetchone()
+
+    def test_viewer_context_sets_and_clears(self, authz):
+        with authz.viewer_context(("user", "alice")):
+            assert self._current_viewer(authz) == ("user", "alice")
+        assert self._current_viewer(authz) == ("", "")
+
+    def test_viewer_context_clears_when_body_raises(self, authz):
+        """The pool-leak guarantee: the viewer identity is gone however the
+        block exits."""
+        with pytest.raises(RuntimeError):
+            with authz.viewer_context(("user", "alice")):
+                raise RuntimeError("boom")
+        assert self._current_viewer(authz) == ("", "")
+
 
 class TestResourceGrants:
     """Tests for resource grant operations (revoke_resource_grants)."""
@@ -429,7 +448,7 @@ class TestTransferGrant:
                 to_subject=("user", ""),  # Invalid subject_id
             )
 
-        # Alice must still have her grant — the revoke was rolled back.
+        # Alice must still have her grant - the revoke was rolled back.
         assert authz.check(("user", "alice"), "owner", ("org", "1"))
 
     def test_transfer_grant_to_self_is_noop(self, authz):
@@ -447,7 +466,7 @@ class TestTransferGrant:
 
         assert result is True
         assert authz.check(("user", "alice"), "owner", ("org", "1"))
-        # Grant ID unchanged — no delete+recreate happened.
+        # Grant ID unchanged - no delete+recreate happened.
         new_id = authz.grant("owner", resource=("org", "1"), subject=("user", "alice"))
         assert new_id == grant_id
 

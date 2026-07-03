@@ -51,7 +51,10 @@ CREATE TABLE meter.accounts (
 
     CONSTRAINT accounts_balance_reserved CHECK (reserved >= 0),
     CONSTRAINT accounts_totals_positive CHECK (total_credited >= 0 AND total_debited >= 0)
-);
+)
+-- Every allocate/consume/reserve rewrites balance columns that no index
+-- covers, so page slack keeps those updates HOT (no index maintenance).
+WITH (fillfactor = 90);
 
 -- Handle NULL user_id in primary key (namespace-level accounts)
 CREATE UNIQUE INDEX accounts_namespace_pool_idx

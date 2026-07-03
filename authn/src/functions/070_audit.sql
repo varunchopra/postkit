@@ -202,9 +202,6 @@ $$ LANGUAGE plpgsql SET search_path = authn, pg_temp;
 
 
 
--- =============================================================================
--- INITIALIZE PARTITIONS
--- =============================================================================
 -- Create initial partitions (current month + 3 months ahead).
 -- This runs during schema installation to ensure audit_events is usable immediately.
 --

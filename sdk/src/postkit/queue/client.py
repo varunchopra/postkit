@@ -425,7 +425,7 @@ class QueueClient(BaseClient):
         """Cancel a pending job by deleting it.
 
         Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd,
-        or failed. Cancelled jobs are deleted — they were never processed, so
+        or failed. Cancelled jobs are deleted - they were never processed, so
         there is no completion state to retain.
 
         Args:
@@ -469,7 +469,7 @@ class QueueClient(BaseClient):
     def purge_queue(self, queue: str) -> int:
         """Delete all pending jobs from a queue.
 
-        Only deletes pending jobs. Running jobs are held by workers — use
+        Only deletes pending jobs. Running jobs are held by workers - use
         release_jobs to return them first, or wait for visibility timeout.
 
         Args:

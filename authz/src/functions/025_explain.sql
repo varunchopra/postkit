@@ -30,9 +30,7 @@ BEGIN
         RAISE WARNING 'explain() reached maximum recursion depth for permission % on %:%', p_permission, p_resource_type, p_resource_id;
         RETURN;
     END IF;
-    -- ==========================================================================
-    -- PATH 1: DIRECT PERMISSION
-    -- ==========================================================================
+    -- Path 1: direct permission
     FOR v_path IN
     SELECT
         'direct'::text,
@@ -56,9 +54,7 @@ BEGIN
             LOOP
                 RETURN NEXT v_path;
             END LOOP;
-    -- ==========================================================================
-    -- PATH 2: GROUP MEMBERSHIP (including nested teams)
-    -- ==========================================================================
+    -- Path 2: group membership (including nested teams)
     -- Find all groups the subject belongs to (including via nested teams)
     -- and check if any of those groups have the permission on the resource
     -- Depth limit of 50 prevents runaway recursion on malformed data
@@ -123,10 +119,8 @@ BEGIN
                             v_group.path);
                         RETURN NEXT v_path;
                     END LOOP;
-    -- ==========================================================================
-    -- PATH 3: PERMISSION HIERARCHY
-    -- Check BOTH global (app-wide defaults) AND tenant namespace (org customizations)
-    -- ==========================================================================
+    -- Path 3: permission hierarchy - checks BOTH global (app-wide
+    -- defaults) AND the tenant namespace (org customizations)
     FOR v_higher_permission IN
     SELECT
         h.permission
@@ -158,9 +152,7 @@ BEGIN
                     RETURN NEXT v_path;
                 END LOOP;
         END LOOP;
-    -- ==========================================================================
-    -- PATH 4: RESOURCE HIERARCHY (access via parent resource)
-    -- ==========================================================================
+    -- Path 4: resource hierarchy (access via parent resource)
     -- Check if permission is granted on an ancestor resource
     FOR v_group IN
         SELECT

@@ -157,7 +157,7 @@ class TestAuthzRowLevelSecurity:
         assert has_permission is True
 
     def test_autocommit_mode(self, db_connection):
-        """Each autocommit statement is its own transaction — context must be re-applied.
+        """Each autocommit statement is its own transaction - context must be re-applied.
 
         In autocommit mode, __init__'s set_tenant call commits immediately.
         Every subsequent SDK call starts a fresh transaction with no tenant
@@ -356,7 +356,7 @@ class TestAuthzRowLevelSecurity:
             "set_config('authz.viewer_id', '', false)"
         )
 
-        # State: viewer context cleared — cross-namespace share no longer visible
+        # State: viewer context cleared - cross-namespace share no longer visible
         cursor.execute(
             "SELECT * FROM authz.tuples "
             "WHERE namespace = 'org-a' AND resource_id = 'viewer-test'"

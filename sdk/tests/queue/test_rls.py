@@ -107,7 +107,7 @@ class TestQueueRowLevelSecurity:
         assert stats["total_jobs"] == 2
 
     def test_autocommit_mode(self, db_connection):
-        """Each autocommit statement is its own transaction — context must be re-applied.
+        """Each autocommit statement is its own transaction - context must be re-applied.
 
         In autocommit mode, __init__'s set_tenant call commits immediately.
         Every subsequent SDK call starts a fresh transaction with no tenant
@@ -170,7 +170,7 @@ class TestQueueRowLevelSecurity:
 
         QueueClient(cursor, "rls_a").push("tasks", {"owner": "a"})
 
-        # Switch to rls_b context — superuser still sees rls_a data.
+        # Switch to rls_b context - superuser still sees rls_a data.
         QueueClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM queue.jobs WHERE namespace = 'rls_a'")
         assert len(cursor.fetchall()) == 1
@@ -228,7 +228,7 @@ class TestQueueRowLevelSecurity:
         cursor.execute("SELECT * FROM queue.config WHERE namespace = 'global'")
         assert len(cursor.fetchall()) == 1
 
-        # Global config is not writable — row invisible for UPDATE.
+        # Global config is not writable - row invisible for UPDATE.
         cursor.execute(
             "UPDATE queue.config SET notify_on_push = false WHERE namespace = 'global'"
         )

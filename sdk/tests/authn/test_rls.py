@@ -103,7 +103,7 @@ class TestAuthnRowLevelSecurity:
         assert user["email"] == "alice@example.com"
 
     def test_autocommit_mode(self, db_connection):
-        """Each autocommit statement is its own transaction — context must be re-applied.
+        """Each autocommit statement is its own transaction - context must be re-applied.
 
         In autocommit mode, __init__'s set_tenant call commits immediately.
         Every subsequent SDK call starts a fresh transaction with no tenant
@@ -149,7 +149,7 @@ class TestAuthnRowLevelSecurity:
 
         AuthnClient(cursor, "rls_a").create_user("alice@example.com", "hash")
 
-        # Switch to rls_b context — superuser still sees rls_a data.
+        # Switch to rls_b context - superuser still sees rls_a data.
         AuthnClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM authn.users WHERE namespace = 'rls_a'")
         assert len(cursor.fetchall()) >= 1

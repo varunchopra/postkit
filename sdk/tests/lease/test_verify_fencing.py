@@ -9,6 +9,7 @@ import time
 
 import psycopg
 import pytest
+from postkit.lease import LeaseError, LeaseErrorCode, LeaseFencingError
 
 from tests.lease.test_invariants import JOIN_TIMEOUT, acquire
 
@@ -235,8 +236,6 @@ class Test40001Disambiguation:
     """
 
     def test_stale_fence_raises_fencing_error(self, lease, test_helpers):
-        from postkit.lease import LeaseErrorCode, LeaseFencingError
-
         got = lease.acquire("job", "w1")
         test_helpers.set_expires_at("job", "-1 second")
 
@@ -248,8 +247,6 @@ class Test40001Disambiguation:
     def test_hintless_40001_is_not_fencing_error(self, lease):
         """The blind-mapping regression test: a synthetic 40001 WITHOUT the
         FENCE_STALE hint surfaces as generic LeaseError, .sqlstate intact."""
-        from postkit.lease import LeaseError, LeaseFencingError
-
         with pytest.raises(LeaseError) as exc_info:
             lease._fetch_val(
                 """DO $$ BEGIN
@@ -268,14 +265,13 @@ class TestVerifyRequiresTransaction:
     so the client refuses to run it."""
 
     def test_verify_without_transaction_raises(self, lease):
-        from postkit.lease import LeaseError, LeaseErrorCode, LeaseFencingError
-
         got = lease.acquire("job", "w1")
 
         # The lease fixture's connection is autocommit: no transaction open
-        with pytest.raises(LeaseError) as exc_info:
+        with pytest.raises(
+            LeaseError, match="requires an open transaction"
+        ) as exc_info:
             lease.verify("job", "w1", got["fence_token"])
-        assert exc_info.value.error_code == LeaseErrorCode.BIZ_VERIFY_NO_TRANSACTION
         assert not isinstance(exc_info.value, LeaseFencingError)
 
     def test_verify_inside_transaction_succeeds(self, lease):

@@ -1,5 +1,6 @@
 """Tests for lease.renew and lease.release via the SDK client."""
 
+import hashlib
 import json
 from datetime import timedelta
 
@@ -53,8 +54,6 @@ class TestRelease:
     def test_notify_on_release(self, lease, test_helpers, connect):
         """LISTEN on the computed md5 channel; the release NOTIFY arrives
         after commit with the documented payload."""
-        import hashlib
-
         test_helpers.set_config(notify_on_release=True)
         got = lease.acquire("job", "w1")
 
