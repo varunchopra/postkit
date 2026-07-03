@@ -36,6 +36,14 @@
 -- autocommit the share lock is released the instant the statement ends and
 -- the guarantee evaporates without any error.
 --
+-- Liveness is judged on the wall clock (clock_timestamp), so a lease that
+-- expired mid-transaction fails verify even though now() predates expiry.
+-- verify deliberately has NO lock timeout (acquire does): blocking briefly
+-- behind an in-flight takeover is the correct behavior here, and mapping a
+-- timeout to any error would misreport it. The hung-client case – a
+-- transaction that verifies and then never commits – is bounded by the
+-- server's idle_in_transaction_session_timeout, which deployments must set.
+--
 -- Scope honestly stated: verify protects Postgres-resident writes. For
 -- external side effects the token can only be carried to the other system;
 -- the ordinary fencing caveat applies there.
@@ -64,7 +72,7 @@ BEGIN
       AND l.name = p_name
       AND l.holder_id = p_holder
       AND l.fence_token = p_fence
-      AND l.expires_at > now()
+      AND l.expires_at > clock_timestamp()
     FOR SHARE;
 
     IF NOT FOUND THEN

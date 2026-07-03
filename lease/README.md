@@ -68,7 +68,13 @@ Renew at about a third of the duration, `verify` inside every writing transactio
 
 ## Expiry and Tokens
 
-Nothing runs in the background: an expired lease simply becomes acquirable, and the takeover is recorded in `lease.events`. Once expired, `renew` and `verify` fail with the old token even if nobody else took the lease - acquiring again issues a fresh one. Tokens increase within one lease name (gaps are legal) and mean nothing across names. Name leases after the resource they protect (`exporter:cust_42`), never per job: every name keeps a permanent counter row.
+Nothing runs in the background: an expired lease simply becomes acquirable, and the takeover is recorded in `lease.events`. Once expired, `renew` and `verify` fail with the old token even if nobody else took the lease - acquiring again issues a fresh one. Expiry is judged on the wall clock, so a long transaction cannot stretch a lease. Tokens increase within one lease name (gaps are legal) and mean nothing across names. Name leases after the resource they protect (`exporter:cust_42`), never per job: every name keeps a permanent counter row.
+
+Acquiring a lease you already hold extends it, keeps the same token, and replaces the stored metadata when you pass some; passing none keeps what is there.
+
+Tokens order writes; they do not authenticate workers. Workers in one namespace are trusted to cooperate (release and verify take the holder and token on faith), and the namespace boundary is enforced by row-level security.
+
+A transaction that calls `verify` and then hangs holds its row lock until the server ends it, which can stall a takeover far past the lease duration. Set `idle_in_transaction_session_timeout` on the roles that use this module.
 
 ## Common Operations
 

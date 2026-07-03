@@ -17,9 +17,9 @@ Acquire or take over a named lease.
 - `p_name`: Lease name (e.g. 'scheduler', 'exporter:cust_42')
 - `p_holder`: Opaque holder identity (hostname, pod name, worker ID)
 - `p_ttl`: Lease duration (default from config; capped at max_ttl)
-- `p_metadata`: Optional metadata stored on the lease
+- `p_metadata`: Metadata stored on the lease. NULL keeps the existing metadata on a live same-holder re-acquire; new acquisitions and takeovers store '{}' when NULL
 
-**Returns:** acquired flag, fence token (NULL when the lease is held by another live holder), expiry, and current holder
+**Returns:** acquired flag, fence token (NULL when the lease is held by another live holder), expiry, and current holder. On a lock timeout (a competing transaction held the row for more than 2 seconds) the result is acquired=false with all other columns NULL – the holder is unknown; callers treat it like any contended miss and retry.
 
 **Example:**
 ```sql
@@ -188,7 +188,7 @@ SELECT * FROM lease.list('default', p_include_expired := false);
 ### lease.prune_events
 
 ```sql
-lease.prune_events(p_namespace: text, p_older_than: interval, p_name: text) -> int4
+lease.prune_events(p_namespace: text, p_older_than: interval, p_name: text, p_limit: int4) -> int4
 ```
 
 Delete old lease events.
@@ -197,6 +197,7 @@ Delete old lease events.
 - `p_namespace`: Tenant namespace
 - `p_older_than`: Delete events older than this interval (required)
 - `p_name`: Lease name filter (NULL = all names)
+- `p_limit`: Maximum events to delete per call
 
 **Returns:** Count of deleted events
 
@@ -232,7 +233,7 @@ Release a lease you hold.
 SELECT lease.release('default', 'scheduler', 'worker-1', 42);
 ```
 
-*Source: lease/src/functions/020_renew_release.sql:69*
+*Source: lease/src/functions/020_renew_release.sql:74*
 
 ---
 

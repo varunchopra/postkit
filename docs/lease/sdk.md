@@ -10,16 +10,19 @@ acquire(name: str, holder: str, *, ttl: timedelta | None = None, metadata: dict[
 
 Acquire or take over a named lease.
 
-A free or expired lease makes the caller the holder with a new fence token (takeovers are event-logged). Re-acquiring a lease you already hold live extends it with the SAME fence and updates metadata. A lease held live by someone else is not touched.
+A free or expired lease makes the caller the holder with a new fence token (takeovers are event-logged). Re-acquiring a lease you already hold live extends it with the SAME fence; passing metadata replaces the stored value, passing None keeps it. A lease held live by someone else is not touched.
+
+Do not call verify() then acquire() on the same name inside one transaction: under concurrency that can abort as a deadlock (SQLSTATE 40P01, retryable).
 
 **Parameters:**
 - `name`: Lease name (e.g. 'scheduler', 'exporter:cust_42')
 - `holder`: Opaque holder identity (hostname, pod name, worker ID)
 - `ttl`: Lease duration (default from config; capped at max_ttl)
-- `metadata`: Optional metadata stored on the lease
+- `metadata`: Metadata stored on the lease; None keeps the existing metadata on a live re-acquire (new acquisitions start empty)
 
 **Returns:** Dict with acquired (bool), fence_token (None when held by
-another live holder), expires_at, and current_holder
+another live holder), expires_at, and current_holder (all
+None on a lock timeout - an ordinary contended miss).
 
 *Source: sdk/src/postkit/lease/client.py:83*
 
@@ -53,7 +56,7 @@ Returns the row even when past its expiry (compare expires_at to judge liveness)
 **Returns:** Dict with holder_id, fence_token, expires_at, metadata,
 or None when no lease row exists
 
-*Source: sdk/src/postkit/lease/client.py:221*
+*Source: sdk/src/postkit/lease/client.py:232*
 
 ---
 
@@ -72,7 +75,7 @@ Read the lease event log, newest first.
 **Returns:** List of event dicts (acquired, released, taken_over) with
 actor context
 
-*Source: sdk/src/postkit/lease/client.py:251*
+*Source: sdk/src/postkit/lease/client.py:262*
 
 ---
 
@@ -87,7 +90,7 @@ Get namespace-wide lease statistics.
 **Returns:** Dict with total_leases, live, expired, total_names (every lease
 name ever used), and total_events counts
 
-*Source: sdk/src/postkit/lease/client.py:238*
+*Source: sdk/src/postkit/lease/client.py:249*
 
 ---
 
@@ -104,27 +107,28 @@ List leases in the namespace, most recently acquired first.
 
 **Returns:** List of lease row dicts
 
-*Source: sdk/src/postkit/lease/client.py:289*
+*Source: sdk/src/postkit/lease/client.py:305*
 
 ---
 
 ### prune_events
 
 ```python
-prune_events(older_than: timedelta, name: str | None = None) -> int
+prune_events(older_than: timedelta, name: str | None = None, *, limit: int = 10000) -> int
 ```
 
 Delete old lease events.
 
-The event log is the module's audit surface, so retention has no default – pass it explicitly and call this from a maintenance loop.
+The event log is the module's audit surface, so retention has no default – pass it explicitly and call this from a maintenance loop. Each call deletes at most `limit` events; call repeatedly until the return value is below the limit.
 
 **Parameters:**
 - `older_than`: Delete events older than this (required, positive)
 - `name`: Lease name filter (None = all names)
+- `limit`: Maximum events to delete per call
 
 **Returns:** Count of deleted events
 
-*Source: sdk/src/postkit/lease/client.py:269*
+*Source: sdk/src/postkit/lease/client.py:280*
 
 ---
 
@@ -145,7 +149,7 @@ Idempotent: releasing a lease you no longer hold returns False, never raises.
 
 **Returns:** True if released, False if not held with this holder and fence
 
-*Source: sdk/src/postkit/lease/client.py:165*
+*Source: sdk/src/postkit/lease/client.py:172*
 
 ---
 
@@ -167,7 +171,7 @@ Fails (renewed=False) once the lease is past its expiry – even if nobody else 
 
 **Returns:** Dict with renewed (bool) and expires_at (None when not renewed)
 
-*Source: sdk/src/postkit/lease/client.py:128*
+*Source: sdk/src/postkit/lease/client.py:135*
 
 ---
 
@@ -206,11 +210,13 @@ Assert, inside your transaction, that you still hold a lease.
 
 Must be called inside the same open transaction as the writes the lease protects; the check and the writes then commit or abort together. Without one (autocommit, or between transactions) the fence lock would be released immediately and protect nothing, so this method refuses to run.
 
+Do not call verify() then acquire() on the same name inside one transaction: under concurrency that can abort as a deadlock (SQLSTATE 40P01, retryable).
+
 **Parameters:**
 - `name`: Lease name
 - `holder`: Holder identity (must match the lease)
 - `fence`: Fence token from acquire (must match the lease)
 
-*Source: sdk/src/postkit/lease/client.py:186*
+*Source: sdk/src/postkit/lease/client.py:193*
 
 ---

@@ -92,18 +92,25 @@ class LeaseClient(BaseClient):
 
         A free or expired lease makes the caller the holder with a new fence
         token (takeovers are event-logged). Re-acquiring a lease you already
-        hold live extends it with the SAME fence and updates metadata. A
-        lease held live by someone else is not touched.
+        hold live extends it with the SAME fence; passing metadata replaces
+        the stored value, passing None keeps it. A lease held live by
+        someone else is not touched.
+
+        Do not call verify() then acquire() on the same name inside one
+        transaction: under concurrency that can abort as a deadlock
+        (SQLSTATE 40P01, retryable).
 
         Args:
             name: Lease name (e.g. 'scheduler', 'exporter:cust_42')
             holder: Opaque holder identity (hostname, pod name, worker ID)
             ttl: Lease duration (default from config; capped at max_ttl)
-            metadata: Optional metadata stored on the lease
+            metadata: Metadata stored on the lease; None keeps the existing
+                metadata on a live re-acquire (new acquisitions start empty)
 
         Returns:
             Dict with acquired (bool), fence_token (None when held by
-            another live holder), expires_at, and current_holder
+            another live holder), expires_at, and current_holder (all
+            None on a lock timeout - an ordinary contended miss).
         """
         result = self._fetch_one(
             """SELECT * FROM lease.acquire(
@@ -118,7 +125,7 @@ class LeaseClient(BaseClient):
                 name,
                 holder,
                 ttl,
-                json.dumps(metadata) if metadata is not None else "{}",
+                json.dumps(metadata) if metadata is not None else None,
             ),
             write=True,
         )
@@ -191,6 +198,10 @@ class LeaseClient(BaseClient):
         together. Without one (autocommit, or between transactions) the
         fence lock would be released immediately and protect nothing, so
         this method refuses to run.
+
+        Do not call verify() then acquire() on the same name inside one
+        transaction: under concurrency that can abort as a deadlock
+        (SQLSTATE 40P01, retryable).
 
         Args:
             name: Lease name
@@ -266,22 +277,27 @@ class LeaseClient(BaseClient):
             (self.namespace, name, limit),
         )
 
-    def prune_events(self, older_than: timedelta, name: str | None = None) -> int:
+    def prune_events(
+        self, older_than: timedelta, name: str | None = None, *, limit: int = 10000
+    ) -> int:
         """Delete old lease events.
 
         The event log is the module's audit surface, so retention has no
         default – pass it explicitly and call this from a maintenance loop.
+        Each call deletes at most `limit` events; call repeatedly until the
+        return value is below the limit.
 
         Args:
             older_than: Delete events older than this (required, positive)
             name: Lease name filter (None = all names)
+            limit: Maximum events to delete per call
 
         Returns:
             Count of deleted events
         """
         result = self._fetch_val(
-            "SELECT lease.prune_events(%s, %s, %s)",
-            (self.namespace, older_than, name),
+            "SELECT lease.prune_events(%s, %s, %s, %s)",
+            (self.namespace, older_than, name, limit),
             write=True,
         )
         return int(result or 0)

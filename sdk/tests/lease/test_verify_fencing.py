@@ -5,6 +5,7 @@ T' must serialize – no interleaving where both win.
 """
 
 import threading
+import time
 
 import psycopg
 import pytest
@@ -75,11 +76,12 @@ class TestI4VerifyTakeoverSerialization:
         then proceed with a new fence. A's next verify then fails.
 
         Expiry choreography: the lease is given a short future expiry BEFORE
-        A verifies – an UPDATE after A's FOR SHARE would itself block. A's
-        now() is pinned at its transaction start, so its verify still passes;
-        we then wait for the wall clock to cross the expiry (the one place a
-        real clock crossing is the semantics under test) so B's acquire takes
-        the takeover branch.
+        A verifies – an UPDATE after A's FOR SHARE would itself block. A
+        verifies before the wall clock crosses the expiry, so it passes; we
+        then wait for the crossing (the one place a real clock crossing is
+        the semantics under test) so B's acquire takes the takeover branch.
+        B must resolve before acquire's 2 second lock timeout turns its wait
+        into a miss – A commits about a second in, well inside it.
         """
         ns = test_helpers.namespace
         got = acquire(test_helpers.cursor, ns, "job", "w1")
@@ -154,6 +156,74 @@ class TestI4VerifyTakeoverSerialization:
             verify(cur_a, ns, "job", "w1", old_fence)
         assert exc_info.value.diag.message_hint == FENCE_STALE_HINT
         conn_a.rollback()
+
+
+class TestAcquireNonBlocking:
+    """Contended acquires must not queue: a live held lease is answered from
+    an unlocked fast path, and the locked (grantable) paths give up after the
+    function's 2 second lock timeout with a plain miss."""
+
+    def test_contended_acquire_does_not_block_behind_open_verify(
+        self, test_helpers, connect
+    ):
+        """A live lease held by someone else is a miss answered without
+        taking locks – even while a verify transaction holds FOR SHARE on
+        the row, which would block any locked read indefinitely."""
+        ns = test_helpers.namespace
+        got = acquire(test_helpers.cursor, ns, "job", "w1")
+
+        conn_a = connect()
+        verify(conn_a.cursor(), ns, "job", "w1", got["fence_token"])
+
+        start = time.monotonic()
+        miss = acquire(test_helpers.cursor, ns, "job", "w2")
+        elapsed = time.monotonic() - start
+        conn_a.rollback()
+
+        assert miss["acquired"] is False
+        assert miss["current_holder"] == "w1"
+        assert miss["expires_at"] is not None
+        assert elapsed < 0.5, f"fast path took {elapsed:.2f}s - it must not lock"
+
+    def test_lock_timeout_surfaces_as_plain_miss(self, test_helpers, connect):
+        """An EXPIRED lease share-locked by an open verify transaction sends
+        acquire to the locked takeover path; when the holder never commits,
+        the 2 second lock timeout returns (false, NULL, NULL, NULL) instead
+        of raising or waiting forever."""
+        ns = test_helpers.namespace
+        got = acquire(test_helpers.cursor, ns, "job", "w1")
+        test_helpers.set_expires_at("job", "+1 second")
+
+        conn_a = connect()
+        verify(conn_a.cursor(), ns, "job", "w1", got["fence_token"])
+
+        checks = 0
+        while True:
+            test_helpers.cursor.execute(
+                "SELECT expires_at <= now() FROM lease.leases "
+                "WHERE namespace = %s AND name = %s",
+                (ns, "job"),
+            )
+            if test_helpers.cursor.fetchone()[0]:
+                break
+            checks += 1
+            assert checks < 300, "lease never crossed its expiry"
+            threading.Event().wait(0.02)
+
+        conn_b = connect(statement_timeout_ms=10000)
+        start = time.monotonic()
+        miss = acquire(conn_b.cursor(), ns, "job", "w2")
+        elapsed = time.monotonic() - start
+        conn_b.rollback()
+        conn_a.rollback()
+
+        assert miss == {
+            "acquired": False,
+            "fence_token": None,
+            "expires_at": None,
+            "current_holder": None,
+        }
+        assert elapsed >= 2.0, f"returned after {elapsed:.2f}s - before the timeout"
 
 
 class Test40001Disambiguation:

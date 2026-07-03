@@ -58,7 +58,7 @@ BEGIN
     SELECT l.*
     FROM lease.leases l
     WHERE l.namespace = p_namespace
-      AND (p_include_expired OR l.expires_at > now())
+      AND (p_include_expired OR l.expires_at > clock_timestamp())
     ORDER BY l.acquired_at DESC;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = lease, pg_temp;
@@ -88,9 +88,9 @@ BEGIN
     SELECT
         (SELECT COUNT(*) FROM lease.leases l WHERE l.namespace = p_namespace),
         (SELECT COUNT(*) FROM lease.leases l
-         WHERE l.namespace = p_namespace AND l.expires_at > now()),
+         WHERE l.namespace = p_namespace AND l.expires_at > clock_timestamp()),
         (SELECT COUNT(*) FROM lease.leases l
-         WHERE l.namespace = p_namespace AND l.expires_at <= now()),
+         WHERE l.namespace = p_namespace AND l.expires_at <= clock_timestamp()),
         (SELECT COUNT(*) FROM lease.fence_counters c WHERE c.namespace = p_namespace),
         (SELECT COUNT(*) FROM lease.events e WHERE e.namespace = p_namespace);
 END;

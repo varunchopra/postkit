@@ -77,6 +77,20 @@ class TestPruneEvents:
         lease.acquire("job", "w1")
         assert lease.prune_events(timedelta(days=30)) == 0
 
+    def test_limit_batches_deletes(self, lease, test_helpers):
+        got = lease.acquire("job", "w1")
+        lease.release("job", "w1", got["fence_token"])  # logs acquired + released
+        test_helpers.age_events("40 days")
+
+        assert lease.prune_events(timedelta(days=30), limit=1) == 1
+        assert lease.prune_events(timedelta(days=30), limit=1) == 1
+        assert lease.prune_events(timedelta(days=30), limit=1) == 0
+
+    def test_limit_must_be_positive(self, lease):
+        with pytest.raises(LeaseValidationError) as exc_info:
+            lease.prune_events(timedelta(days=30), limit=0)
+        assert exc_info.value.error_code == LeaseErrorCode.VAL_NOT_POSITIVE
+
     def test_retention_required_and_positive(self, lease):
         """No default retention: the event log is the audit surface, so
         deleting history requires an explicit, positive interval."""

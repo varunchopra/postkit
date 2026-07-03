@@ -5,16 +5,20 @@
 -- @param p_namespace Tenant namespace
 -- @param p_older_than Delete events older than this interval (required)
 -- @param p_name Lease name filter (NULL = all names)
+-- @param p_limit Maximum events to delete per call
 -- @returns Count of deleted events
 -- @example SELECT lease.prune_events('default', '90 days');
 --
--- Call from cron or a maintenance loop; nothing runs on its own.
+-- Call from cron or a maintenance loop; nothing runs on its own. Each call
+-- deletes at most p_limit events so a long backlog never becomes one giant
+-- delete; call repeatedly until the return value is below the limit.
 -- p_older_than has no default on purpose: event-log retention is a
 -- deployment policy decision.
 CREATE OR REPLACE FUNCTION lease.prune_events(
     p_namespace text,
     p_older_than interval,
-    p_name text DEFAULT NULL
+    p_name text DEFAULT NULL,
+    p_limit int DEFAULT 10000
 )
 RETURNS int AS $$
 DECLARE
@@ -32,12 +36,19 @@ BEGIN
         PERFORM lease._validate_lease_name(p_name);
     END IF;
 
+    PERFORM lease._validate_positive_int(p_limit, 'limit');
     PERFORM lease._warn_namespace_mismatch(p_namespace);
 
-    DELETE FROM lease.events
-    WHERE namespace = p_namespace
-      AND (p_name IS NULL OR name = p_name)
-      AND at < now() - p_older_than;
+    DELETE FROM lease.events e
+    USING (
+        SELECT id FROM lease.events
+        WHERE namespace = p_namespace
+          AND (p_name IS NULL OR name = p_name)
+          AND at < now() - p_older_than
+        ORDER BY id
+        LIMIT p_limit
+    ) d
+    WHERE e.id = d.id;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
     RETURN v_count;

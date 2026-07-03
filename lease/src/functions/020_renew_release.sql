@@ -18,6 +18,11 @@
 --
 -- renew does NOT update metadata; acquire's same-holder branch does. Not
 -- event-logged (renewals fire at ~ttl/3 – see lease.events schema note).
+--
+-- Expiry uses the wall clock (clock_timestamp), not the transaction start
+-- time: renewing from inside a long transaction extends from the real
+-- present, and a lease that expired on the wall clock cannot be renewed just
+-- because the transaction began before expiry.
 CREATE OR REPLACE FUNCTION lease.renew(
     p_namespace text,
     p_name text,
@@ -49,15 +54,15 @@ BEGIN
     v_ttl := COALESCE(p_ttl, v_config.default_ttl);
 
     -- Single guarded UPDATE: the WHERE clause is the whole check, including
-    -- liveness (expires_at > now() – invariant I3, see 001_tables.sql).
+    -- liveness on the wall clock (invariant I3, see 001_tables.sql).
     UPDATE lease.leases l
-    SET expires_at = now() + v_ttl,
-        updated_at = now()
+    SET expires_at = clock_timestamp() + v_ttl,
+        updated_at = clock_timestamp()
     WHERE l.namespace = p_namespace
       AND l.name = p_name
       AND l.holder_id = p_holder
       AND l.fence_token = p_fence
-      AND l.expires_at > now()
+      AND l.expires_at > clock_timestamp()
     RETURNING l.expires_at INTO v_expires;
 
     IF v_expires IS NOT NULL THEN

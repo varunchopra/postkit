@@ -84,7 +84,10 @@ CREATE TABLE lease.leases (
     PRIMARY KEY (namespace, name),
 
     CONSTRAINT leases_expiry_sane CHECK (expires_at > acquired_at)
-);
+)
+-- Renewals rewrite the row every ~ttl/3 and no index covers updated_at or
+-- expires_at, so page slack keeps those updates HOT (no index maintenance).
+WITH (fillfactor = 90);
 
 -- =============================================================================
 -- FENCE COUNTERS TABLE

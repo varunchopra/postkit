@@ -1,9 +1,12 @@
 """Tests for lease.acquire branch semantics via the SDK client."""
 
+import threading
 from datetime import timedelta, timezone
 
 import pytest
 from postkit.lease import LeaseErrorCode, LeaseValidationError
+
+from tests.lease.test_invariants import acquire
 
 
 class TestFreshAcquire:
@@ -79,6 +82,14 @@ class TestLiveReacquire:
         assert row["metadata"] == {"v": 2}
         assert row["expires_at"] == again["expires_at"]
 
+    def test_none_metadata_keeps_stored_value(self, lease, test_helpers):
+        """Re-acquiring a live lease without metadata must keep what acquire
+        stored - a keepalive loop passing nothing must not wipe it."""
+        lease.acquire("job", "w1", metadata={"task": 123})
+        again = lease.acquire("job", "w1")
+        assert again["acquired"] is True
+        assert test_helpers.get_lease_row("job")["metadata"] == {"task": 123}
+
     def test_other_holder_gets_observability_info(self, lease):
         first = lease.acquire("job", "w1")
         second = lease.acquire("job", "w2")
@@ -86,6 +97,43 @@ class TestLiveReacquire:
         assert second["fence_token"] is None
         assert second["current_holder"] == "w1"
         assert second["expires_at"] == first["expires_at"]
+
+
+class TestWallClockExpiry:
+    def test_acquire_in_idle_transaction_stamps_the_present(
+        self, test_helpers, connect
+    ):
+        """TTL math must use clock_timestamp(): acquiring inside a
+        transaction that has been idling stamps acquired_at with the real
+        present, not the pinned transaction start (which would backdate the
+        lease and shorten its effective protection)."""
+        ns = test_helpers.namespace
+        conn = connect()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")  # pins this transaction's now()
+
+        checks = 0
+        while True:
+            cur.execute("SELECT clock_timestamp() - now() > interval '0.25 seconds'")
+            if cur.fetchone()[0]:
+                break
+            checks += 1
+            assert checks < 500, "wall clock never advanced past the pinned now()"
+            threading.Event().wait(0.02)
+
+        acquire(cur, ns, "job", "w1")
+        cur.execute(
+            "SELECT acquired_at - now() > interval '0.2 seconds', "
+            "expires_at - acquired_at FROM lease.leases "
+            "WHERE namespace = %s AND name = %s",
+            (ns, "job"),
+        )
+        later_than_txn_start, lifetime = cur.fetchone()
+        conn.commit()
+        assert later_than_txn_start is True
+        # Exact equality with the seeded default_ttl: acquire reads the
+        # clock once, so the pair of timestamps cannot drift apart
+        assert lifetime == timedelta(seconds=30)
 
 
 class TestInspection:
