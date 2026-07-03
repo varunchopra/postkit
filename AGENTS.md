@@ -18,6 +18,7 @@ psql $DATABASE_URL -f dist/config.sql            # versioned config
 psql $DATABASE_URL -f dist/lease.sql             # leases, fencing, leader election
 psql $DATABASE_URL -f dist/meter.sql             # usage metering
 psql $DATABASE_URL -f dist/outbox.sql            # transactional event feed
+psql $DATABASE_URL -f dist/presence.sql          # heartbeat liveness
 psql $DATABASE_URL -f dist/queue.sql             # job queues
 ```
 
@@ -56,6 +57,8 @@ Common operations by module. All require tenant context - call `{module}.set_ten
 
 **Events:** [`emit`](docs/outbox/sql.md#outboxemit) · [`subscribe`](docs/outbox/sql.md#outboxsubscribe) · [`poll`](docs/outbox/sql.md#outboxpoll) · [`ack`](docs/outbox/sql.md#outboxack) - [full reference](docs/outbox/sql.md)
 
+**Liveness:** [`register`](docs/presence/sql.md#presenceregister) · [`heartbeat`](docs/presence/sql.md#presenceheartbeat) · [`sweep`](docs/presence/sql.md#presencesweep) · [`deregister`](docs/presence/sql.md#presencederegister) - [full reference](docs/presence/sql.md)
+
 **Queues:** [`push`](docs/queue/sql.md#queuepush) · [`pull`](docs/queue/sql.md#queuepull) · [`ack`](docs/queue/sql.md#queueack) - [full reference](docs/queue/sql.md)
 
 ## Python SDK (Optional)
@@ -71,6 +74,7 @@ from postkit.config import ConfigClient
 from postkit.lease import LeaseClient
 from postkit.meter import MeterClient
 from postkit.outbox import OutboxClient
+from postkit.presence import PresenceClient
 from postkit.queue import QueueClient
 
 conn = psycopg.connect("postgresql://localhost/myapp")
@@ -82,6 +86,7 @@ config = ConfigClient(cursor, namespace="my-app")
 lease = LeaseClient(cursor, namespace="my-app")
 meter = MeterClient(cursor, namespace="my-app")
 outbox = OutboxClient(cursor, namespace="my-app")
+presence = PresenceClient(cursor, namespace="my-app")
 queue = QueueClient(cursor, namespace="my-app")
 ```
 
@@ -98,6 +103,8 @@ queue = QueueClient(cursor, namespace="my-app")
 **Leases:** [`acquire`](docs/lease/sdk.md#acquire) · [`renew`](docs/lease/sdk.md#renew) · [`verify`](docs/lease/sdk.md#verify) · [`release`](docs/lease/sdk.md#release) - [full reference](docs/lease/sdk.md)
 
 **Events:** [`emit`](docs/outbox/sdk.md#emit) · [`subscribe`](docs/outbox/sdk.md#subscribe) · [`poll`](docs/outbox/sdk.md#poll) · [`ack`](docs/outbox/sdk.md#ack) - [full reference](docs/outbox/sdk.md)
+
+**Liveness:** [`register`](docs/presence/sdk.md#register) · [`heartbeat`](docs/presence/sdk.md#heartbeat) · [`sweep`](docs/presence/sdk.md#sweep) · [`deregister`](docs/presence/sdk.md#deregister) - [full reference](docs/presence/sdk.md)
 
 **Queues:** [`push`](docs/queue/sdk.md#push) · [`pull`](docs/queue/sdk.md#pull) · [`ack`](docs/queue/sdk.md#ack) - [full reference](docs/queue/sdk.md)
 
@@ -128,6 +135,7 @@ queue = QueueClient(cursor, namespace="my-app")
 | lease | `lease` | [sql.md](docs/lease/sql.md) | [sdk.md](docs/lease/sdk.md) | TTL leases, fencing tokens, leader election |
 | meter | `meter` | [sql.md](docs/meter/sql.md) | [sdk.md](docs/meter/sdk.md) | Usage tracking, reservations, billing periods |
 | outbox | `outbox` | [sql.md](docs/outbox/sql.md) | [sdk.md](docs/outbox/sdk.md) | Transactional event feed, fan-out, durable cursors |
+| presence | `presence` | [sql.md](docs/presence/sql.md) | [sdk.md](docs/presence/sdk.md) | Heartbeat liveness, edge detection, alert hooks |
 | queue | `queue` | [sql.md](docs/queue/sql.md) | [sdk.md](docs/queue/sdk.md) | Job queues, scheduling, retries, dead letters |
 
 Each module's [README](docs/README.md) has a function index with deep links. For usage examples: `sdk/tests/{module}/`.

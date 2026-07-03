@@ -10,6 +10,7 @@ from postkit.errors import (
     LeaseErrorCode,
     MeterErrorCode,
     OutboxErrorCode,
+    PresenceErrorCode,
     QueueErrorCode,
 )
 
@@ -22,6 +23,7 @@ MODULE_CONFIG = {
     "lease": {"sql_dir": REPO_ROOT / "lease" / "src", "cls": LeaseErrorCode},
     "meter": {"sql_dir": REPO_ROOT / "meter" / "src", "cls": MeterErrorCode},
     "outbox": {"sql_dir": REPO_ROOT / "outbox" / "src", "cls": OutboxErrorCode},
+    "presence": {"sql_dir": REPO_ROOT / "presence" / "src", "cls": PresenceErrorCode},
     "queue": {"sql_dir": REPO_ROOT / "queue" / "src", "cls": QueueErrorCode},
 }
 

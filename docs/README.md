@@ -10,6 +10,7 @@ API reference documentation for postkit modules.
 - [lease](lease/README.md)
 - [meter](meter/README.md)
 - [outbox](outbox/README.md)
+- [presence](presence/README.md)
 - [queue](queue/README.md)
 
 ## Generating Documentation

@@ -36,6 +36,7 @@ build:
 	@./scripts/build.sh lease > dist/lease.sql
 	@./scripts/build.sh meter > dist/meter.sql
 	@./scripts/build.sh outbox > dist/outbox.sql
+	@./scripts/build.sh presence > dist/presence.sql
 	@./scripts/build.sh queue > dist/queue.sql
 	@echo "$(GREEN)✓ Built dist/*.sql$(NC)"
 

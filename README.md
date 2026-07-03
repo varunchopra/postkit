@@ -14,6 +14,7 @@ Postgres-native identity, configuration, metering, and job queues. Auth, permiss
 | [lease](lease/) | `lease` | TTL leases with fencing tokens (locks, leader election) |
 | [meter](meter/) | `meter` | Usage metering (quotas, reservations, ledger) |
 | [outbox](outbox/) | `outbox` | Transactional event feed (fan-out, durable cursors) |
+| [presence](presence/) | `presence` | Heartbeat liveness (edge detection, alert hooks) |
 | [queue](queue/) | `queue` | Job queues (scheduling, retries, dead letters) |
 
 Each module is independent -- use what you need.
@@ -26,7 +27,7 @@ Requires PostgreSQL 14+. Load the SQL from the latest release:
 curl -fsSL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql -v ON_ERROR_STOP=1 "$DATABASE_URL"
 ```
 
-Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `lease.sql`, `meter.sql`, `outbox.sql`, `queue.sql`) are
+Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `lease.sql`, `meter.sql`, `outbox.sql`, `presence.sql`, `queue.sql`) are
 attached to each [release](https://github.com/varunchopra/postkit/releases). To build from
 source instead, see [Development](#development).
 
@@ -86,6 +87,11 @@ lease.release("scheduler", "worker-1", got["fence_token"])
 outbox.subscribe("orders", "billing", from_="start")
 outbox.emit("orders", "order.created", {"order_id": 42})  # inside your transaction
 events = outbox.poll("orders", "billing")
+
+# presence: heartbeat liveness
+presence.register("worker-7")
+presence.heartbeat("worker-7")            # every 10-60s while running
+deaths = presence.sweep()                 # from a cron: who went silent?
 
 # queue: job scheduling
 queue.push("email", {"to": "alice@example.com", "subject": "Welcome"})
