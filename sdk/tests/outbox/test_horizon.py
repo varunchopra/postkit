@@ -215,8 +215,11 @@ class TestHorizonBlockers:
         """An uncommitted emit's backend is listed; after commit it is gone.
 
         The horizon is database-global and other test workers may hold
-        older write transactions, so the is_horizon marker is asserted
-        only when this backend's xid actually is the horizon.
+        older write transactions, so who holds the horizon cannot be
+        asserted across two statements without racing them. The marker is
+        instead checked for self-consistency in a single statement on the
+        blocker's own connection, whose xid is in progress by
+        construction.
         """
         conn = connect()
         cur = conn.cursor()
@@ -226,18 +229,17 @@ class TestHorizonBlockers:
             "SELECT outbox.emit(%s, 'orders', 'test.event', '{}')",
             (outbox.namespace,),
         )
-        cur.execute("SELECT pg_current_xact_id()::text")
-        blocker_xid = int(cur.fetchone()[0])
 
         rows = {r["pid"]: r for r in outbox.horizon_blockers()}
         assert blocker_pid in rows
-        row = rows[blocker_pid]
-        assert row["xact_age"] is not None
+        assert rows[blocker_pid]["xact_age"] is not None
 
-        cur.execute("SELECT mod(outbox._horizon()::text::numeric, 4294967296)")
-        horizon_low = int(cur.fetchone()[0])
-        if blocker_xid % 4294967296 == horizon_low:
-            assert row["is_horizon"] is True
+        cur.execute(
+            "SELECT hb.is_horizon = (pg_current_xact_id() = outbox._horizon())"
+            " FROM outbox.horizon_blockers() hb"
+            " WHERE hb.pid = pg_backend_pid()"
+        )
+        assert cur.fetchone()[0] is True
 
         conn.commit()
         conn.close()
