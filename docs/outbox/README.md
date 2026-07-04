@@ -9,6 +9,7 @@
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`emit`](sdk.md#emit) | Append an event inside the caller's open transaction. |
 | [`get_stats`](sdk.md#get_stats) | Get namespace-wide outbox statistics. |
+| [`has_pending`](sdk.md#has_pending) | Whether readable events exist past the consumer's cursor. |
 | [`horizon_blockers`](sdk.md#horizon_blockers) | Backends whose open write transactions pin the visibility horizon. |
 | [`lag`](sdk.md#lag) | Per-consumer backlog, plus the current visibility horizon. |
 | [`list_consumers`](sdk.md#list_consumers) | List consumer cursors in the namespace. |
@@ -37,6 +38,7 @@
 | [`outbox.list_consumers`](sql.md#outboxlist_consumers) | List consumer cursors in a namespace. |
 | [`outbox.trim`](sql.md#outboxtrim) | Delete old events, keeping deletions a contiguous (xid, id) prefix. |
 | [`outbox.ack`](sql.md#outboxack) | Advance a consumer's cursor after processing. |
+| [`outbox.has_pending`](sql.md#outboxhas_pending) | Whether a consumer has readable events past its cursor. |
 | [`outbox.poll`](sql.md#outboxpoll) | Read the next events for a consumer. Does not advance the cursor. |
 | [`outbox.read_from`](sql.md#outboxread_from) | Read events from a position, for callers that keep their own cursor. |
 | [`outbox.replay`](sql.md#outboxreplay) | Move an existing consumer's cursor to a chosen position. |

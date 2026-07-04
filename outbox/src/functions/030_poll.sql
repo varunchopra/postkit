@@ -82,6 +82,77 @@ END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = outbox, pg_temp;
 
 
+-- @function outbox.has_pending
+-- @brief Whether a consumer has readable events past its cursor.
+-- @param p_namespace Tenant namespace
+-- @param p_topic Topic name
+-- @param p_consumer Consumer name (must be subscribed)
+-- @returns True iff a readable event lies past the cursor or the cursor
+--          is below the retained range
+-- @example SELECT outbox.has_pending('default', 'orders', 'billing');
+--
+-- The per-heartbeat check. Deliberately neither poll nor lag: poll takes
+-- FOR UPDATE on the cursor row, so a high-frequency caller would
+-- serialize against real consumption, and lag counts the whole backlog.
+-- Do not reimplement this as a wrapper over either. Same visibility gate
+-- as poll (O1, see 001_tables.sql).
+--
+-- A cursor below the trimmed pair returns true rather than raising
+-- CURSOR_LOST: callers bundle this check with their own writes, which a
+-- raise would abort, and the next poll raises the loss loudly anyway
+-- (O5). The trimmed check must precede the EXISTS: a fully trimmed topic
+-- leaves nothing for the EXISTS to find, so a consumer that lost every
+-- event would otherwise look caught up.
+CREATE OR REPLACE FUNCTION outbox.has_pending(
+    p_namespace text,
+    p_topic text,
+    p_consumer text
+)
+RETURNS boolean AS $$
+DECLARE
+    v_xid xid8;
+    v_id bigint;
+    v_trimmed_xid xid8;
+    v_trimmed_id bigint;
+BEGIN
+    -- Validate inputs
+    PERFORM outbox._validate_namespace(p_namespace);
+    PERFORM outbox._validate_topic(p_topic);
+    PERFORM outbox._validate_consumer(p_consumer);
+
+    -- Warn if namespace mismatch with RLS context
+    PERFORM outbox._warn_namespace_mismatch(p_namespace);
+
+    SELECT c.position_xid, c.position_id INTO v_xid, v_id
+    FROM outbox.cursors c
+    WHERE c.namespace = p_namespace
+      AND c.topic = p_topic
+      AND c.consumer = p_consumer;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Consumer % is not subscribed to topic % (call outbox.subscribe first)', p_consumer, p_topic
+            USING ERRCODE = 'no_data_found',
+                  HINT = 'postkit:outbox:BIZ_CONSUMER_UNKNOWN';
+    END IF;
+
+    SELECT t.trimmed_xid, t.trimmed_id INTO v_trimmed_xid, v_trimmed_id
+    FROM outbox._trimmed_through(p_namespace, p_topic) t;
+    IF (v_xid, v_id) < (v_trimmed_xid, v_trimmed_id) THEN
+        RETURN true;
+    END IF;
+
+    RETURN EXISTS (
+        SELECT 1
+        FROM outbox.events e
+        WHERE e.namespace = p_namespace
+          AND e.topic = p_topic
+          AND (e.xid, e.id) > (v_xid, v_id)
+          AND e.xid < outbox._horizon()
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = outbox, pg_temp;
+
+
 -- @function outbox.read_from
 -- @brief Read events from a position, for callers that keep their own cursor.
 -- @param p_namespace Tenant namespace

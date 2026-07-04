@@ -248,7 +248,31 @@ Advance a consumer's cursor after processing.
 SELECT outbox.ack('default', 'orders', 'billing', '742', 42);
 ```
 
-*Source: outbox/src/functions/030_poll.sql:140*
+*Source: outbox/src/functions/030_poll.sql:211*
+
+---
+
+### outbox.has_pending
+
+```sql
+outbox.has_pending(p_namespace: text, p_topic: text, p_consumer: text) -> bool
+```
+
+Whether a consumer has readable events past its cursor.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_topic`: Topic name
+- `p_consumer`: Consumer name (must be subscribed)
+
+**Returns:** True iff a readable event lies past the cursor or the cursor is below the retained range
+
+**Example:**
+```sql
+SELECT outbox.has_pending('default', 'orders', 'billing');
+```
+
+*Source: outbox/src/functions/030_poll.sql:82*
 
 ---
 
@@ -299,7 +323,7 @@ Read events from a position, for callers that keep their own cursor.
 SELECT * FROM outbox.read_from('default', 'orders', '0', 0, 50);
 ```
 
-*Source: outbox/src/functions/030_poll.sql:82*
+*Source: outbox/src/functions/030_poll.sql:153*
 
 ---
 

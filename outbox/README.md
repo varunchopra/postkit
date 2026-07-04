@@ -83,6 +83,10 @@ SELECT * FROM outbox.read_from('acme', 'orders', '0', 0, 50);
 -- Move a cursor deliberately (re-deliver or skip); ('0', 0) = everything
 SELECT outbox.replay('acme', 'orders', 'billing', '0', 0);
 
+-- Check for readable events past a cursor; no lock, no count, safe to
+-- call on every heartbeat
+SELECT outbox.has_pending('acme', 'orders', 'billing');
+
 -- Per-consumer backlog and the current horizon
 SELECT * FROM outbox.lag('acme', 'orders');
 -- -> consumer, position_xid, position_id, lag_events, lag_time, horizon

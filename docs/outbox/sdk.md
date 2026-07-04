@@ -20,7 +20,7 @@ Pass the xid and id of the last event processed, straight from the polled row: e
 
 **Returns:** True if the cursor advanced, False if the pair was not ahead of it
 
-*Source: sdk/src/postkit/outbox/client.py:215*
+*Source: sdk/src/postkit/outbox/client.py:238*
 
 ---
 
@@ -83,7 +83,28 @@ Get namespace-wide outbox statistics.
 **Returns:** Dict with total_events, total_topics, total_consumers, and
 max_lag_events counts
 
-*Source: sdk/src/postkit/outbox/client.py:320*
+*Source: sdk/src/postkit/outbox/client.py:343*
+
+---
+
+### has_pending
+
+```python
+has_pending(topic: str, consumer: str) -> bool
+```
+
+Whether readable events exist past the consumer's cursor.
+
+Takes no locks and counts nothing, so it is safe at heartbeat frequency where poll() would serialize against real consumption. A cursor below the oldest retained event reads as pending; the next poll() then raises OutboxCursorLostError with the recovery position.
+
+**Parameters:**
+- `topic`: Topic name
+- `consumer`: Consumer name (must be subscribed)
+
+**Returns:** True iff a readable event lies past the cursor or the cursor
+is below the retained range
+
+*Source: sdk/src/postkit/outbox/client.py:215*
 
 ---
 
@@ -101,7 +122,7 @@ Database-global, like the horizon itself. Seeing other sessions requires pg_read
 pid, datname, xact_age, state, application_name, query,
 is_horizon
 
-*Source: sdk/src/postkit/outbox/client.py:345*
+*Source: sdk/src/postkit/outbox/client.py:368*
 
 ---
 
@@ -119,7 +140,7 @@ Per-consumer backlog, plus the current visibility horizon.
 **Returns:** One dict per consumer: position_xid, position_id, lag_events,
 lag_time, horizon
 
-*Source: sdk/src/postkit/outbox/client.py:306*
+*Source: sdk/src/postkit/outbox/client.py:329*
 
 ---
 
@@ -136,7 +157,7 @@ List consumer cursors in the namespace.
 
 **Returns:** List of cursor row dicts
 
-*Source: sdk/src/postkit/outbox/client.py:332*
+*Source: sdk/src/postkit/outbox/client.py:355*
 
 ---
 
@@ -198,7 +219,7 @@ Store both components of the last row read (its xid and id) and pass them back; 
 
 **Returns:** Event dicts in delivery order
 
-*Source: sdk/src/postkit/outbox/client.py:237*
+*Source: sdk/src/postkit/outbox/client.py:260*
 
 ---
 
@@ -218,7 +239,7 @@ Take the pair from a previously polled row, from a CURSOR_LOST message, or (0, 0
 - `xid`: Transaction component of the new position
 - `id`: Id component (events after the pair are delivered again)
 
-*Source: sdk/src/postkit/outbox/client.py:265*
+*Source: sdk/src/postkit/outbox/client.py:288*
 
 ---
 
@@ -281,6 +302,6 @@ Delete old events. Retention has no default; pass it explicitly.
 
 **Returns:** One dict per topic touched, with the deleted count
 
-*Source: sdk/src/postkit/outbox/client.py:283*
+*Source: sdk/src/postkit/outbox/client.py:306*
 
 ---

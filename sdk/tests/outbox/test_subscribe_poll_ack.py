@@ -136,6 +136,7 @@ class TestAckGuards:
 
         for call, params in (
             ("SELECT * FROM outbox.poll(%s, 'orders', 'ghost')", (ns,)),
+            ("SELECT outbox.has_pending(%s, 'orders', 'ghost')", (ns,)),
             ("SELECT outbox.ack(%s, 'orders', 'ghost', '0', 1)", (ns,)),
             ("SELECT outbox.replay(%s, 'orders', 'ghost', '0', 0)", (ns,)),
         ):

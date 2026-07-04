@@ -212,6 +212,29 @@ class OutboxClient(BaseClient):
             (self.namespace, topic, consumer, limit),
         )
 
+    def has_pending(self, topic: str, consumer: str) -> bool:
+        """Whether readable events exist past the consumer's cursor.
+
+        Takes no locks and counts nothing, so it is safe at heartbeat
+        frequency where poll() would serialize against real consumption.
+        A cursor below the oldest retained event reads as pending; the
+        next poll() then raises OutboxCursorLostError with the recovery
+        position.
+
+        Args:
+            topic: Topic name
+            consumer: Consumer name (must be subscribed)
+
+        Returns:
+            True iff a readable event lies past the cursor or the cursor
+            is below the retained range
+        """
+        result = self._fetch_val(
+            "SELECT outbox.has_pending(%s, %s, %s)",
+            (self.namespace, topic, consumer),
+        )
+        return bool(result)
+
     def ack(self, topic: str, consumer: str, xid: int, id: int) -> bool:
         """Advance a consumer's cursor after processing.
 
