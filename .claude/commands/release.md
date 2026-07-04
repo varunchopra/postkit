@@ -1,6 +1,6 @@
 ---
 description: Bump the version, run checks, commit, tag, and push a release
-allowed-tools: Bash(git *), Bash(make *), Bash(uv *), Bash(grep *), Read, Edit
+allowed-tools: Bash(git *), Bash(make *), Bash(uv *), Bash(grep *), Read, Edit, Write
 ---
 
 Release version $ARGUMENTS.
@@ -19,17 +19,19 @@ Pre-flight checks (stop and report if any fail):
 6. `sdk/pyproject.toml` has a static `version` under `[project]`, not listed in `dynamic`
 
 Steps:
-1. Update the `version` field in `sdk/pyproject.toml` to `$ARGUMENTS`
-2. Run `make lint` to verify linting passes -- if it fails, run `git checkout sdk/pyproject.toml` to revert and stop
-3. Run `make test` to verify tests pass -- if they fail, run `git checkout sdk/pyproject.toml` to revert and stop
-4. Run `uv lock --directory sdk` to update the lockfile
-5. Stage only the version files: `git add sdk/pyproject.toml sdk/uv.lock`
-6. Commit with message `release: v$ARGUMENTS` (no Co-Authored-By trailers)
-7. Create an annotated tag: `git tag -a "v$ARGUMENTS" -m "Release v$ARGUMENTS"`
-8. Push the commit and tag separately: `git push origin main && git push origin "v$ARGUMENTS"`
+1. Write the release notes. Find the previous tag with `git describe --tags --abbrev=0`, read the commits since it with `git log --stat <prev>..HEAD`, and draft the notes following the release-notes conventions in AGENTS.md: one line per change, each a single plain sentence ending with the short commit hash, grouped under breaking, added, and fixed headings as applicable, breaking first, ending with the compare link to the previous tag. Show the draft to the user and get their go-ahead before continuing, then save it to a temp file for the tag step.
+2. Update the `version` field in `sdk/pyproject.toml` to `$ARGUMENTS`
+3. Run `make lint` to verify linting passes -- if it fails, run `git checkout sdk/pyproject.toml` to revert and stop
+4. Run `make test` to verify tests pass -- if they fail, run `git checkout sdk/pyproject.toml` to revert and stop
+5. Run `uv lock --directory sdk` to update the lockfile
+6. Stage only the version files: `git add sdk/pyproject.toml sdk/uv.lock`
+7. Commit with message `release: v$ARGUMENTS` (no Co-Authored-By trailers)
+8. Create the annotated tag with the approved notes as its message: `git tag -a "v$ARGUMENTS" -F <notes-file>`
+9. Push the commit and tag separately: `git push origin main && git push origin "v$ARGUMENTS"`
 
 If lint or tests fail, revert with `git checkout sdk/pyproject.toml` and stop. Do not commit or tag.
 
 Note: pushing the tag triggers `.github/workflows/release.yml`, which publishes the SQL
-bundles (`dist/*.sql`) to a GitHub Release and the SDK to PyPI. The GitHub Release works out
-of the box; PyPI publishing requires a one-time PyPI trusted-publisher setup for this repo.
+bundles (`dist/*.sql`) to a GitHub Release using the tag message as the release notes, and
+the SDK to PyPI. The GitHub Release works out of the box; PyPI publishing requires a
+one-time PyPI trusted-publisher setup for this repo.
