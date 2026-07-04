@@ -26,7 +26,7 @@ Steps:
 5. Run `uv lock --directory sdk` to update the lockfile
 6. Stage only the version files: `git add sdk/pyproject.toml sdk/uv.lock`
 7. Commit with message `release: v$ARGUMENTS` (no Co-Authored-By trailers)
-8. Create the annotated tag with the approved notes as its message: `git tag -a "v$ARGUMENTS" -F <notes-file>`
+8. Create the annotated tag with the approved notes as its message: `git tag -a "v$ARGUMENTS" --cleanup=verbatim -F <notes-file>` -- the cleanup flag is required because git otherwise strips `#`-prefixed lines as comments, which deletes the markdown headings from the notes
 9. Push the commit and tag separately: `git push origin main && git push origin "v$ARGUMENTS"`
 
 If lint or tests fail, revert with `git checkout sdk/pyproject.toml` and stop. Do not commit or tag.
