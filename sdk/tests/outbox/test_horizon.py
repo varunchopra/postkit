@@ -206,3 +206,41 @@ class TestHorizonGate:
 
         test_helpers.wait_readable("orders", ids[-1])
         assert poll_ids(cur, ns, "orders", "billing") == ids
+
+
+class TestHorizonBlockers:
+    """horizon_blockers surfaces the backends pinning the horizon."""
+
+    def test_open_write_transaction_appears_and_clears(self, outbox, connect):
+        """An uncommitted emit's backend is listed; after commit it is gone.
+
+        The horizon is database-global and other test workers may hold
+        older write transactions, so the is_horizon marker is asserted
+        only when this backend's xid actually is the horizon.
+        """
+        conn = connect()
+        cur = conn.cursor()
+        cur.execute("SELECT pg_backend_pid()")
+        blocker_pid = cur.fetchone()[0]
+        cur.execute(
+            "SELECT outbox.emit(%s, 'orders', 'test.event', '{}')",
+            (outbox.namespace,),
+        )
+        cur.execute("SELECT pg_current_xact_id()::text")
+        blocker_xid = int(cur.fetchone()[0])
+
+        rows = {r["pid"]: r for r in outbox.horizon_blockers()}
+        assert blocker_pid in rows
+        row = rows[blocker_pid]
+        assert row["xact_age"] is not None
+
+        cur.execute("SELECT mod(outbox._horizon()::text::numeric, 4294967296)")
+        horizon_low = int(cur.fetchone()[0])
+        if blocker_xid % 4294967296 == horizon_low:
+            assert row["is_horizon"] is True
+
+        conn.commit()
+        conn.close()
+
+        pids = [r["pid"] for r in outbox.horizon_blockers()]
+        assert blocker_pid not in pids

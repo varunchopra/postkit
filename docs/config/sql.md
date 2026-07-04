@@ -510,6 +510,25 @@ SELECT * FROM config.get_stats();
 
 ## Multi-tenancy
 
+### config.assert_rls_active
+
+```sql
+config.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT config.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: config/src/functions/040_rls.sql:42*
+
+---
+
 ### config.clear_tenant
 
 ```sql

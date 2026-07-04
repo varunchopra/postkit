@@ -48,6 +48,8 @@ Jobs move through four states:
 
 If a worker crashes, its job stays in running until the visibility timeout expires and the next `queue.tick_timeouts` call returns it to pending. Nothing reclaims jobs on its own: until that tick runs, the job is delayed, not lost. Schedule `tick_timeouts` from the same cron that runs `tick_schedules`.
 
+A claim commits or rolls back with the consumer's transaction, and so does the recovery path: after a rollback the job is pending again, and `nack` and `fail` accept it. The retry backoff comes from the committed attempt count, so the rolled-back attempt is granted back; `fail` dead-letters the job as usual. A pending job carries no lock fields, so nacking a job that was never pulled is indistinguishable from rollback recovery and reschedules quietly. Between a rollback and the recovery call another worker may re-pull the job; pass `p_worker_id` to `nack`/`fail` to refuse a job that is running under someone else.
+
 ## Schedules
 
 Create recurring jobs with cron expressions or fixed intervals:

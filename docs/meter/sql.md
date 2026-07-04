@@ -117,6 +117,25 @@ SELECT * FROM meter.reconcile();
 
 ## Multi-tenancy
 
+### meter.assert_rls_active
+
+```sql
+meter.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT meter.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: meter/src/functions/050_rls.sql:77*
+
+---
+
 ### meter.clear_actor
 
 ```sql
@@ -263,7 +282,7 @@ meter.release_expired_reservations(p_namespace: text) -> int4
 Mark expired reservations as 'expired' and release their holds. Distinct from 'released' to distinguish automatic expiry. No ledger entries.
 
 **Parameters:**
-- `p_namespace`: Optional namespace filter (NULL = all namespaces)
+- `p_namespace`: Optional namespace filter (NULL = all namespaces, requires RLS bypass)
 
 **Returns:** Count of reservations expired
 

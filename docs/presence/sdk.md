@@ -2,6 +2,20 @@
 
 # Presence Python SDK
 
+### assert_rls_active
+
+```python
+assert_rls_active() -> None
+```
+
+Raise unless row-level security applies to the connection's role.
+
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role bypasses every policy and exercises none of the tenancy model.
+
+*Source: sdk/src/postkit/base.py:402*
+
+---
+
 ### clear_actor
 
 ```python

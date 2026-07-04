@@ -550,6 +550,25 @@ SELECT * FROM authz.verify_integrity('default');
 
 ## Multi-tenancy
 
+### authz.assert_rls_active
+
+```sql
+authz.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT authz.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: authz/src/functions/034_rls.sql:45*
+
+---
+
 ### authz.clear_tenant
 
 ```sql

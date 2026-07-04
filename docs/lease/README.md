@@ -5,6 +5,7 @@
 | Function | Description |
 |----------|-------------|
 | [`acquire`](sdk.md#acquire) | Acquire or take over a named lease. |
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`current`](sdk.md#current) | Inspect a lease without locking it. |
 | [`get_events`](sdk.md#get_events) | Read the lease event log, newest first. |
@@ -21,6 +22,7 @@
 | Function | Description |
 |----------|-------------|
 | [`lease.acquire`](sql.md#leaseacquire) | Acquire or take over a named lease. |
+| [`lease.assert_rls_active`](sql.md#leaseassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`lease.clear_actor`](sql.md#leaseclear_actor) | Clear actor context. Call before returning connections to pool. |
 | [`lease.clear_tenant`](sql.md#leaseclear_tenant) | Clear the tenant context. Call before returning connections to pool. |
 | [`lease.set_actor`](sql.md#leaseset_actor) | Set actor context for the event log. |

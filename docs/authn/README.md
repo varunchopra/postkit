@@ -5,6 +5,7 @@
 | Function | Description |
 |----------|-------------|
 | [`add_credential`](sdk.md#add_credential) | Add a credential for a user. |
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`cleanup_expired`](sdk.md#cleanup_expired) | Clean up expired sessions, tokens, impersonation records, and old login attempts. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`clear_attempts`](sdk.md#clear_attempts) | Clear login attempts for an email. Returns count deleted. |
@@ -113,6 +114,7 @@
 | [`authn.record_login_attempt`](sql.md#authnrecord_login_attempt) | Record a login attempt (success or failure) for lockout tracking |
 | [`authn.cleanup_expired`](sql.md#authncleanup_expired) | Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron) |
 | [`authn.get_stats`](sql.md#authnget_stats) | Get namespace statistics for monitoring dashboards |
+| [`authn.assert_rls_active`](sql.md#authnassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`authn.clear_tenant`](sql.md#authnclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
 | [`authn.set_tenant`](sql.md#authnset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |
 | [`authn.end_operator_impersonation`](sql.md#authnend_operator_impersonation) | End an operator impersonation session early |

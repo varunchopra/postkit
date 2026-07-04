@@ -160,13 +160,16 @@ class TestConcurrentFail:
 
 
 class TestNackStatusGuard:
-    """Tests that nack's UPDATE only affects running jobs."""
+    """Tests that nack never resurrects a settled job."""
 
     def test_nack_does_not_overwrite_dead_status(self, db_connection):
-        """nack's UPDATE must not change a job that is no longer running.
+        """nack's UPDATE must not change a job that has been dead-lettered.
 
-        Verifies that the status guard (AND status = 'running') on nack's UPDATE
-        prevents overwriting a 'dead' status back to 'pending'.
+        nack and fail both lock the row with a status IN ('pending',
+        'running') predicate that re-checks after any lock wait, so when
+        fail wins the race the blocked nack sees 'dead' and raises. When
+        nack wins, the blocked fail sees the freshly-nacked pending job
+        and dead-letters it (fail returns True in that ordering).
         """
         namespace = "t_nack_guard"
         conn_setup, _ = _make_client(namespace)

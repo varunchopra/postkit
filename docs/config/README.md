@@ -5,6 +5,7 @@
 | Function | Description |
 |----------|-------------|
 | [`activate`](sdk.md#activate) | Activate a specific version. |
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`cleanup_old_versions`](sdk.md#cleanup_old_versions) | Delete old inactive versions, keeping N most recent per key. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`delete`](sdk.md#delete) | Delete all versions of a config entry. |
@@ -57,5 +58,6 @@
 | [`config.list_schemas`](sql.md#configlist_schemas) | List all schemas, optionally filtered by prefix |
 | [`config.cleanup_old_versions`](sql.md#configcleanup_old_versions) | Delete old inactive versions, keeping N most recent per key |
 | [`config.get_stats`](sql.md#configget_stats) | Get namespace statistics |
+| [`config.assert_rls_active`](sql.md#configassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`config.clear_tenant`](sql.md#configclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
 | [`config.set_tenant`](sql.md#configset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |

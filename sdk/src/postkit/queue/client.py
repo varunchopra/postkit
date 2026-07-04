@@ -359,19 +359,25 @@ class QueueClient(BaseClient):
         *,
         error: str | None = None,
         backoff: timedelta | None = None,
+        worker_id: str | None = None,
     ) -> bool:
         """Return job to queue for retry (temporary failure).
+
+        Valid on running jobs and on pending jobs whose claim was rolled
+        back with the consumer's transaction.
 
         Args:
             job_id: Job ID
             error: Error message (stored for debugging)
             backoff: Custom backoff delay (default: exponential)
+            worker_id: If set, refuse jobs running under a different worker
 
         Returns:
             True if returned to queue, False if max attempts exceeded (moved to DLQ)
 
         Raises:
-            QueueValidationError: If job exists but is not in running status
+            QueueValidationError: If job is settled (completed or dead), or
+                running under a different worker than worker_id
             QueueError: If job does not exist
         """
         result = self._fetch_val(
@@ -379,13 +385,15 @@ class QueueClient(BaseClient):
                 p_namespace := %s,
                 p_job_id := %s,
                 p_error := %s,
-                p_backoff := %s
+                p_backoff := %s,
+                p_worker_id := %s
             )""",
             (
                 self.namespace,
                 job_id,
                 error,
                 backoff,
+                worker_id,
             ),
             write=True,
         )
@@ -396,26 +404,34 @@ class QueueClient(BaseClient):
         job_id: int,
         *,
         error: str | None = None,
+        worker_id: str | None = None,
     ) -> bool:
         """Move job to dead letter queue (permanent failure).
+
+        Valid on running jobs and on pending jobs whose claim was rolled
+        back with the consumer's transaction.
 
         Args:
             job_id: Job ID
             error: Error message
+            worker_id: If set, refuse jobs running under a different worker
 
         Returns:
-            True if moved to DLQ, False if job not found or not running
+            True if moved to DLQ, False if job settled, missing, or owned
+            by another worker
         """
         result = self._fetch_val(
             """SELECT queue.fail(
                 p_namespace := %s,
                 p_job_id := %s,
-                p_error := %s
+                p_error := %s,
+                p_worker_id := %s
             )""",
             (
                 self.namespace,
                 job_id,
                 error,
+                worker_id,
             ),
             write=True,
         )

@@ -86,3 +86,31 @@ BEGIN
         nullif(current_setting('lease.reason', true), '');
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = lease, pg_temp;
+
+
+-- @function lease._rls_bypassed
+-- @brief True when the current role's queries bypass row-level security.
+-- BYPASSRLS is not inherited through role membership, and FORCE RLS
+-- removes the owner exemption, so superuser or a direct BYPASSRLS
+-- attribute is the complete condition.
+CREATE OR REPLACE FUNCTION lease._rls_bypassed()
+RETURNS boolean AS $$
+    SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;
+$$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = lease, pg_temp;
+
+
+-- @function lease.assert_rls_active
+-- @brief Raise unless row-level security applies to the current role.
+-- @example SELECT lease.assert_rls_active();
+-- Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+-- bypasses every policy and exercises none of the tenancy model.
+CREATE OR REPLACE FUNCTION lease.assert_rls_active()
+RETURNS void AS $$
+BEGIN
+    IF lease._rls_bypassed() THEN
+        RAISE EXCEPTION 'Role % bypasses row-level security', current_user
+            USING ERRCODE = 'object_not_in_prerequisite_state',
+                  HINT = 'postkit:lease:BIZ_RLS_NOT_ACTIVE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = lease, pg_temp;

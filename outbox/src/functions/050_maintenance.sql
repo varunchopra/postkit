@@ -74,6 +74,10 @@ BEGIN
     IF p_namespace IS NOT NULL THEN
         PERFORM outbox._validate_namespace(p_namespace);
         PERFORM outbox._warn_namespace_mismatch(p_namespace);
+    ELSIF NOT outbox._rls_bypassed() THEN
+        RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
+            USING ERRCODE = 'insufficient_privilege',
+                  HINT = 'postkit:outbox:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
     END IF;
     IF p_topic IS NOT NULL THEN
         PERFORM outbox._validate_topic(p_topic);

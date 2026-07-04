@@ -794,6 +794,25 @@ SELECT * FROM authn.get_stats('default');
 
 ## Multi-tenancy
 
+### authn.assert_rls_active
+
+```sql
+authn.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT authn.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: authn/src/functions/080_rls.sql:44*
+
+---
+
 ### authn.clear_tenant
 
 ```sql
@@ -1403,7 +1422,7 @@ Count users, optionally filtered by an email substring
 SELECT authn.count_users('default', 'acme');
 ```
 
-*Source: authn/src/functions/010_users.sql:356*
+*Source: authn/src/functions/010_users.sql:352*
 
 ---
 
@@ -1505,7 +1524,7 @@ Atomically get existing user or create new one (for SSO flows)
 SELECT * FROM authn.get_or_create_user('alice@example.com', NULL, 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:421*
+*Source: authn/src/functions/010_users.sql:417*
 
 ---
 
@@ -1562,7 +1581,7 @@ Get multiple users by ID in a single query
 SELECT * FROM authn.get_users_batch(ARRAY['uuid1', 'uuid2']::uuid[], 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:384*
+*Source: authn/src/functions/010_users.sql:380*
 
 ---
 
@@ -1584,7 +1603,7 @@ List users, optionally filtered by an email substring (ordered by email)
 SELECT * FROM authn.list_users('default', 'acme', 20, 0);
 ```
 
-*Source: authn/src/functions/010_users.sql:304*
+*Source: authn/src/functions/010_users.sql:300*
 
 ---
 

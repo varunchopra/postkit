@@ -6,6 +6,7 @@
 |----------|-------------|
 | [`adjust`](sdk.md#adjust) | Create an adjustment entry (correction, refund, etc.). |
 | [`allocate`](sdk.md#allocate) | Add quota/credits to an account. |
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`close_period`](sdk.md#close_period) | Close a billing period, handling expiration and carry-over. |
 | [`commit`](sdk.md#commit) | Commit a reservation with actual consumption. |
@@ -33,6 +34,7 @@
 | [`meter.ensure_partitions`](sql.md#meterensure_partitions) | Create partitions for upcoming months |
 | [`meter.get_stats`](sql.md#meterget_stats) | Get namespace statistics |
 | [`meter.reconcile`](sql.md#meterreconcile) | Verify account invariants: balance vs ledger sum, reserved vs active reservations |
+| [`meter.assert_rls_active`](sql.md#meterassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`meter.clear_actor`](sql.md#meterclear_actor) | Clear actor context |
 | [`meter.clear_tenant`](sql.md#meterclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
 | [`meter.set_actor`](sql.md#meterset_actor) | Set actor context for audit trail |

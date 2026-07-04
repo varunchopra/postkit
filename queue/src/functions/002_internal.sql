@@ -160,6 +160,6 @@ BEGIN
         updated_at = now()
     WHERE id = p_job.id
       AND namespace = p_job.namespace
-      AND status = 'running';
+      AND status IN ('pending', 'running');
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

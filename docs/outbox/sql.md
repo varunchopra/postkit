@@ -4,6 +4,25 @@
 
 ## Context
 
+### outbox.assert_rls_active
+
+```sql
+outbox.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT outbox.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: outbox/src/functions/080_rls.sql:98*
+
+---
+
 ### outbox.clear_actor
 
 ```sql
@@ -110,6 +129,25 @@ SELECT * FROM outbox.get_stats('default');
 ```
 
 *Source: outbox/src/functions/040_inspect.sql:65*
+
+---
+
+### outbox.horizon_blockers
+
+```sql
+outbox.horizon_blockers() -> table(pid: int4, datname: text, xact_age: interval, state: text, application_name: text, query: text, is_horizon: bool)
+```
+
+Backends whose open write transactions pin the visibility horizon.
+
+**Returns:** One row per in-progress write transaction, oldest first
+
+**Example:**
+```sql
+SELECT * FROM outbox.horizon_blockers();
+```
+
+*Source: outbox/src/functions/040_inspect.sql:123*
 
 ---
 

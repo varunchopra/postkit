@@ -224,7 +224,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 -- @function meter.release_expired_reservations
 -- @brief Mark expired reservations as 'expired' and release their holds.
 -- Distinct from 'released' to distinguish automatic expiry. No ledger entries.
--- @param p_namespace Optional namespace filter (NULL = all namespaces)
+-- @param p_namespace Optional namespace filter (NULL = all namespaces, requires RLS bypass)
 -- @returns Count of reservations expired
 -- @example SELECT meter.release_expired_reservations();
 CREATE FUNCTION meter.release_expired_reservations(
@@ -234,6 +234,12 @@ RETURNS int AS $$
 DECLARE
     v_count int;
 BEGIN
+    IF p_namespace IS NULL AND NOT meter._rls_bypassed() THEN
+        RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
+            USING ERRCODE = 'insufficient_privilege',
+                  HINT = 'postkit:meter:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
+    END IF;
+
     -- Prevent concurrent calls for the same namespace
     PERFORM pg_advisory_xact_lock(meter._hash64('meter.release_expired:' || COALESCE(p_namespace, '*')));
 

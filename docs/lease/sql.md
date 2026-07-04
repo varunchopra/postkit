@@ -32,6 +32,25 @@ SELECT * FROM lease.acquire('default', 'scheduler', 'worker-1');
 
 ## Context
 
+### lease.assert_rls_active
+
+```sql
+lease.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT lease.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: lease/src/functions/080_rls.sql:99*
+
+---
+
 ### lease.clear_actor
 
 ```sql

@@ -24,6 +24,20 @@ Pass the xid and id of the last event processed, straight from the polled row: e
 
 ---
 
+### assert_rls_active
+
+```python
+assert_rls_active() -> None
+```
+
+Raise unless row-level security applies to the connection's role.
+
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role bypasses every policy and exercises none of the tenancy model.
+
+*Source: sdk/src/postkit/base.py:402*
+
+---
+
 ### clear_actor
 
 ```python
@@ -70,6 +84,24 @@ Get namespace-wide outbox statistics.
 max_lag_events counts
 
 *Source: sdk/src/postkit/outbox/client.py:320*
+
+---
+
+### horizon_blockers
+
+```python
+horizon_blockers() -> list[dict[str, Any]]
+```
+
+Backends whose open write transactions pin the visibility horizon.
+
+Database-global, like the horizon itself. Seeing other sessions requires pg_read_all_stats (or superuser).
+
+**Returns:** One dict per in-progress write transaction, oldest first:
+pid, datname, xact_age, state, application_name, query,
+is_horizon
+
+*Source: sdk/src/postkit/outbox/client.py:345*
 
 ---
 

@@ -54,14 +54,14 @@ Cancel a pending job by deleting it.
 
 **Returns:** True if cancelled, false if job not found or not pending
 
-*Source: queue/src/functions/030_ack.sql:248*
+*Source: queue/src/functions/030_ack.sql:284*
 
 ---
 
 ### queue.fail
 
 ```sql
-queue.fail(p_namespace: text, p_job_id: int8, p_error: text) -> bool
+queue.fail(p_namespace: text, p_job_id: int8, p_error: text, p_worker_id: text) -> bool
 ```
 
 Move job to dead letter queue (permanent failure).
@@ -70,17 +70,18 @@ Move job to dead letter queue (permanent failure).
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
 - `p_error`: Error message
+- `p_worker_id`: Optional worker identity; refuses jobs running under another worker
 
-**Returns:** True if moved to DLQ, false if job not found or not running
+**Returns:** True if moved to DLQ, false if job settled, missing, or owned by another worker
 
-*Source: queue/src/functions/030_ack.sql:198*
+*Source: queue/src/functions/030_ack.sql:222*
 
 ---
 
 ### queue.nack
 
 ```sql
-queue.nack(p_namespace: text, p_job_id: int8, p_error: text, p_backoff: interval) -> bool
+queue.nack(p_namespace: text, p_job_id: int8, p_error: text, p_backoff: interval, p_worker_id: text) -> bool
 ```
 
 Return job to queue for retry (temporary failure).
@@ -90,6 +91,7 @@ Return job to queue for retry (temporary failure).
 - `p_job_id`: Job ID
 - `p_error`: Error message (stored for debugging)
 - `p_backoff`: Optional custom backoff delay (default: exponential)
+- `p_worker_id`: Optional worker identity; refuses jobs running under another worker
 
 **Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ)
 
@@ -111,7 +113,7 @@ Delete all pending jobs from a queue.
 
 **Returns:** Count of deleted jobs
 
-*Source: queue/src/functions/030_ack.sql:335*
+*Source: queue/src/functions/030_ack.sql:371*
 
 ---
 
@@ -129,11 +131,30 @@ Release all jobs held by a worker, returning them to pending.
 
 **Returns:** Count of jobs released
 
-*Source: queue/src/functions/030_ack.sql:288*
+*Source: queue/src/functions/030_ack.sql:324*
 
 ---
 
 ## Context
+
+### queue.assert_rls_active
+
+```sql
+queue.assert_rls_active() -> void
+```
+
+Raise unless row-level security applies to the current role.
+
+**Example:**
+```sql
+SELECT queue.assert_rls_active();
+Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
+bypasses every policy and exercises none of the tenancy model.
+```
+
+*Source: queue/src/functions/080_rls.sql:99*
+
+---
 
 ### queue.clear_actor
 
@@ -536,7 +557,7 @@ Reclaim running jobs whose visibility timeout has expired.
 
 **Returns:** Rows of (job_id, queue, stuck_duration) for each reclaimed job
 
-*Source: queue/src/functions/055_tick.sql:101*
+*Source: queue/src/functions/055_tick.sql:107*
 
 ---
 

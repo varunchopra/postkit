@@ -224,14 +224,21 @@ class TestNack:
         stats = queue.get_stats()
         assert stats["dead"] == 1
 
-    def test_nack_not_running_raises_error(self, queue):
-        """nack raises error for non-running job."""
-
-        job_id = queue.push("tasks", {"task": 1})
+    def test_nack_settled_job_raises_error(self, queue):
+        """nack raises for a job that is already settled (dead)."""
+        queue.push("tasks", {"task": 1}, max_attempts=1)
+        job = queue.pull("tasks")
+        queue.fail(job["id"], error="poison")
 
         with pytest.raises(QueueValidationError) as exc_info:
-            queue.nack(job_id)
+            queue.nack(job["id"])
         assert exc_info.value.error_code == QueueErrorCode.BIZ_JOB_NOT_RUNNING
+
+    def test_nack_pending_job_reschedules(self, queue):
+        """nack on a pending job records the error and schedules a retry."""
+        job_id = queue.push("tasks", {"task": 1})
+
+        assert queue.nack(job_id, error="rolled back") is True
 
     def test_nack_not_found_raises_error(self, queue):
         """nack raises error for nonexistent job."""
@@ -262,12 +269,22 @@ class TestFail:
         stats = queue.get_stats()
         assert stats["dead"] == 1
 
-    def test_fail_not_running_returns_false(self, queue):
-        """fail returns False for non-running job."""
+    def test_fail_pending_job_dead_letters(self, queue):
+        """fail on a pending job moves it to the dead letter queue."""
         job_id = queue.push("tasks", {"task": 1})
 
-        result = queue.fail(job_id)
-        assert result is False
+        assert queue.fail(job_id) is True
+
+        stats = queue.get_stats()
+        assert stats["dead"] == 1
+
+    def test_fail_settled_job_returns_false(self, queue):
+        """fail returns False for a job that is already settled (dead)."""
+        queue.push("tasks", {"task": 1})
+        job = queue.pull("tasks")
+        queue.fail(job["id"])
+
+        assert queue.fail(job["id"]) is False
 
     def test_fail_stores_error_message(self, raw_cursor):
         """fail stores error message in dead_letters."""

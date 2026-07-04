@@ -55,6 +55,10 @@ BEGIN
     IF p_namespace IS NOT NULL THEN
         PERFORM presence._validate_namespace(p_namespace);
         PERFORM presence._warn_namespace_mismatch(p_namespace);
+    ELSIF NOT presence._rls_bypassed() THEN
+        RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
+            USING ERRCODE = 'insufficient_privilege',
+                  HINT = 'postkit:presence:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
     END IF;
     PERFORM presence._validate_positive_int(p_limit, 'limit');
 

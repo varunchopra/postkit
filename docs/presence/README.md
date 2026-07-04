@@ -4,6 +4,7 @@
 
 | Function | Description |
 |----------|-------------|
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`deregister`](sdk.md#deregister) | Remove an entity deliberately, emitting a departed transition. |
 | [`get_stats`](sdk.md#get_stats) | Get namespace-wide presence statistics. |
@@ -21,6 +22,7 @@
 
 | Function | Description |
 |----------|-------------|
+| [`presence.assert_rls_active`](sql.md#presenceassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`presence.clear_actor`](sql.md#presenceclear_actor) | Clear actor context. Call before returning connections to pool. |
 | [`presence.clear_tenant`](sql.md#presenceclear_tenant) | Clear the tenant context. Call before returning connections to pool. |
 | [`presence.set_actor`](sql.md#presenceset_actor) | Set actor context for the transition history. |

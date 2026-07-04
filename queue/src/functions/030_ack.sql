@@ -118,14 +118,28 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 -- @param p_job_id Job ID
 -- @param p_error Error message (stored for debugging)
 -- @param p_backoff Optional custom backoff delay (default: exponential)
+-- @param p_worker_id Optional worker identity; refuses jobs running under another worker
 -- @returns True if returned to queue, false if max attempts exceeded (moved to DLQ)
 --
 -- If max_attempts is exceeded, automatically moves to dead letter queue.
+--
+-- A pending job is a valid target: a consumer that rolled back its
+-- transaction lost the claim, but its intent to retry stands. The backoff
+-- comes from the committed attempt count, so an attempt whose pull rolled
+-- back is granted back. A pending job carries no lock fields, so a nack of
+-- a job that was never pulled is indistinguishable from rollback recovery
+-- and reschedules quietly. Completed and dead jobs are settled and raise.
+--
+-- Between a rollback and the recovery call, another worker may re-pull the
+-- job, and that attempt owns its fate. Pass p_worker_id to refuse such
+-- jobs (BIZ_JOB_NOT_YOURS); with NULL the caller is trusted and may
+-- release another worker's claim.
 CREATE OR REPLACE FUNCTION queue.nack(
     p_namespace text,
     p_job_id bigint,
     p_error text DEFAULT NULL,
-    p_backoff interval DEFAULT NULL
+    p_backoff interval DEFAULT NULL,
+    p_worker_id text DEFAULT NULL
 )
 RETURNS boolean AS $$
 DECLARE
@@ -149,13 +163,13 @@ BEGIN
     FROM queue.jobs
     WHERE namespace = p_namespace
       AND id = p_job_id
-      AND status = 'running'
+      AND status IN ('pending', 'running')
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        -- Job not found or not running - check if it exists at all
+        -- Job settled or missing - check if it exists at all
         IF EXISTS (SELECT 1 FROM queue.jobs WHERE namespace = p_namespace AND id = p_job_id) THEN
-            RAISE EXCEPTION 'Job % is not in running status', p_job_id
+            RAISE EXCEPTION 'Job % is already settled', p_job_id
                 USING ERRCODE = 'invalid_parameter_value',
                       HINT = 'postkit:queue:BIZ_JOB_NOT_RUNNING';
         ELSE
@@ -163,6 +177,14 @@ BEGIN
                 USING ERRCODE = 'no_data_found',
                       HINT = 'postkit:queue:DATA_JOB_NOT_FOUND';
         END IF;
+    END IF;
+
+    IF p_worker_id IS NOT NULL AND v_job.status = 'running'
+       AND v_job.locked_by IS DISTINCT FROM p_worker_id THEN
+        RAISE EXCEPTION 'Job % is running under worker %, not %',
+            p_job_id, v_job.locked_by, p_worker_id
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:BIZ_JOB_NOT_YOURS';
     END IF;
 
     -- Check if max attempts exceeded
@@ -179,7 +201,9 @@ BEGIN
         v_delay := queue._calculate_backoff(v_job.attempts);
     END IF;
 
-    -- Return job to pending with backoff
+    -- Return job to pending with backoff. The status predicate is defense
+    -- in depth: the FOR UPDATE above re-checks status after any lock wait,
+    -- so a job settled by a concurrent call never reaches this UPDATE.
     UPDATE queue.jobs
     SET
         status = 'pending',
@@ -191,7 +215,7 @@ BEGIN
         updated_at = now()
     WHERE namespace = p_namespace
       AND id = p_job_id
-      AND status = 'running';
+      AND status IN ('pending', 'running');
 
     RETURN true;
 END;
@@ -203,13 +227,20 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
 -- @param p_error Error message
--- @returns True if moved to DLQ, false if job not found or not running
+-- @param p_worker_id Optional worker identity; refuses jobs running under another worker
+-- @returns True if moved to DLQ, false if job settled, missing, or owned by another worker
 --
 -- Use when a job cannot be retried (invalid data, business logic failure, etc).
+--
+-- A pending job is a valid target: a consumer that rolled back its
+-- transaction can still dead-letter a poison job. Pass p_worker_id to
+-- refuse jobs another worker has since re-pulled; refusal returns false,
+-- matching fail's silent cleanup character.
 CREATE OR REPLACE FUNCTION queue.fail(
     p_namespace text,
     p_job_id bigint,
-    p_error text DEFAULT NULL
+    p_error text DEFAULT NULL,
+    p_worker_id text DEFAULT NULL
 )
 RETURNS boolean AS $$
 DECLARE
@@ -232,13 +263,18 @@ BEGIN
     FROM queue.jobs
     WHERE namespace = p_namespace
       AND id = p_job_id
-      AND status = 'running'
+      AND status IN ('pending', 'running')
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        -- Intentionally silent. nack() raises because a retry on a non-running
+        -- Intentionally silent. nack() raises because a retry on a settled
         -- job is a caller bug, but fail() is a cleanup call where the caller
-        -- does not care why it was not running.
+        -- does not care why the job was not there to fail.
+        RETURN false;
+    END IF;
+
+    IF p_worker_id IS NOT NULL AND v_job.status = 'running'
+       AND v_job.locked_by IS DISTINCT FROM p_worker_id THEN
         RETURN false;
     END IF;
 

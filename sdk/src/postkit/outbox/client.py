@@ -341,3 +341,16 @@ class OutboxClient(BaseClient):
         return self._fetch_all(
             "SELECT * FROM outbox.list_consumers(%s, %s)", (self.namespace, topic)
         )
+
+    def horizon_blockers(self) -> list[dict[str, Any]]:
+        """Backends whose open write transactions pin the visibility horizon.
+
+        Database-global, like the horizon itself. Seeing other sessions
+        requires pg_read_all_stats (or superuser).
+
+        Returns:
+            One dict per in-progress write transaction, oldest first:
+            pid, datname, xact_age, state, application_name, query,
+            is_horizon
+        """
+        return self._fetch_all("SELECT * FROM outbox.horizon_blockers()", ())

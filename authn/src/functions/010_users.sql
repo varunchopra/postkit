@@ -299,10 +299,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
 
--- list_users changed signature; drop the old overload so re-applying this file
--- doesn't leave two list_users that collide on default-arg calls.
-DROP FUNCTION IF EXISTS authn.list_users(text, int, uuid);
-
 -- @function authn.list_users
 -- @brief List users, optionally filtered by an email substring (ordered by email)
 -- @param p_search Case-insensitive email substring; NULL returns all users

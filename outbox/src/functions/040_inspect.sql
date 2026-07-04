@@ -121,3 +121,47 @@ BEGIN
     ORDER BY c.topic, c.consumer;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = outbox, pg_temp;
+
+
+-- @function outbox.horizon_blockers
+-- @brief Backends whose open write transactions pin the visibility horizon.
+-- @returns One row per in-progress write transaction, oldest first
+-- @example SELECT * FROM outbox.horizon_blockers();
+--
+-- Answers "who is freezing delivery" when lag's horizon column stalls.
+-- Only transactions that have allocated an xid (that is, have written)
+-- appear in the snapshot and can pin the horizon; read-only transactions
+-- never do. is_horizon marks the backend whose xid IS the horizon; the
+-- others are next in line. The xid space is cluster-wide, so a blocker
+-- can live in another database (datname says which).
+--
+-- Seeing other sessions requires pg_read_all_stats (or superuser):
+-- pg_stat_activity nulls other backends' details for unprivileged
+-- callers, including backend_xid, so their rows are filtered out here.
+-- Database-global by construction, like the horizon itself: no namespace
+-- parameter and no tenant-context interaction.
+CREATE OR REPLACE FUNCTION outbox.horizon_blockers()
+RETURNS TABLE(
+    pid int,
+    datname text,
+    xact_age interval,
+    state text,
+    application_name text,
+    query text,
+    is_horizon boolean
+) AS $$
+    SELECT
+        a.pid,
+        a.datname::text,
+        now() - a.xact_start,
+        a.state,
+        a.application_name,
+        a.query,
+        -- backend_xid is a 32-bit xid; the horizon is a 64-bit xid8.
+        -- Compare on the xid8's low 32 bits (its epoch-less xid part).
+        a.backend_xid::text::numeric
+            = mod(outbox._horizon()::text::numeric, 4294967296::numeric)
+    FROM pg_stat_activity a
+    WHERE a.backend_xid IS NOT NULL
+    ORDER BY a.xact_start;
+$$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = outbox, pg_temp;

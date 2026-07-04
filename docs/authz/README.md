@@ -5,6 +5,7 @@
 | Function | Description |
 |----------|-------------|
 | [`add_hierarchy_rule`](sdk.md#add_hierarchy_rule) | Add a single hierarchy rule (for complex/branching hierarchies). |
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`bulk_grant`](sdk.md#bulk_grant) | Grant permission to many subjects at once. |
 | [`bulk_grant_resources`](sdk.md#bulk_grant_resources) | Grant permission to a subject on many resources at once. |
 | [`check`](sdk.md#check) | Check if a subject has a permission on a resource. |
@@ -67,6 +68,7 @@
 | [`authz.get_stats`](sql.md#authzget_stats) | Get namespace statistics for monitoring dashboards |
 | [`authz.grant_to_resources_bulk`](sql.md#authzgrant_to_resources_bulk) | Grant same user/team access to many resources at once |
 | [`authz.verify_integrity`](sql.md#authzverify_integrity) | Check for data corruption (circular memberships, broken hierarchies, partition issues) |
+| [`authz.assert_rls_active`](sql.md#authzassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`authz.clear_tenant`](sql.md#authzclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
 | [`authz.set_tenant`](sql.md#authzset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |
 | [`authz.check`](sql.md#authzcheck) | Check if a subject has a permission on a resource |

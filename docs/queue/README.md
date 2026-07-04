@@ -6,6 +6,7 @@
 |----------|-------------|
 | [`ack`](sdk.md#ack) | Acknowledge successful job completion. |
 | [`ack_batch`](sdk.md#ack_batch) | Acknowledge multiple jobs as completed. |
+| [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`cancel`](sdk.md#cancel) | Cancel a pending job by deleting it. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`create_schedule`](sdk.md#create_schedule) | Create a recurring schedule that produces jobs automatically. |
@@ -44,6 +45,7 @@
 | [`queue.nack`](sql.md#queuenack) | Return job to queue for retry (temporary failure). |
 | [`queue.purge_queue`](sql.md#queuepurge_queue) | Delete all pending jobs from a queue. |
 | [`queue.release_jobs`](sql.md#queuerelease_jobs) | Release all jobs held by a worker, returning them to pending. |
+| [`queue.assert_rls_active`](sql.md#queueassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`queue.clear_actor`](sql.md#queueclear_actor) | Clear actor context. Call before returning connections to pool. |
 | [`queue.clear_tenant`](sql.md#queueclear_tenant) | Clear the tenant context. Call before returning connections to pool. |
 | [`queue.set_actor`](sql.md#queueset_actor) | Set actor context for audit trail. |

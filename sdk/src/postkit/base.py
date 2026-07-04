@@ -399,6 +399,29 @@ class BaseClient(ABC):
         self._on_behalf_of = None
         self._reason = None
 
+    def assert_rls_active(self) -> None:
+        """Raise unless row-level security applies to the connection's role.
+
+        Call from CI setup: a suite connecting as a superuser or BYPASSRLS
+        role bypasses every policy and exercises none of the tenancy model.
+
+        Raises:
+            The module's error class with error_code BIZ_RLS_NOT_ACTIVE
+            when the current role bypasses RLS.
+        """
+
+        def execute() -> None:
+            try:
+                self.cursor.execute(
+                    sql.SQL("SELECT {}.assert_rls_active()").format(
+                        sql.Identifier(self._schema)
+                    )
+                )
+            except psycopg.Error as e:
+                self._handle_error(e)
+
+        self._with_context(execute)
+
     @staticmethod
     def _encode_cursor(event_time: datetime, event_id: int) -> str:
         """Encode pagination cursor as opaque string.

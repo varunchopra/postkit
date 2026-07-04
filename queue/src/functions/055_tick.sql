@@ -25,6 +25,12 @@ DECLARE
     v_config queue.config;
     v_actor record;
 BEGIN
+    IF p_namespace IS NULL AND NOT queue._rls_bypassed() THEN
+        RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
+            USING ERRCODE = 'insufficient_privilege',
+                  HINT = 'postkit:queue:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
+    END IF;
+
     -- Capture actor context once (same as push() does per-call).
     SELECT * INTO v_actor FROM queue._get_actor_context();
 
@@ -127,6 +133,12 @@ RETURNS TABLE(
 DECLARE
     v_job record;
 BEGIN
+    IF p_namespace IS NULL AND NOT queue._rls_bypassed() THEN
+        RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
+            USING ERRCODE = 'insufficient_privilege',
+                  HINT = 'postkit:queue:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
+    END IF;
+
     FOR v_job IN
         SELECT j.id, j.queue, (now() - j.locked_at) AS stuck_duration
         FROM queue.jobs j

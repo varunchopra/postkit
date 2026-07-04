@@ -32,6 +32,8 @@ Functions that write data need the `p_namespace` parameter to match the tenant c
 
 Each module has [`set_tenant`](docs/authn/sql.md#authnset_tenant) / [`clear_tenant`](docs/authn/sql.md#authnclear_tenant). Call `clear_tenant()` before returning connections to a pool. The Python SDK handles tenant context automatically - pass `namespace` to the constructor.
 
+Maintenance functions accept `p_namespace => NULL` meaning all namespaces, but only for roles that bypass RLS (superuser or `BYPASSRLS`); other roles get a loud `insufficient_privilege` error and must iterate namespaces explicitly. Each module also has `assert_rls_active()`, which raises when the current role would bypass RLS - call it from CI setup so a test suite connecting as a superuser does not silently skip the tenancy model.
+
 ## Hashing
 
 Postkit stores hashes, never plaintext. This applies in every language.
@@ -123,7 +125,7 @@ queue = QueueClient(cursor, namespace="my-app")
 
 **Audit context.** [`set_actor`](docs/authn/sql.md#authnset_actor) tags write operations with who made the change and why. Optional but recommended.
 
-**Outbox delivery is database-global.** Outbox reads return only events whose transaction has finished, and that horizon spans the whole database: one tenant's long-open transaction delays event delivery for every tenant. Set `idle_in_transaction_session_timeout` in multi-tenant deployments and watch the `horizon` column of [`lag`](docs/outbox/sql.md#outboxlag): a stalled horizon joined against `pg_stat_activity` identifies the session responsible.
+**Outbox delivery is database-global.** Outbox reads return only events whose transaction has finished, and that horizon spans the whole database: one tenant's long-open transaction delays event delivery for every tenant. Set `idle_in_transaction_session_timeout` in multi-tenant deployments and watch the `horizon` column of [`lag`](docs/outbox/sql.md#outboxlag); when it stalls, `outbox.horizon_blockers()` names the sessions responsible.
 
 ## Modules
 
