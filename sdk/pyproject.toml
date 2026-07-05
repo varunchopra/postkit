@@ -1,6 +1,6 @@
 [project]
 name = "postkit"
-version = "0.5.1"
+version = "0.6.0"
 description = "PostgreSQL-native auth, permissions, versioned config, usage tracking, and job queues"
 readme = "README.md"
 license = "Apache-2.0"
