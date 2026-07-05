@@ -11,9 +11,9 @@
 --
 -- Returns only events whose emitting transaction has finished (O1, see
 -- 001_tables.sql). A consequence worth knowing: one long-running write
--- transaction anywhere in the database holds back delivery of everything
--- committed after it began, until it finishes. outbox.lag exposes the
--- horizon so a stall is visible.
+-- transaction anywhere holds back delivery of every event whose emitter
+-- started writing after it did, until it finishes. outbox.lag exposes
+-- the horizon so a stall is visible.
 --
 -- Poll then ack is at-least-once delivery: a consumer that crashes between
 -- processing and ack sees the events again, so make processing idempotent.

@@ -40,6 +40,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      # max_prepared_transactions needs a restart and service containers
+      # take no command args; without it the prepared-transaction tests skip
+      - name: Enable prepared transactions
+        run: |
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U postgres -c "ALTER SYSTEM SET max_prepared_transactions = 5"
+          docker restart ${{ job.services.postgres.id }}
+          until docker exec ${{ job.services.postgres.id }} pg_isready -U postgres; do sleep 1; done
+
       - run: make build test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres

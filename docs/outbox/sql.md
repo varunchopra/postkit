@@ -138,7 +138,7 @@ SELECT * FROM outbox.get_stats('default');
 outbox.horizon_blockers() -> table(pid: int4, datname: text, xact_age: interval, state: text, application_name: text, query: text, is_horizon: bool)
 ```
 
-Backends whose open write transactions pin the visibility horizon.
+Transactions whose open writes pin the visibility horizon.
 
 **Returns:** One row per in-progress write transaction, oldest first
 

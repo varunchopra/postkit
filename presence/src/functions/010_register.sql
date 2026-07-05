@@ -111,7 +111,8 @@ BEGIN
     END IF;
 
     v_config := presence._get_config(p_namespace, v_entity.kind);
-    v_transition := presence._record_transition(v_entity, v_config, 'departed');
+    -- Departed never counts toward flapping (P4, see 001_tables.sql)
+    v_transition := presence._record_transition(v_entity, 'departed', false);
 
     DELETE FROM presence.entities e
     WHERE e.namespace = p_namespace AND e.entity_id = p_entity;

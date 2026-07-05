@@ -77,9 +77,13 @@ CREATE INDEX tokens_lookup_idx ON authn.tokens (namespace, token_hash, token_typ
     INCLUDE (user_id, expires_at, used_at)
     WHERE used_at IS NULL;
 
--- Cleanup queries - find expired/used tokens for deletion
+-- Cleanup queries - find expired tokens for deletion
 CREATE INDEX tokens_expired_idx ON authn.tokens (namespace, expires_at)
     WHERE used_at IS NULL;
+
+-- Cleanup queries - find used tokens for deletion
+CREATE INDEX tokens_used_idx ON authn.tokens (namespace)
+    WHERE used_at IS NOT NULL;
 
 -- Invalidation - find all tokens of type for a user
 CREATE INDEX tokens_user_type_idx ON authn.tokens (namespace, user_id, token_type)
@@ -144,6 +148,10 @@ CREATE INDEX api_keys_user_active_idx ON authn.api_keys (namespace, user_id, cre
 CREATE INDEX api_keys_expired_idx ON authn.api_keys (namespace, expires_at)
     WHERE revoked_at IS NULL AND expires_at IS NOT NULL;
 
+-- Cleanup queries - find revoked keys for deletion
+CREATE INDEX api_keys_revoked_idx ON authn.api_keys (namespace)
+    WHERE revoked_at IS NOT NULL;
+
 -- =============================================================================
 -- IMPERSONATION SESSIONS INDEXES
 -- =============================================================================
@@ -165,10 +173,15 @@ CREATE INDEX impersonation_sessions_target_idx
     ON authn.impersonation_sessions (namespace, target_user_id, started_at DESC)
     WHERE ended_at IS NULL;
 
--- Cleanup expired impersonations
+-- Cleanup queries - find expired impersonations for deletion
 CREATE INDEX impersonation_sessions_expired_idx
     ON authn.impersonation_sessions (namespace, expires_at)
     WHERE ended_at IS NULL;
+
+-- Cleanup queries - find ended impersonations for deletion
+CREATE INDEX impersonation_sessions_ended_idx
+    ON authn.impersonation_sessions (namespace)
+    WHERE ended_at IS NOT NULL;
 
 -- =============================================================================
 -- FK CASCADE DELETE INDEXES

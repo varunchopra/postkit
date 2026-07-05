@@ -47,14 +47,34 @@ cleanup_expired(batch_size: int = 10000) -> dict
 
 Clean up expired sessions, tokens, impersonation records, and old login attempts.
 
+Everything deleted belongs to this client's namespace. Operator impersonation sessions are cross-namespace and are cleaned by cleanup_expired_operator_sessions instead.
+
 **Parameters:**
 - `batch_size`: Max rows to delete per table per iteration (default 10000). Smaller values reduce lock contention but require more iterations.
 
 **Returns:** Dict with counts: sessions_deleted, tokens_deleted, refresh_tokens_deleted,
-api_keys_deleted, impersonations_deleted, operator_impersonations_deleted,
-attempts_deleted
+api_keys_deleted, impersonations_deleted, attempts_deleted
 
 *Source: sdk/src/postkit/authn/client.py:1273*
+
+---
+
+### cleanup_expired_operator_sessions
+
+```python
+cleanup_expired_operator_sessions(batch_size: int = 10000) -> int
+```
+
+Clean up ended or expired operator impersonation sessions, all namespaces.
+
+Platform-scope maintenance: operator impersonation sessions span namespaces, so schedule this once per deployment rather than per tenant. This client's namespace does not scope the deletion.
+
+**Parameters:**
+- `batch_size`: Max rows to delete per iteration (default 10000).
+
+**Returns:** Number of rows deleted.
+
+*Source: sdk/src/postkit/authn/client.py:1297*
 
 ---
 
@@ -66,7 +86,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/authn/client.py:1336*
+*Source: sdk/src/postkit/authn/client.py:1363*
 
 ---
 
@@ -400,7 +420,7 @@ if events:
     more = authn.get_audit_events(limit=50, before=events[-1]["cursor"])
 ```
 
-*Source: sdk/src/postkit/authn/client.py:1342*
+*Source: sdk/src/postkit/authn/client.py:1369*
 
 ---
 
@@ -536,7 +556,7 @@ get_stats() -> dict
 
 Get namespace statistics.
 
-*Source: sdk/src/postkit/authn/client.py:1294*
+*Source: sdk/src/postkit/authn/client.py:1321*
 
 ---
 
@@ -1023,7 +1043,7 @@ authn.set_actor(request_id=req_id, ip_address=ip, user_agent=ua)
 authn.set_actor(actor_id="user:alice")
 ```
 
-*Source: sdk/src/postkit/authn/client.py:1302*
+*Source: sdk/src/postkit/authn/client.py:1329*
 
 ---
 

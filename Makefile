@@ -21,7 +21,8 @@ setup:
 	@docker run -d --name $(PG_CONTAINER) \
 		-e POSTGRES_PASSWORD=postgres \
 		-p $(PG_PORT):5432 \
-		postgres:$(PG_VERSION) > /dev/null
+		postgres:$(PG_VERSION) \
+		-c max_prepared_transactions=5 > /dev/null
 	@echo "Waiting for Postgres..."
 	@sleep 3
 	@until docker exec $(PG_CONTAINER) pg_isready -q; do sleep 1; done

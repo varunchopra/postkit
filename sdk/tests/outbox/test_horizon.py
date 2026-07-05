@@ -11,6 +11,8 @@ divergence is the point - an emit-first test cannot tell the two orders
 apart and proves nothing about the gate.
 """
 
+import pytest
+
 
 def emit(cursor, namespace, topic, payload="{}"):
     cursor.execute(
@@ -246,3 +248,44 @@ class TestHorizonBlockers:
 
         pids = [r["pid"] for r in outbox.horizon_blockers()]
         assert blocker_pid not in pids
+
+    def test_prepared_transaction_appears_with_gid(self, outbox, connect, test_helpers):
+        """A prepared transaction is reported with the gid ROLLBACK PREPARED takes.
+
+        Prepared transactions have no backend and evade every timeout, so
+        the row shape differs: pid and query are NULL, state is 'prepared',
+        and application_name carries the gid.
+        """
+        conn = connect()
+        cur = conn.cursor()
+        cur.execute("SHOW max_prepared_transactions")
+        if cur.fetchone()[0] == "0":
+            conn.rollback()
+            pytest.skip("server started without max_prepared_transactions")
+
+        # PostgreSQL refuses to PREPARE a transaction that ran NOTIFY, so
+        # the emit must go through a notify-disabled topic
+        test_helpers.set_config(topic="orders", notify=False)
+
+        gid = f"postkit_test_{outbox.namespace}"
+        cur.execute(
+            "SELECT outbox.emit(%s, 'orders', 'test.event', '{}')",
+            (outbox.namespace,),
+        )
+        cur.execute(f"PREPARE TRANSACTION '{gid}'")
+        try:
+            prepared = [
+                r for r in outbox.horizon_blockers() if r["state"] == "prepared"
+            ]
+            assert [r for r in prepared if r["application_name"] == gid], (
+                f"gid {gid} missing from {prepared}"
+            )
+            row = next(r for r in prepared if r["application_name"] == gid)
+            assert row["pid"] is None
+            assert row["query"] is None
+            assert row["xact_age"] is not None
+        finally:
+            # PREPARE dissociated the transaction from this connection, and
+            # ROLLBACK PREPARED refuses to run inside a transaction block
+            conn.autocommit = True
+            conn.execute(f"ROLLBACK PREPARED '{gid}'")

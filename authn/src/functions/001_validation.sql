@@ -305,3 +305,19 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;
+
+
+-- @function authn._validate_positive_int
+-- @brief Validate that an integer is positive.
+-- @param p_value Value to validate
+-- @param p_name Name of the parameter for error message
+CREATE OR REPLACE FUNCTION authn._validate_positive_int(p_value int, p_name text)
+RETURNS void AS $$
+BEGIN
+    IF p_value IS NULL OR p_value <= 0 THEN
+        RAISE EXCEPTION '% must be a positive integer', p_name
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authn:VAL_NOT_POSITIVE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path = authn, pg_temp;

@@ -1273,14 +1273,17 @@ class AuthnClient(BaseClient):
     def cleanup_expired(self, batch_size: int = 10000) -> dict:
         """Clean up expired sessions, tokens, impersonation records, and old login attempts.
 
+        Everything deleted belongs to this client's namespace. Operator
+        impersonation sessions are cross-namespace and are cleaned by
+        cleanup_expired_operator_sessions instead.
+
         Args:
             batch_size: Max rows to delete per table per iteration (default 10000).
                 Smaller values reduce lock contention but require more iterations.
 
         Returns:
             Dict with counts: sessions_deleted, tokens_deleted, refresh_tokens_deleted,
-            api_keys_deleted, impersonations_deleted, operator_impersonations_deleted,
-            attempts_deleted
+            api_keys_deleted, impersonations_deleted, attempts_deleted
         """
         return (
             self._fetch_one(
@@ -1290,6 +1293,30 @@ class AuthnClient(BaseClient):
             )
             or {}
         )
+
+    def cleanup_expired_operator_sessions(self, batch_size: int = 10000) -> int:
+        """Clean up ended or expired operator impersonation sessions, all namespaces.
+
+        Platform-scope maintenance: operator impersonation sessions span
+        namespaces, so schedule this once per deployment rather than per
+        tenant. This client's namespace does not scope the deletion.
+
+        Args:
+            batch_size: Max rows to delete per iteration (default 10000).
+
+        Returns:
+            Number of rows deleted.
+        """
+        result = self._fetch_val(
+            "SELECT authn.cleanup_expired_operator_sessions(%s)",
+            (batch_size,),
+            write=True,
+        )
+        if result is None:
+            raise AuthnError(
+                "authn.cleanup_expired_operator_sessions returned no value"
+            )
+        return int(result)
 
     def get_stats(self) -> dict:
         """Get namespace statistics."""

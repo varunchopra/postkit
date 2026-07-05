@@ -278,3 +278,18 @@ class TestValidationErrorType:
     def test_authn_validation_error_is_authn_error(self):
         """AuthnValidationError is a subclass of AuthnError for backwards compatibility."""
         assert issubclass(AuthnValidationError, AuthnError)
+
+
+class TestBatchSizeValidation:
+    """Cleanup batch sizes must be positive: zero would spin the batch
+    loops through every iteration deleting nothing."""
+
+    def test_cleanup_expired_rejects_zero(self, authn):
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.cleanup_expired(batch_size=0)
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_NOT_POSITIVE
+
+    def test_cleanup_operator_sessions_rejects_negative(self, authn):
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.cleanup_expired_operator_sessions(batch_size=-1)
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_NOT_POSITIVE

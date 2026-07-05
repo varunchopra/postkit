@@ -49,6 +49,7 @@ DECLARE
     v_cutoff timestamptz;
     v_entity presence.entities;
     v_now timestamptz;
+    v_flap record;
     v_transition presence.transitions;
 BEGIN
     -- Validate inputs
@@ -104,8 +105,9 @@ BEGIN
                 )
             );
 
+            v_flap := presence._advance_flap(v_entity, v_config);
             v_transition := presence._record_transition(
-                v_entity, v_config, 'dead', v_now - v_entity.last_seen
+                v_entity, 'dead', v_flap.flapping, v_now - v_entity.last_seen
             );
 
             UPDATE presence.entities e
@@ -113,8 +115,10 @@ BEGIN
                 dead_since = v_now,
                 -- The flag means "a death alert is owed": set only when
                 -- damping suppressed a hook that was actually configured
-                hook_suppressed = v_transition.flapping
+                hook_suppressed = v_flap.flapping
                                   AND v_config.on_death_queue IS NOT NULL,
+                flap_count = v_flap.flap_count,
+                flap_window_started = v_flap.flap_window_started,
                 updated_at = v_now
             WHERE e.namespace = v_entity.namespace
               AND e.entity_id = v_entity.entity_id;

@@ -20,6 +20,7 @@ RETURNS text AS $$
 DECLARE
     v_entity presence.entities;
     v_config presence.config;
+    v_flap record;
     v_transition presence.transitions;
     v_now timestamptz;
 BEGIN
@@ -58,7 +59,10 @@ BEGIN
         -- Revival (or first contact) is captured HERE, never deferred to
         -- sweep (P2). Revival also clears a deferred death hook: the flap
         -- storm ended alive, so there is no terminal alert to deliver.
-        v_transition := presence._record_transition(v_entity, v_config, 'alive');
+        v_flap := presence._advance_flap(v_entity, v_config);
+        v_transition := presence._record_transition(
+            v_entity, 'alive', v_flap.flapping
+        );
 
         UPDATE presence.entities e
         SET status = 'alive',
@@ -66,6 +70,8 @@ BEGIN
             alive_since = v_now,
             dead_since = NULL,
             hook_suppressed = false,
+            flap_count = v_flap.flap_count,
+            flap_window_started = v_flap.flap_window_started,
             updated_at = v_now
         WHERE e.namespace = p_namespace AND e.entity_id = p_entity;
 

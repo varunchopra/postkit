@@ -33,7 +33,7 @@
 | [`outbox.set_tenant`](sql.md#outboxset_tenant) | Set the tenant context for RLS policies. |
 | [`outbox.emit`](sql.md#outboxemit) | Append an event inside the caller's transaction. |
 | [`outbox.get_stats`](sql.md#outboxget_stats) | Get namespace-wide outbox statistics. |
-| [`outbox.horizon_blockers`](sql.md#outboxhorizon_blockers) | Backends whose open write transactions pin the visibility horizon. |
+| [`outbox.horizon_blockers`](sql.md#outboxhorizon_blockers) | Transactions whose open writes pin the visibility horizon. |
 | [`outbox.lag`](sql.md#outboxlag) | Per-consumer backlog for a topic (or all topics). |
 | [`outbox.list_consumers`](sql.md#outboxlist_consumers) | List consumer cursors in a namespace. |
 | [`outbox.trim`](sql.md#outboxtrim) | Delete old events, keeping deletions a contiguous (xid, id) prefix. |

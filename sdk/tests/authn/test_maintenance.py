@@ -1,6 +1,25 @@
 """Tests for maintenance functions."""
 
 
+def _operator_session(client):
+    """One operator user with a session, the actor for impersonations."""
+    operator_id = client.create_user(f"operator@{client.namespace}.com", "hash")
+    return client.create_session(operator_id, f"{client.namespace}_op_token")
+
+
+def _impersonation(client, operator_session_id, target_id, token_hash, ended=True):
+    imp = client.start_operator_impersonation(
+        operator_session_id=operator_session_id,
+        target_user_id=target_id,
+        target_namespace="customer",
+        token_hash=token_hash,
+        reason="Support ticket",
+    )
+    if ended:
+        client.end_operator_impersonation(str(imp["impersonation_id"]))
+    return imp
+
+
 class TestCleanupExpired:
     def test_deletes_expired_sessions(self, authn, test_helpers):
         user_id = authn.create_user("alice@example.com", "hash")
@@ -152,59 +171,15 @@ class TestCleanupExpired:
 
         assert result["impersonations_deleted"] == 1
 
-    def test_deletes_ended_operator_impersonation_sessions(self, make_authn):
+    def test_cleanup_expired_leaves_operator_impersonation_sessions(self, make_authn):
         platform = make_authn("platform")
         customer = make_authn("customer")
+        target_id = customer.create_user("target@customer.com", "hash")
+        _impersonation(platform, _operator_session(platform), target_id, "imp_token_1")
 
-        operator_id = platform.create_user("operator@platform.com", "hash1")
-        operator_session = platform.create_session(operator_id, "operator_token")
-        target_id = customer.create_user("target@customer.com", "hash2")
+        platform.cleanup_expired()
 
-        imp = platform.start_operator_impersonation(
-            operator_session_id=operator_session,
-            target_user_id=target_id,
-            target_namespace="customer",
-            token_hash="imp_token_1",
-            reason="Support ticket",
-        )
-        platform.end_operator_impersonation(str(imp["impersonation_id"]))
-
-        platform.start_operator_impersonation(
-            operator_session_id=operator_session,
-            target_user_id=target_id,
-            target_namespace="customer",
-            token_hash="imp_token_2",
-            reason="Active support",
-        )
-
-        result = platform.cleanup_expired()
-
-        assert result["operator_impersonations_deleted"] == 1
-        active = platform.list_active_operator_impersonations()
-        assert len(active) == 1
-
-    def test_deletes_expired_operator_impersonation_sessions(self, make_authn):
-        platform = make_authn("platform")
-        customer = make_authn("customer")
-
-        operator_id = platform.create_user("operator@platform.com", "hash1")
-        operator_session = platform.create_session(operator_id, "operator_token")
-        target_id = customer.create_user("target@customer.com", "hash2")
-
-        platform.start_operator_impersonation(
-            operator_session_id=operator_session,
-            target_user_id=target_id,
-            target_namespace="customer",
-            token_hash="imp_token",
-            reason="Support ticket",
-        )
-        platform.cursor.execute(
-            "UPDATE authn.operator_impersonation_sessions SET expires_at = now() - interval '1 minute'"
-        )
-
-        result = platform.cleanup_expired()
-
-        assert result["operator_impersonations_deleted"] == 1
+        assert platform.cleanup_expired_operator_sessions() == 1
 
     def test_deletes_expired_tokens(self, authn, test_helpers):
         user_id = authn.create_user("alice@example.com", "hash")
@@ -215,6 +190,147 @@ class TestCleanupExpired:
 
         assert result["tokens_deleted"] == 1
         assert test_helpers.count_tokens(user_id) == 1
+
+
+class TestCleanupExpiredOperatorSessions:
+    def test_deletes_ended_operator_impersonation_sessions(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+        target_id = customer.create_user("target@customer.com", "hash")
+        operator_session = _operator_session(platform)
+        _impersonation(platform, operator_session, target_id, "imp_token_1")
+        _impersonation(
+            platform, operator_session, target_id, "imp_token_2", ended=False
+        )
+
+        deleted = platform.cleanup_expired_operator_sessions()
+
+        assert deleted == 1
+        active = platform.list_active_operator_impersonations()
+        assert len(active) == 1
+
+    def test_deletes_expired_operator_impersonation_sessions(self, make_authn):
+        platform = make_authn("platform")
+        customer = make_authn("customer")
+        target_id = customer.create_user("target@customer.com", "hash")
+        _impersonation(
+            platform, _operator_session(platform), target_id, "imp_token", ended=False
+        )
+        platform.cursor.execute(
+            "UPDATE authn.operator_impersonation_sessions SET expires_at = now() - interval '1 minute'"
+        )
+
+        assert platform.cleanup_expired_operator_sessions() == 1
+
+    def test_deletes_across_operator_namespaces(self, make_authn):
+        customer = make_authn("customer")
+        target_id = customer.create_user("target@customer.com", "hash")
+
+        operators = [make_authn(ns) for ns in ("platform", "platform2")]
+        for operator in operators:
+            _impersonation(
+                operator,
+                _operator_session(operator),
+                target_id,
+                f"{operator.namespace}_imp_token",
+            )
+
+        assert operators[0].cleanup_expired_operator_sessions() == 2
+
+
+class TestCleanupPlanShape:
+    """Every cleanup harvest keeps an index path: a Seq Scan here means an
+    arm predicate stopped implying its partial index (see the per-arm note
+    on authn.cleanup_expired)."""
+
+    HARVESTS = [
+        ("refresh_tokens", "revoked_at IS NULL AND expires_at < now()"),
+        ("refresh_tokens", "(replaced_by IS NOT NULL OR revoked_at IS NOT NULL)"),
+        ("impersonation_sessions", "ended_at IS NOT NULL"),
+        ("impersonation_sessions", "ended_at IS NULL AND expires_at < now()"),
+        ("sessions", "revoked_at IS NULL AND expires_at < now()"),
+        ("sessions", "revoked_at IS NOT NULL"),
+        ("tokens", "used_at IS NULL AND expires_at < now()"),
+        ("tokens", "used_at IS NOT NULL"),
+        ("api_keys", "revoked_at IS NOT NULL"),
+        (
+            "api_keys",
+            "revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at < now()",
+        ),
+    ]
+    OPERATOR_HARVESTS = [
+        "ended_at IS NOT NULL",
+        "ended_at IS NULL AND expires_at < now()",
+    ]
+
+    def _assert_no_seq_scan(self, cursor, harvest_sql):
+        cursor.execute(f"EXPLAIN (COSTS OFF) {harvest_sql}")
+        plan = "\n".join(r[0] for r in cursor.fetchall())
+        assert "Seq Scan" not in plan, f"{harvest_sql}\n{plan}"
+
+    def test_every_arm_has_an_index_path(self, authn, test_helpers):
+        cur = test_helpers.cursor
+        ns = authn.namespace
+        actor = authn.create_user("actor@example.com", "hash")
+        target = authn.create_user("target@example.com", "hash")
+        anchor_session = authn.create_session(actor, "anchor_token")
+
+        # ~1% of rows match each arm, the steady-state shape where a seq
+        # scan would be the wrong plan
+        expired = "CASE WHEN g %% 100 = 0 THEN now() - interval '1 hour' ELSE now() + interval '1 hour' END"
+        dead = "CASE WHEN g %% 200 = 100 THEN now() ELSE NULL END"
+        seeds = [
+            f"""INSERT INTO authn.sessions (namespace, user_id, token_hash, expires_at, revoked_at)
+                SELECT %(ns)s, %(actor)s, 'plan_s' || g, {expired}, {dead}
+                FROM generate_series(1, 10000) g""",
+            f"""INSERT INTO authn.refresh_tokens
+                (namespace, user_id, session_id, token_hash, family_id, expires_at, revoked_at)
+                SELECT %(ns)s, %(actor)s, %(session)s, 'plan_rt' || g, gen_random_uuid(), {expired}, {dead}
+                FROM generate_series(1, 10000) g""",
+            f"""INSERT INTO authn.tokens (namespace, user_id, token_hash, token_type, expires_at, used_at)
+                SELECT %(ns)s, %(actor)s, 'plan_t' || g, 'password_reset', {expired}, {dead}
+                FROM generate_series(1, 10000) g""",
+            f"""INSERT INTO authn.api_keys (namespace, user_id, key_hash, expires_at, revoked_at)
+                SELECT %(ns)s, %(actor)s, 'plan_k' || g, {expired}, {dead}
+                FROM generate_series(1, 10000) g""",
+            f"""INSERT INTO authn.impersonation_sessions
+                (namespace, actor_id, target_user_id, original_session_id, reason, expires_at, ended_at)
+                SELECT %(ns)s, %(actor)s, %(target)s, %(session)s, 'plan', {expired}, {dead}
+                FROM generate_series(1, 10000) g""",
+            f"""INSERT INTO authn.operator_impersonation_sessions
+                (operator_id, operator_email, operator_namespace, original_session_id,
+                 target_user_id, target_user_email, target_namespace, reason, expires_at, ended_at)
+                SELECT %(actor)s, 'op@example.com', %(ns)s, gen_random_uuid(),
+                       %(target)s, 't@example.com', %(ns)s, 'plan', {expired}, {dead}
+                FROM generate_series(1, 10000) g""",
+        ]
+        params = {"ns": ns, "actor": actor, "target": target, "session": anchor_session}
+        tables = [
+            "sessions",
+            "refresh_tokens",
+            "tokens",
+            "api_keys",
+            "impersonation_sessions",
+            "operator_impersonation_sessions",
+        ]
+        for seed in seeds:
+            cur.execute(seed, params)
+        for table in tables:
+            cur.execute(f"ANALYZE authn.{table}")
+
+        for table, arm in self.HARVESTS:
+            self._assert_no_seq_scan(
+                cur,
+                f"SELECT id FROM authn.{table} "
+                f"WHERE namespace = '{ns}' AND {arm} "
+                f"LIMIT 10000 FOR UPDATE SKIP LOCKED",
+            )
+        for arm in self.OPERATOR_HARVESTS:
+            self._assert_no_seq_scan(
+                cur,
+                f"SELECT id FROM authn.operator_impersonation_sessions "
+                f"WHERE {arm} LIMIT 10000 FOR UPDATE SKIP LOCKED",
+            )
 
 
 class TestGetStats:

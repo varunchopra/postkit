@@ -101,7 +101,7 @@ Report an entity alive.
 SELECT presence.heartbeat('default', 'worker-7');
 ```
 
-*Source: presence/src/functions/020_heartbeat.sql:88*
+*Source: presence/src/functions/020_heartbeat.sql:94*
 
 ---
 
@@ -124,7 +124,7 @@ Report a batch of entities alive in one round trip.
 SELECT * FROM presence.heartbeat_many('default', ARRAY['w1', 'w2']);
 ```
 
-*Source: presence/src/functions/020_heartbeat.sql:129*
+*Source: presence/src/functions/020_heartbeat.sql:135*
 
 ---
 

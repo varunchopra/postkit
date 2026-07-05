@@ -4,10 +4,21 @@
 -- @brief Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron)
 -- @param p_namespace Namespace to clean up
 -- @param p_batch_size Max rows to delete per table per iteration (default 10000, prevents long locks)
--- @returns sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, impersonations_deleted, operator_impersonations_deleted, attempts_deleted
+-- @returns sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, impersonations_deleted, attempts_deleted
 -- @example -- Add to daily cron job
 -- @example SELECT * FROM authn.cleanup_expired('default');
 -- @example SELECT * FROM authn.cleanup_expired('default', 5000); -- smaller batches
+--
+-- Everything this function deletes belongs to p_namespace. Operator
+-- impersonation sessions span namespaces and are cleaned by
+-- cleanup_expired_operator_sessions, scheduled once per deployment.
+--
+-- Every table drains through one batched loop per predicate arm, never
+-- one OR: an OR arm can use a partial index only when the arm alone
+-- implies the index predicate, so a combined OR has no index path and
+-- scans the table. Each arm matches exactly one partial index in
+-- 002_indexes.sql; the plan-shape tests in test_maintenance.py hold
+-- every arm to that.
 CREATE OR REPLACE FUNCTION authn.cleanup_expired(
     p_namespace text DEFAULT 'default',
     p_batch_size int DEFAULT 10000
@@ -18,7 +29,6 @@ RETURNS TABLE(
     refresh_tokens_deleted bigint,
     api_keys_deleted bigint,
     impersonations_deleted bigint,
-    operator_impersonations_deleted bigint,
     attempts_deleted bigint
 )
 AS $$
@@ -28,7 +38,6 @@ DECLARE
     v_refresh_tokens_deleted bigint := 0;
     v_api_keys_deleted bigint := 0;
     v_impersonations_deleted bigint := 0;
-    v_operator_impersonations_deleted bigint := 0;
     v_attempts_deleted bigint := 0;
     v_batch_deleted bigint;
     v_retention interval;
@@ -36,22 +45,18 @@ DECLARE
     v_max_iterations int := 1000;  -- Safety limit to prevent infinite loops
 BEGIN
     PERFORM authn._validate_namespace(p_namespace);
+    PERFORM authn._validate_positive_int(p_batch_size, 'batch_size');
 
     v_retention := authn._login_attempts_retention();
 
-    -- Delete expired, revoked, or replaced refresh tokens (in batches)
-    -- Must happen BEFORE sessions due to FK (refresh_tokens.session_id -> sessions.id)
-    --
-    -- NOTE: We intentionally delete tokens where replaced_by IS NOT NULL. After token
-    -- rotation, the old token is no longer valid for authentication (replaced_by points
-    -- to the new token). Keeping replaced tokens is only useful for reuse detection,
-    -- which is handled at rotation time. Cleaning them up prevents unbounded table growth
-    -- in high-rotation scenarios. The new token in the chain remains valid.
+    -- Refresh tokens go BEFORE sessions: FK (refresh_tokens.session_id -> sessions.id)
+
+    -- Expired, still-live refresh tokens (refresh_tokens_expired_idx)
     v_iteration := 0;
     LOOP
         v_iteration := v_iteration + 1;
         IF v_iteration > v_max_iterations THEN
-            RAISE NOTICE 'cleanup_expired: refresh_tokens iteration limit reached (% iterations)', v_max_iterations;
+            RAISE NOTICE 'cleanup_expired: refresh_tokens (expired) iteration limit reached (% iterations)', v_max_iterations;
             EXIT;
         END IF;
 
@@ -59,7 +64,7 @@ BEGIN
         WHERE id IN (
             SELECT id FROM authn.refresh_tokens
             WHERE namespace = p_namespace
-              AND (expires_at < now() OR revoked_at IS NOT NULL OR replaced_by IS NOT NULL)
+              AND revoked_at IS NULL AND expires_at < now()
             LIMIT p_batch_size
             FOR UPDATE SKIP LOCKED
         );
@@ -68,12 +73,39 @@ BEGIN
         EXIT WHEN v_batch_deleted < p_batch_size;
     END LOOP;
 
-    -- Delete ended or expired impersonation sessions (in batches)
+    -- Replaced or revoked refresh tokens (refresh_tokens_cleanup_idx).
+    -- Replaced tokens are deleted deliberately: after rotation the old
+    -- token no longer authenticates (replaced_by points at its
+    -- successor) and reuse detection happens at rotation time, so
+    -- keeping them only grows the table. The newest token in the chain
+    -- remains valid.
     v_iteration := 0;
     LOOP
         v_iteration := v_iteration + 1;
         IF v_iteration > v_max_iterations THEN
-            RAISE NOTICE 'cleanup_expired: impersonation_sessions iteration limit reached (% iterations)', v_max_iterations;
+            RAISE NOTICE 'cleanup_expired: refresh_tokens (replaced/revoked) iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
+        DELETE FROM authn.refresh_tokens
+        WHERE id IN (
+            SELECT id FROM authn.refresh_tokens
+            WHERE namespace = p_namespace
+              AND (replaced_by IS NOT NULL OR revoked_at IS NOT NULL)
+            LIMIT p_batch_size
+            FOR UPDATE SKIP LOCKED
+        );
+        GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
+        v_refresh_tokens_deleted := v_refresh_tokens_deleted + v_batch_deleted;
+        EXIT WHEN v_batch_deleted < p_batch_size;
+    END LOOP;
+
+    -- Ended impersonation sessions (impersonation_sessions_ended_idx)
+    v_iteration := 0;
+    LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: impersonation_sessions (ended) iteration limit reached (% iterations)', v_max_iterations;
             EXIT;
         END IF;
 
@@ -81,7 +113,7 @@ BEGIN
         WHERE id IN (
             SELECT id FROM authn.impersonation_sessions
             WHERE namespace = p_namespace
-              AND (ended_at IS NOT NULL OR expires_at < now())
+              AND ended_at IS NOT NULL
             LIMIT p_batch_size
             FOR UPDATE SKIP LOCKED
         );
@@ -90,12 +122,34 @@ BEGIN
         EXIT WHEN v_batch_deleted < p_batch_size;
     END LOOP;
 
-    -- Delete expired or revoked sessions (in batches)
+    -- Expired, never-ended impersonation sessions (impersonation_sessions_expired_idx)
     v_iteration := 0;
     LOOP
         v_iteration := v_iteration + 1;
         IF v_iteration > v_max_iterations THEN
-            RAISE NOTICE 'cleanup_expired: sessions iteration limit reached (% iterations)', v_max_iterations;
+            RAISE NOTICE 'cleanup_expired: impersonation_sessions (expired) iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
+        DELETE FROM authn.impersonation_sessions
+        WHERE id IN (
+            SELECT id FROM authn.impersonation_sessions
+            WHERE namespace = p_namespace
+              AND ended_at IS NULL AND expires_at < now()
+            LIMIT p_batch_size
+            FOR UPDATE SKIP LOCKED
+        );
+        GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
+        v_impersonations_deleted := v_impersonations_deleted + v_batch_deleted;
+        EXIT WHEN v_batch_deleted < p_batch_size;
+    END LOOP;
+
+    -- Expired, unrevoked sessions (sessions_expired_idx)
+    v_iteration := 0;
+    LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: sessions (expired) iteration limit reached (% iterations)', v_max_iterations;
             EXIT;
         END IF;
 
@@ -103,7 +157,7 @@ BEGIN
         WHERE id IN (
             SELECT id FROM authn.sessions
             WHERE namespace = p_namespace
-              AND (expires_at < now() OR revoked_at IS NOT NULL)
+              AND revoked_at IS NULL AND expires_at < now()
             LIMIT p_batch_size
             FOR UPDATE SKIP LOCKED
         );
@@ -112,12 +166,34 @@ BEGIN
         EXIT WHEN v_batch_deleted < p_batch_size;
     END LOOP;
 
-    -- Delete expired or used tokens (in batches)
+    -- Revoked sessions (sessions_revoked_idx)
     v_iteration := 0;
     LOOP
         v_iteration := v_iteration + 1;
         IF v_iteration > v_max_iterations THEN
-            RAISE NOTICE 'cleanup_expired: tokens iteration limit reached (% iterations)', v_max_iterations;
+            RAISE NOTICE 'cleanup_expired: sessions (revoked) iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
+        DELETE FROM authn.sessions
+        WHERE id IN (
+            SELECT id FROM authn.sessions
+            WHERE namespace = p_namespace
+              AND revoked_at IS NOT NULL
+            LIMIT p_batch_size
+            FOR UPDATE SKIP LOCKED
+        );
+        GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
+        v_sessions_deleted := v_sessions_deleted + v_batch_deleted;
+        EXIT WHEN v_batch_deleted < p_batch_size;
+    END LOOP;
+
+    -- Expired, unused tokens (tokens_expired_idx)
+    v_iteration := 0;
+    LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: tokens (expired) iteration limit reached (% iterations)', v_max_iterations;
             EXIT;
         END IF;
 
@@ -125,7 +201,7 @@ BEGIN
         WHERE id IN (
             SELECT id FROM authn.tokens
             WHERE namespace = p_namespace
-              AND (expires_at < now() OR used_at IS NOT NULL)
+              AND used_at IS NULL AND expires_at < now()
             LIMIT p_batch_size
             FOR UPDATE SKIP LOCKED
         );
@@ -134,12 +210,34 @@ BEGIN
         EXIT WHEN v_batch_deleted < p_batch_size;
     END LOOP;
 
-    -- Delete expired or revoked API keys (in batches)
+    -- Used tokens (tokens_used_idx)
     v_iteration := 0;
     LOOP
         v_iteration := v_iteration + 1;
         IF v_iteration > v_max_iterations THEN
-            RAISE NOTICE 'cleanup_expired: api_keys iteration limit reached (% iterations)', v_max_iterations;
+            RAISE NOTICE 'cleanup_expired: tokens (used) iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
+        DELETE FROM authn.tokens
+        WHERE id IN (
+            SELECT id FROM authn.tokens
+            WHERE namespace = p_namespace
+              AND used_at IS NOT NULL
+            LIMIT p_batch_size
+            FOR UPDATE SKIP LOCKED
+        );
+        GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
+        v_tokens_deleted := v_tokens_deleted + v_batch_deleted;
+        EXIT WHEN v_batch_deleted < p_batch_size;
+    END LOOP;
+
+    -- Revoked API keys (api_keys_revoked_idx)
+    v_iteration := 0;
+    LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: api_keys (revoked) iteration limit reached (% iterations)', v_max_iterations;
             EXIT;
         END IF;
 
@@ -147,7 +245,29 @@ BEGIN
         WHERE id IN (
             SELECT id FROM authn.api_keys
             WHERE namespace = p_namespace
-              AND (revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at < now()))
+              AND revoked_at IS NOT NULL
+            LIMIT p_batch_size
+            FOR UPDATE SKIP LOCKED
+        );
+        GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
+        v_api_keys_deleted := v_api_keys_deleted + v_batch_deleted;
+        EXIT WHEN v_batch_deleted < p_batch_size;
+    END LOOP;
+
+    -- Expired, unrevoked API keys (api_keys_expired_idx)
+    v_iteration := 0;
+    LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired: api_keys (expired) iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
+        DELETE FROM authn.api_keys
+        WHERE id IN (
+            SELECT id FROM authn.api_keys
+            WHERE namespace = p_namespace
+              AND revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at < now()
             LIMIT p_batch_size
             FOR UPDATE SKIP LOCKED
         );
@@ -178,31 +298,96 @@ BEGIN
         EXIT WHEN v_batch_deleted < p_batch_size;
     END LOOP;
 
-    -- Delete ended or expired operator impersonation sessions (in batches)
-    -- Note: These are cross-namespace, so we clean up ALL expired ones regardless of p_namespace
+    RETURN QUERY SELECT v_sessions_deleted, v_tokens_deleted, v_refresh_tokens_deleted, v_api_keys_deleted, v_impersonations_deleted, v_attempts_deleted;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
+
+-- @function authn.cleanup_expired_operator_sessions
+-- @brief Delete ended or expired operator impersonation sessions (run once per deployment via cron)
+-- @param p_batch_size Max rows to delete per iteration (default 10000, prevents long locks)
+-- @returns Number of rows deleted
+-- @example -- Add to the platform's daily cron job, alongside per-namespace cleanup_expired calls
+-- @example SELECT authn.cleanup_expired_operator_sessions();
+-- @example -- Grant the maintenance role access before scheduling
+-- @example GRANT USAGE ON SCHEMA authn TO maintenance_role;
+-- @example GRANT EXECUTE ON FUNCTION authn.cleanup_expired_operator_sessions TO maintenance_role;
+--
+-- Operator impersonation sessions span namespaces, so their cleanup is a
+-- platform duty, not part of any tenant's cleanup_expired call: a tenant
+-- job must never do cluster-wide work or need privileges on cross-tenant
+-- rows. SECURITY DEFINER for the same reason as the other operator
+-- functions (see the security model in 085_operator_impersonation.sql):
+-- the table has no RLS, and callers get exactly this delete, not direct
+-- access. EXECUTE is revoked from PUBLIC; before scheduling, grant the
+-- maintenance role USAGE on schema authn and EXECUTE on this function.
+--
+-- One batched loop per predicate arm, for the planner constraint stated
+-- on cleanup_expired above; the arms match the partial indexes in
+-- 004_operator_impersonation.sql.
+CREATE OR REPLACE FUNCTION authn.cleanup_expired_operator_sessions(
+    p_batch_size int DEFAULT 10000
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, authn
+AS $$
+DECLARE
+    v_deleted bigint := 0;
+    v_batch_deleted bigint;
+    v_iteration int;
+    v_max_iterations int := 1000;  -- Safety limit to prevent infinite loops
+BEGIN
+    PERFORM authn._validate_positive_int(p_batch_size, 'batch_size');
+
+    -- Ended sessions (operator_imp_sessions_ended_idx)
     v_iteration := 0;
     LOOP
         v_iteration := v_iteration + 1;
         IF v_iteration > v_max_iterations THEN
-            RAISE NOTICE 'cleanup_expired: operator_impersonation_sessions iteration limit reached (% iterations)', v_max_iterations;
+            RAISE NOTICE 'cleanup_expired_operator_sessions: ended iteration limit reached (% iterations)', v_max_iterations;
             EXIT;
         END IF;
 
         DELETE FROM authn.operator_impersonation_sessions
         WHERE id IN (
             SELECT id FROM authn.operator_impersonation_sessions
-            WHERE ended_at IS NOT NULL OR expires_at < now()
+            WHERE ended_at IS NOT NULL
             LIMIT p_batch_size
             FOR UPDATE SKIP LOCKED
         );
         GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
-        v_operator_impersonations_deleted := v_operator_impersonations_deleted + v_batch_deleted;
+        v_deleted := v_deleted + v_batch_deleted;
         EXIT WHEN v_batch_deleted < p_batch_size;
     END LOOP;
 
-    RETURN QUERY SELECT v_sessions_deleted, v_tokens_deleted, v_refresh_tokens_deleted, v_api_keys_deleted, v_impersonations_deleted, v_operator_impersonations_deleted, v_attempts_deleted;
+    -- Expired, never-ended sessions (operator_imp_sessions_expired_idx)
+    v_iteration := 0;
+    LOOP
+        v_iteration := v_iteration + 1;
+        IF v_iteration > v_max_iterations THEN
+            RAISE NOTICE 'cleanup_expired_operator_sessions: expired iteration limit reached (% iterations)', v_max_iterations;
+            EXIT;
+        END IF;
+
+        DELETE FROM authn.operator_impersonation_sessions
+        WHERE id IN (
+            SELECT id FROM authn.operator_impersonation_sessions
+            WHERE ended_at IS NULL AND expires_at < now()
+            LIMIT p_batch_size
+            FOR UPDATE SKIP LOCKED
+        );
+        GET DIAGNOSTICS v_batch_deleted = ROW_COUNT;
+        v_deleted := v_deleted + v_batch_deleted;
+        EXIT WHEN v_batch_deleted < p_batch_size;
+    END LOOP;
+
+    RETURN v_deleted;
 END;
-$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
+$$;
+
+-- Restrict access - grant to the platform's maintenance role only
+REVOKE ALL ON FUNCTION authn.cleanup_expired_operator_sessions FROM PUBLIC;
 
 -- @function authn.get_stats
 -- @brief Get namespace statistics for monitoring dashboards

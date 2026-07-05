@@ -124,22 +124,33 @@ $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = outbox, pg_temp;
 
 
 -- @function outbox.horizon_blockers
--- @brief Backends whose open write transactions pin the visibility horizon.
+-- @brief Transactions whose open writes pin the visibility horizon.
 -- @returns One row per in-progress write transaction, oldest first
 -- @example SELECT * FROM outbox.horizon_blockers();
 --
 -- Answers "who is freezing delivery" when lag's horizon column stalls.
 -- Only transactions that have allocated an xid (that is, have written)
 -- appear in the snapshot and can pin the horizon; read-only transactions
--- never do. is_horizon marks the backend whose xid IS the horizon; the
--- others are next in line. The xid space is cluster-wide, so a blocker
--- can live in another database (datname says which).
+-- never do. is_horizon marks the transaction whose xid IS the horizon;
+-- the others are next in line. The xid space is cluster-wide, so a
+-- blocker can live in another database (datname says which).
+--
+-- Two sources, because blockers come in two kinds. Backends: open write
+-- transactions from pg_stat_activity. Prepared transactions: two-phase
+-- commits from pg_prepared_xacts, which hold their xid in progress until
+-- COMMIT PREPARED or ROLLBACK PREPARED and are exempt from every timeout,
+-- including transaction_timeout - an orphaned one pins the horizon until
+-- an operator resolves it, and only this function surfaces it. A
+-- prepared transaction has no backend: pid and query are NULL, state is
+-- 'prepared', and application_name carries the gid, the handle that
+-- ROLLBACK PREPARED takes.
 --
 -- Seeing other sessions requires pg_read_all_stats (or superuser):
 -- pg_stat_activity nulls other backends' details for unprivileged
 -- callers, including backend_xid, so their rows are filtered out here.
--- Database-global by construction, like the horizon itself: no namespace
--- parameter and no tenant-context interaction.
+-- pg_prepared_xacts has no such gate. Database-global by construction,
+-- like the horizon itself: no namespace parameter and no tenant-context
+-- interaction.
 CREATE OR REPLACE FUNCTION outbox.horizon_blockers()
 RETURNS TABLE(
     pid int,
@@ -150,6 +161,13 @@ RETURNS TABLE(
     query text,
     is_horizon boolean
 ) AS $$
+    -- Backend xids and prepared xids are 32-bit; the horizon is a 64-bit
+    -- xid8. Compare on the xid8's low 32 bits (its epoch-less xid part),
+    -- computed once here for both branches.
+    WITH h AS (
+        SELECT mod(outbox._horizon()::text::numeric, 4294967296::numeric)
+               AS horizon_xid32
+    )
     SELECT
         a.pid,
         a.datname::text,
@@ -157,11 +175,18 @@ RETURNS TABLE(
         a.state,
         a.application_name,
         a.query,
-        -- backend_xid is a 32-bit xid; the horizon is a 64-bit xid8.
-        -- Compare on the xid8's low 32 bits (its epoch-less xid part).
-        a.backend_xid::text::numeric
-            = mod(outbox._horizon()::text::numeric, 4294967296::numeric)
-    FROM pg_stat_activity a
+        a.backend_xid::text::numeric = h.horizon_xid32
+    FROM pg_stat_activity a, h
     WHERE a.backend_xid IS NOT NULL
-    ORDER BY a.xact_start;
+    UNION ALL
+    SELECT
+        NULL,
+        p.database::text,
+        now() - p.prepared,
+        'prepared',
+        p.gid,
+        NULL,
+        p.transaction::text::numeric = h.horizon_xid32
+    FROM pg_prepared_xacts p, h
+    ORDER BY 3 DESC;
 $$ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = outbox, pg_temp;

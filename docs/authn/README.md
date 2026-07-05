@@ -7,6 +7,7 @@
 | [`add_credential`](sdk.md#add_credential) | Add a credential for a user. |
 | [`assert_rls_active`](sdk.md#assert_rls_active) | Raise unless row-level security applies to the connection's role. |
 | [`cleanup_expired`](sdk.md#cleanup_expired) | Clean up expired sessions, tokens, impersonation records, and old login attempts. |
+| [`cleanup_expired_operator_sessions`](sdk.md#cleanup_expired_operator_sessions) | Clean up ended or expired operator impersonation sessions, all namespaces. |
 | [`clear_actor`](sdk.md#clear_actor) | Clear actor context. |
 | [`clear_attempts`](sdk.md#clear_attempts) | Clear login attempts for an email. Returns count deleted. |
 | [`consume_credential`](sdk.md#consume_credential) | Consume a one-time credential (e.g., recovery code). |
@@ -113,6 +114,7 @@
 | [`authn.is_locked_out`](sql.md#authnis_locked_out) | Check if email is locked out due to too many failed attempts |
 | [`authn.record_login_attempt`](sql.md#authnrecord_login_attempt) | Record a login attempt (success or failure) for lockout tracking |
 | [`authn.cleanup_expired`](sql.md#authncleanup_expired) | Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron) |
+| [`authn.cleanup_expired_operator_sessions`](sql.md#authncleanup_expired_operator_sessions) | Delete ended or expired operator impersonation sessions (run once per deployment via cron) |
 | [`authn.get_stats`](sql.md#authnget_stats) | Get namespace statistics for monitoring dashboards |
 | [`authn.assert_rls_active`](sql.md#authnassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`authn.clear_tenant`](sql.md#authnclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |

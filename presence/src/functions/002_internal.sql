@@ -49,52 +49,66 @@ END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = presence, pg_temp;
 
 
--- @function presence._record_transition
--- @brief Append a transitions row and advance the entity's flap state.
+-- @function presence._advance_flap
+-- @brief Compute the flap state a real edge advances the entity to.
 -- @param p_entity The entity row BEFORE the transition (caller holds its row lock)
 -- @param p_config Effective config for the entity's kind (caller already fetched it)
--- @param p_to_status Target status ('alive', 'dead', 'departed')
--- @param p_silent_for For deaths: how long the entity was silent
--- @returns The inserted transitions row, flapping set
--- Call ONLY with the entity row locked; the flap read-modify-write and the
--- exactly-once guarantee (P1, see 001_tables.sql) depend on it.
+-- @returns The new flap_count and flap_window_started, and whether the
+--          entity is now flapping
+-- Call ONLY with the entity row locked: this is the read half of a
+-- read-modify-write against p_entity, and the caller MUST persist the
+-- returned flap columns in its transition UPDATE. Computes without
+-- writing so the caller can fold the flap columns into the status
+-- UPDATE it already performs: one entity write per transition (P1, see
+-- 001_tables.sql), one dead tuple instead of two.
 --
 -- Flap algorithm: if flap_window_started is NULL or older than flap_window,
 -- the window resets (count 1); otherwise the count increments. flapping is
 -- count > flap_threshold. Both real edges count (death and revival);
 -- departed never counts and is never marked flapping.
-CREATE OR REPLACE FUNCTION presence._record_transition(
+CREATE OR REPLACE FUNCTION presence._advance_flap(
     p_entity presence.entities,
     p_config presence.config,
+    OUT flap_count int,
+    OUT flap_window_started timestamptz,
+    OUT flapping boolean
+) AS $$
+BEGIN
+    IF p_entity.flap_window_started IS NULL
+       OR p_entity.flap_window_started < clock_timestamp() - p_config.flap_window THEN
+        flap_count := 1;
+        flap_window_started := clock_timestamp();
+    ELSE
+        flap_count := p_entity.flap_count + 1;
+        flap_window_started := p_entity.flap_window_started;
+    END IF;
+    flapping := flap_count > p_config.flap_threshold;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = presence, pg_temp;
+
+
+-- @function presence._record_transition
+-- @brief Append a transitions row for an edge.
+-- @param p_entity The entity row BEFORE the transition (caller holds its row lock)
+-- @param p_to_status Target status ('alive', 'dead', 'departed')
+-- @param p_flapping Flap verdict from _advance_flap (false for 'departed')
+-- @param p_silent_for For deaths: how long the entity was silent
+-- @returns The inserted transitions row
+-- Call ONLY with the entity row locked; the exactly-once guarantee (P1,
+-- see 001_tables.sql) depends on it. Writes transitions only, never
+-- entities: the caller owns the single entity UPDATE for the edge and
+-- persists the flap columns from _advance_flap there.
+CREATE OR REPLACE FUNCTION presence._record_transition(
+    p_entity presence.entities,
     p_to_status text,
+    p_flapping boolean,
     p_silent_for interval DEFAULT NULL
 )
 RETURNS presence.transitions AS $$
 DECLARE
     v_actor record;
-    v_count int;
-    v_started timestamptz;
-    v_flapping boolean := false;
     v_transition presence.transitions;
 BEGIN
-    IF p_to_status != 'departed' THEN
-        IF p_entity.flap_window_started IS NULL
-           OR p_entity.flap_window_started < clock_timestamp() - p_config.flap_window THEN
-            v_count := 1;
-            v_started := clock_timestamp();
-        ELSE
-            v_count := p_entity.flap_count + 1;
-            v_started := p_entity.flap_window_started;
-        END IF;
-        v_flapping := v_count > p_config.flap_threshold;
-
-        UPDATE presence.entities e
-        SET flap_count = v_count,
-            flap_window_started = v_started
-        WHERE e.namespace = p_entity.namespace
-          AND e.entity_id = p_entity.entity_id;
-    END IF;
-
     SELECT * INTO v_actor FROM presence._get_actor_context();
 
     INSERT INTO presence.transitions (
@@ -105,7 +119,7 @@ BEGIN
     VALUES (
         p_entity.namespace, p_entity.entity_id, p_entity.kind,
         p_entity.status, p_to_status,
-        p_silent_for, v_flapping,
+        p_silent_for, p_flapping,
         v_actor.actor_id, v_actor.request_id, v_actor.on_behalf_of, v_actor.reason
     )
     RETURNING * INTO v_transition;

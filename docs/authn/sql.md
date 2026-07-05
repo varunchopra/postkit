@@ -751,7 +751,7 @@ SELECT authn.record_login_attempt(email, password_correct, '1.2.3.4');
 ### authn.cleanup_expired
 
 ```sql
-authn.cleanup_expired(p_namespace: text, p_batch_size: int4) -> table(sessions_deleted: int8, tokens_deleted: int8, refresh_tokens_deleted: int8, api_keys_deleted: int8, impersonations_deleted: int8, operator_impersonations_deleted: int8, attempts_deleted: int8)
+authn.cleanup_expired(p_namespace: text, p_batch_size: int4) -> table(sessions_deleted: int8, tokens_deleted: int8, refresh_tokens_deleted: int8, api_keys_deleted: int8, impersonations_deleted: int8, attempts_deleted: int8)
 ```
 
 Delete expired sessions, tokens, refresh tokens, API keys, impersonation records, and old login attempts (run via cron)
@@ -760,7 +760,7 @@ Delete expired sessions, tokens, refresh tokens, API keys, impersonation records
 - `p_namespace`: Namespace to clean up
 - `p_batch_size`: Max rows to delete per table per iteration (default 10000, prevents long locks)
 
-**Returns:** sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, impersonations_deleted, operator_impersonations_deleted, attempts_deleted
+**Returns:** sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, impersonations_deleted, attempts_deleted
 
 **Example:**
 ```sql
@@ -770,6 +770,32 @@ SELECT * FROM authn.cleanup_expired('default', 5000); -- smaller batches
 ```
 
 *Source: authn/src/functions/060_maintenance.sql:1*
+
+---
+
+### authn.cleanup_expired_operator_sessions
+
+```sql
+authn.cleanup_expired_operator_sessions(p_batch_size: int4) -> int8
+```
+
+Delete ended or expired operator impersonation sessions (run once per deployment via cron)
+
+**Parameters:**
+- `p_batch_size`: Max rows to delete per iteration (default 10000, prevents long locks)
+
+**Returns:** Number of rows deleted
+
+**Example:**
+```sql
+-- Add to the platform's daily cron job, alongside per-namespace cleanup_expired calls
+SELECT authn.cleanup_expired_operator_sessions();
+-- Grant the maintenance role access before scheduling
+GRANT USAGE ON SCHEMA authn TO maintenance_role;
+GRANT EXECUTE ON FUNCTION authn.cleanup_expired_operator_sessions TO maintenance_role;
+```
+
+*Source: authn/src/functions/060_maintenance.sql:303*
 
 ---
 
@@ -788,7 +814,7 @@ Get namespace statistics for monitoring dashboards
 SELECT * FROM authn.get_stats('default');
 ```
 
-*Source: authn/src/functions/060_maintenance.sql:205*
+*Source: authn/src/functions/060_maintenance.sql:390*
 
 ---
 

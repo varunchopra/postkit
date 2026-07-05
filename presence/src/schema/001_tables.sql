@@ -30,8 +30,8 @@
 --       comparison against dead_after uses clock_timestamp(), never
 --       now() - a heartbeat riding a long caller transaction must record
 --       its real send time, not the transaction start
---   P4. departed is not died: deregister emits a departed transition and
---       never fires death hooks
+--   P4. departed is not died: deregister emits a departed transition,
+--       never fires death hooks, and never counts toward flap damping
 --   P5. Flap damping records but suppresses, and suppression DEFERS
 --       terminal alerts, never drops them: transitions are always
 --       recorded; hooks and NOTIFY are suppressed while flapping; a death

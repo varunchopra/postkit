@@ -114,10 +114,15 @@ CREATE INDEX operator_imp_sessions_active_idx
     ON authn.operator_impersonation_sessions (started_at DESC)
     WHERE ended_at IS NULL;
 
--- Cleanup expired operator impersonations
+-- Cleanup: one partial index per arm of "ended or expired", the same
+-- two-arm shape as sessions_expired_idx/sessions_revoked_idx
 CREATE INDEX operator_imp_sessions_expired_idx
     ON authn.operator_impersonation_sessions (expires_at)
     WHERE ended_at IS NULL;
+
+CREATE INDEX operator_imp_sessions_ended_idx
+    ON authn.operator_impersonation_sessions (id)
+    WHERE ended_at IS NOT NULL;
 
 -- Platform queries - all operator activity in an operator namespace
 CREATE INDEX operator_audit_events_platform_idx
