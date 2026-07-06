@@ -55,22 +55,22 @@ For monthly quotas with optional carry-over:
 ```sql
 -- Configure account: 50k tokens/month, carry up to 10k unused
 SELECT meter.set_period_config(
-    'alice', 'llm_call', 'tokens',
+    'alice', 'llm_call', 'tokens', 'claude-sonnet', '2025-01-01',
     p_period_allocation := 50000,
     p_carry_over_limit := 10000
 );
 
 -- Open January with 50k allocation
-SELECT meter.open_period('alice', 'llm_call', 'tokens', '2025-01-01');
+SELECT meter.open_period('alice', 'llm_call', 'tokens', 'claude-sonnet', '2025-01-01');
 
 -- ... user consumes 35k during January ...
 
 -- Close January (15k unused, 10k carries over, 5k expires)
-SELECT * FROM meter.close_period('alice', 'llm_call', 'tokens', '2025-01-01');
+SELECT * FROM meter.close_period('alice', 'llm_call', 'tokens', 'claude-sonnet', '2025-01-31');
 -- -> expired: 5000, carried_over: 10000
 
 -- Open February (10k carried + 50k new = 60k available)
-SELECT meter.open_period('alice', 'llm_call', 'tokens', '2025-02-01');
+SELECT meter.open_period('alice', 'llm_call', 'tokens', 'claude-sonnet', '2025-02-01');
 ```
 
 ## Usage Queries
