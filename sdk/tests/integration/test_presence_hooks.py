@@ -187,3 +187,78 @@ class TestAllNamespacesSweep:
         assert len(jobs) == 1
         assert jobs[0]["namespace"] == helpers.namespace
         cur.close()
+
+
+class TestSweepHookIsolation:
+    """A poison death-hook is isolated to its own entity: one tenant's invalid
+    on_death_queue does not abort another tenant's deaths in the same
+    sweep(NULL) pass."""
+
+    def _setup_overdue_entity(self, cur, namespace, queue_name):
+        h = PresenceTestHelpers(cur, namespace)
+        h.set_config(on_death_queue=queue_name)
+        cur.execute("SELECT presence.register(%s, 'w1')", (namespace,))
+        cur.execute("SELECT presence.heartbeat(%s, 'w1')", (namespace,))
+        h.set_last_seen("w1", "-10 minutes")
+        return h
+
+    def test_poison_hook_does_not_roll_back_a_healthy_death(
+        self, hooks_connection, request
+    ):
+        cur = hooks_connection.cursor()
+        base = make_namespace(request)
+        ns_healthy, ns_poison = base + "_a", base + "_z"
+
+        h_healthy = self._setup_overdue_entity(cur, ns_healthy, "alerts")
+        h_poison = self._setup_overdue_entity(cur, ns_poison, "poison_alerts")
+
+        # The poison is a valid queue name (config-write accepts it) whose
+        # enqueue fails at hook-fire time, standing in for an operator
+        # constraint the death payload violates.
+        cur.execute(
+            "CREATE OR REPLACE FUNCTION public._reject_poison_alerts() "
+            "RETURNS trigger AS $$ BEGIN "
+            "IF NEW.queue = 'poison_alerts' THEN "
+            "RAISE EXCEPTION 'poison payload rejected'; END IF; "
+            "RETURN NEW; END; $$ LANGUAGE plpgsql"
+        )
+        cur.execute(
+            "CREATE OR REPLACE TRIGGER reject_poison_alerts "
+            "BEFORE INSERT ON queue.jobs FOR EACH ROW "
+            "EXECUTE FUNCTION public._reject_poison_alerts()"
+        )
+
+        try:
+            cur.execute("SELECT presence.sweep(NULL)")
+
+            assert h_healthy.get_entity_row("w1")["status"] == "dead"
+            assert len(alert_jobs(h_healthy)) == 1
+
+            assert h_poison.get_entity_row("w1")["status"] == "alive"
+            cur.execute(
+                "SELECT count(*) FROM queue.jobs WHERE namespace = %s", (ns_poison,)
+            )
+            assert cur.fetchone()[0] == 0
+        finally:
+            cur.execute("DROP TRIGGER IF EXISTS reject_poison_alerts ON queue.jobs")
+            cur.execute("DROP FUNCTION IF EXISTS public._reject_poison_alerts()")
+            for ns in (ns_healthy, ns_poison):
+                _cleanup_presence(cur, ns)
+                for table in ("jobs", "dead_letters", "schedules", "config"):
+                    cur.execute(
+                        f"DELETE FROM queue.{table} WHERE namespace = %s", (ns,)
+                    )
+            cur.close()
+
+    def test_bad_on_death_queue_is_rejected_at_config_time(
+        self, hooks_connection, request
+    ):
+        cur = hooks_connection.cursor()
+        ns = make_namespace(request)
+        h = PresenceTestHelpers(cur, ns)
+        try:
+            with pytest.raises(psycopg.errors.InvalidParameterValue):
+                h.set_config(on_death_queue="bad/queue")
+        finally:
+            _cleanup_presence(cur, ns)
+            cur.close()

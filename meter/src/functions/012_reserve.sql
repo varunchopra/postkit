@@ -3,7 +3,7 @@
 -- @function meter.reserve
 -- @brief Reserve quota for pending operation. Reservations are HOLDS, not balance
 -- changes. They don't create ledger entries. Only commit affects balance.
--- @param p_user_id User ID (required)
+-- @param p_user_id User ID (NULL for namespace-level pool)
 -- @param p_event_type Event type
 -- @param p_amount Amount to reserve
 -- @param p_unit Unit of measurement
@@ -38,18 +38,13 @@ DECLARE
     v_reservation_id text;
     v_expires_at timestamptz;
     v_existing meter.reservations;
+    v_rows int;
 BEGIN
     -- Validate
     PERFORM meter._validate_namespace(p_namespace);
     PERFORM meter._validate_event_type(p_event_type);
     PERFORM meter._validate_unit(p_unit);
     PERFORM meter._validate_positive(p_amount, 'amount');
-
-    IF p_user_id IS NULL THEN
-        RAISE EXCEPTION 'user_id is required for reservations'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:meter:VAL_USER_ID_REQUIRED';
-    END IF;
 
     IF p_ttl_seconds < 1 OR p_ttl_seconds > 86400 THEN
         RAISE EXCEPTION 'ttl_seconds must be between 1 and 86400'
@@ -112,10 +107,12 @@ BEGIN
         reserved = reserved + p_amount,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id = p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    PERFORM meter._assert_account_write(v_rows);
 
     -- Return: balance unchanged, available reduced by reservation
     RETURN QUERY SELECT true, v_reservation_id, v_account.balance,
@@ -131,14 +128,20 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 -- @param p_actual_amount Actual amount consumed (can exceed reserved; overage policy is caller's responsibility)
 -- @param p_metadata Optional JSON metadata
 -- @param p_namespace Tenant namespace
+-- @param p_idempotency_key Optional dedup key; a replay returns the original result
 -- @returns success, consumed, released, reserved_amount, balance, entry_id
 -- @example SELECT * FROM meter.commit('res_abc123', 2347);
 -- @example SELECT consumed - reserved_amount AS overage FROM meter.commit('res_abc123', 500);
+--
+-- The idempotency_key tags the consumption ledger entry, so a zero-amount
+-- commit (which writes no ledger entry) is not deduplicated: its replay still
+-- returns success=false.
 CREATE FUNCTION meter.commit(
     p_reservation_id text,
     p_actual_amount numeric,
     p_metadata jsonb DEFAULT NULL,
-    p_namespace text DEFAULT 'default'
+    p_namespace text DEFAULT 'default',
+    p_idempotency_key text DEFAULT NULL
 )
 RETURNS TABLE(
     success boolean,
@@ -154,6 +157,8 @@ DECLARE
     v_released numeric;
     v_new_balance numeric;
     v_entry_id bigint;
+    v_dedup record;
+    v_rows int;
 BEGIN
     PERFORM meter._validate_namespace(p_namespace);
 
@@ -161,6 +166,33 @@ BEGIN
         RAISE EXCEPTION 'actual_amount cannot be negative'
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:meter:VAL_AMOUNT_NEGATIVE';
+    END IF;
+
+    -- Advisory lock before the dedup lookup closes the read-before-write race,
+    -- matching allocate/consume. The consumption ledger entry written below
+    -- carries the key, so a replay reconstructs the original result from it.
+    IF p_idempotency_key IS NOT NULL THEN
+        PERFORM meter._idempotency_lock(p_namespace, p_idempotency_key);
+
+        SELECT l.id, l.amount, l.balance_after, r.amount AS reserved_amount
+        INTO v_dedup
+        FROM meter.ledger l
+        JOIN meter.reservations r
+          ON r.reservation_id = l.reservation_id AND r.namespace = l.namespace
+        WHERE l.namespace = p_namespace
+          AND l.idempotency_key = p_idempotency_key
+          AND l.reservation_id = p_reservation_id;
+
+        IF FOUND THEN
+            RETURN QUERY SELECT
+                true,
+                -v_dedup.amount,
+                GREATEST(v_dedup.reserved_amount + v_dedup.amount, 0),
+                v_dedup.reserved_amount,
+                v_dedup.balance_after,
+                v_dedup.id;
+            RETURN;
+        END IF;
     END IF;
 
     -- Find and lock active reservation
@@ -180,7 +212,7 @@ BEGIN
     SELECT * INTO v_account
     FROM meter.accounts
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM v_res.user_id
+      AND (user_id = v_res.user_id OR (user_id IS NULL AND v_res.user_id IS NULL))
       AND event_type = v_res.event_type
       AND resource = v_res.resource
       AND unit = v_res.unit
@@ -198,7 +230,7 @@ BEGIN
             p_namespace, v_res.user_id, v_res.event_type, v_res.resource, v_res.unit,
             'consumption', -p_actual_amount, v_new_balance,
             v_account.reserved - v_res.amount, now(),
-            NULL, p_reservation_id, NULL, p_metadata
+            p_idempotency_key, p_reservation_id, NULL, p_metadata
         );
     END IF;
 
@@ -210,10 +242,12 @@ BEGIN
         last_entry_id = COALESCE(v_entry_id, last_entry_id),
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM v_res.user_id
+      AND (user_id = v_res.user_id OR (user_id IS NULL AND v_res.user_id IS NULL))
       AND event_type = v_res.event_type
       AND resource = v_res.resource
       AND unit = v_res.unit;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    PERFORM meter._assert_account_write(v_rows);
 
     -- Mark reservation as committed (preserve for audit)
     UPDATE meter.reservations SET
@@ -233,15 +267,22 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 -- create ledger entries. Only releases the hold and marks reservation 'released'.
 -- @param p_reservation_id Reservation to release
 -- @param p_namespace Tenant namespace
+-- @param p_idempotency_key Optional dedup key; a replay of a completed release returns true
 -- @returns True if released, false if not found
 -- @example SELECT meter.release('res_abc123');
+--
+-- release writes no ledger entry, so there is nothing to tag with the key: it
+-- opts a replay into returning the terminal 'released' state as true, rather
+-- than being matched by value.
 CREATE FUNCTION meter.release(
     p_reservation_id text,
-    p_namespace text DEFAULT 'default'
+    p_namespace text DEFAULT 'default',
+    p_idempotency_key text DEFAULT NULL
 )
 RETURNS boolean AS $$
 DECLARE
     v_res meter.reservations;
+    v_rows int;
 BEGIN
     -- Find and lock active reservation
     SELECT * INTO v_res
@@ -252,6 +293,14 @@ BEGIN
     FOR UPDATE;
 
     IF NOT FOUND THEN
+        IF p_idempotency_key IS NOT NULL AND EXISTS (
+            SELECT 1 FROM meter.reservations
+            WHERE reservation_id = p_reservation_id
+              AND namespace = p_namespace
+              AND status = 'released'
+        ) THEN
+            RETURN true;
+        END IF;
         RETURN false;
     END IF;
 
@@ -260,10 +309,12 @@ BEGIN
         reserved = reserved - v_res.amount,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM v_res.user_id
+      AND (user_id = v_res.user_id OR (user_id IS NULL AND v_res.user_id IS NULL))
       AND event_type = v_res.event_type
       AND resource = v_res.resource
       AND unit = v_res.unit;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    PERFORM meter._assert_account_write(v_rows);
 
     -- Mark reservation as released (preserve for audit)
     UPDATE meter.reservations SET

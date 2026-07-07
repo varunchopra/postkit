@@ -47,8 +47,6 @@ CREATE TABLE meter.accounts (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
 
-    PRIMARY KEY (namespace, user_id, event_type, resource, unit),
-
     CONSTRAINT accounts_balance_reserved CHECK (reserved >= 0),
     CONSTRAINT accounts_totals_positive CHECK (total_credited >= 0 AND total_debited >= 0)
 )
@@ -56,7 +54,14 @@ CREATE TABLE meter.accounts (
 -- covers, so page slack keeps those updates HOT (no index maintenance).
 WITH (fillfactor = 90);
 
--- Handle NULL user_id in primary key (namespace-level accounts)
+-- user_id is nullable: NULL marks a namespace-level pool account. A primary
+-- key would force it NOT NULL, making pool accounts impossible, so uniqueness
+-- is two partial unique indexes instead of a PK. With no PK, logical
+-- replication of this table needs REPLICA IDENTITY FULL.
+CREATE UNIQUE INDEX accounts_user_unique_idx
+    ON meter.accounts (namespace, user_id, event_type, resource, unit)
+    WHERE user_id IS NOT NULL;
+
 CREATE UNIQUE INDEX accounts_namespace_pool_idx
     ON meter.accounts (namespace, event_type, resource, unit)
     WHERE user_id IS NULL;

@@ -2,7 +2,7 @@
 
 -- @function meter.consume
 -- @brief Record consumption (debit from account)
--- @param p_user_id User ID (required for consumption)
+-- @param p_user_id User ID (NULL for namespace-level pool)
 -- @param p_event_type Event type
 -- @param p_amount Amount consumed (must be positive, stored as negative)
 -- @param p_unit Unit of measurement
@@ -39,18 +39,13 @@ DECLARE
     v_entry_id bigint;
     v_event_time timestamptz;
     v_existing RECORD;
+    v_rows int;
 BEGIN
     -- Validate
     PERFORM meter._validate_namespace(p_namespace);
     PERFORM meter._validate_event_type(p_event_type);
     PERFORM meter._validate_unit(p_unit);
     PERFORM meter._validate_positive(p_amount, 'amount');
-
-    IF p_user_id IS NULL THEN
-        RAISE EXCEPTION 'user_id is required for consumption'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:meter:VAL_USER_ID_REQUIRED';
-    END IF;
 
     v_event_time := COALESCE(p_event_time, now());
 
@@ -98,10 +93,12 @@ BEGIN
         last_entry_id = v_entry_id,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id = p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    PERFORM meter._assert_account_write(v_rows);
 
     RETURN QUERY SELECT true, v_new_balance, v_new_balance - v_account.reserved, v_entry_id;
 END;

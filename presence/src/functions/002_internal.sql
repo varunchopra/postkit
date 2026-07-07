@@ -174,12 +174,12 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = presence, pg_temp;
 --        death time - the entity row's dead_since - not the sweep's time)
 -- @param p_silent_for For deaths: how long the entity was silent
 --
--- queue is a soft dependency: presence installs and runs without it, and
--- this function is reached only when a hook target is configured. If the
--- target is set but queue is absent, or the queue name is wrong
--- (queue.push's own error propagates - deliberately not caught), the sweep
--- or heartbeat FAILS LOUDLY: a liveness system that quietly stops alerting
--- is worse than one that stops visibly. Fix the config or remove the hook.
+-- queue is a soft dependency: presence installs and runs without it, and this
+-- function is reached only when a hook target is configured. If the target is
+-- set but queue is absent or the name is wrong, queue.push's error propagates
+-- from here, deliberately not caught: a liveness system that silently stops
+-- alerting is worse than one that stops visibly. The caller decides what to do
+-- with it - heartbeat fails loudly, sweep isolates the entity.
 --
 -- The push runs inside the caller's transaction: the death and its alert
 -- job commit together, which is the module's atomicity argument.

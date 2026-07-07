@@ -359,3 +359,42 @@ class TestCancel:
 
         result = queue.pull("tasks")
         assert result is None
+
+
+class TestAckOwnership:
+    """ack refuses a job re-pulled under another worker, like nack and fail.
+
+    After a visibility-timeout redelivery the job can be re-pulled by another
+    worker. A late ack from the timed-out worker passes its worker_id and is
+    refused, so it does not settle the successor's in-flight attempt. ack
+    returns false on a wrong owner (fail's style) rather than raising.
+    """
+
+    def _redeliver_to_new_worker(self, queue):
+        """Pull as A, expire A's lock, reclaim, then re-pull as B. Returns id."""
+        queue.push("tasks", {"task": 1})
+        job = queue.pull(
+            "tasks", worker_id="A", visibility_timeout=timedelta(seconds=300)
+        )
+        queue.cursor.execute(
+            "UPDATE queue.jobs SET visibility_timeout_at = now() - interval '1 minute' "
+            "WHERE namespace = %s AND id = %s",
+            (queue.namespace, job["id"]),
+        )
+        queue.tick_timeouts()
+
+        repulled = queue.pull("tasks", worker_id="B")
+        assert repulled["id"] == job["id"]
+        return job["id"]
+
+    def test_stale_ack_is_refused(self, queue):
+        job_id = self._redeliver_to_new_worker(queue)
+
+        # nack raises BIZ_JOB_NOT_YOURS and fail returns False on a foreign
+        # worker; ack could mirror either. The invariant is that A's stale ack
+        # does not settle B's job, so B's attempt stays running.
+        try:
+            assert queue.ack(job_id, worker_id="A") is False
+        except QueueValidationError:
+            pass
+        assert queue.get_stats()["running"] == 1

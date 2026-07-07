@@ -34,7 +34,7 @@ BEGIN
         carry_over_limit = p_carry_over_limit,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
@@ -87,7 +87,7 @@ BEGIN
     SELECT * INTO v_account
     FROM meter.accounts
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit
@@ -127,7 +127,7 @@ BEGIN
         balance = v_new_balance,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
@@ -172,7 +172,7 @@ BEGIN
     SELECT * INTO v_account
     FROM meter.accounts
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit
@@ -211,7 +211,7 @@ BEGIN
         last_entry_id = v_entry_id,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
@@ -266,7 +266,7 @@ BEGIN
             updated_at = now()
         FROM expired_agg e
         WHERE a.namespace = e.namespace
-          AND a.user_id IS NOT DISTINCT FROM e.user_id
+          AND (a.user_id = e.user_id OR (a.user_id IS NULL AND e.user_id IS NULL))
           AND a.event_type = e.event_type
           AND a.resource = e.resource
           AND a.unit = e.unit

@@ -346,7 +346,7 @@ Get full account details
 SELECT * FROM meter.get_account('alice', 'llm_call', 'tokens');
 ```
 
-*Source: meter/src/functions/020_query.sql:42*
+*Source: meter/src/functions/020_query.sql:40*
 
 ---
 
@@ -401,7 +401,7 @@ Get ledger entries for an account
 SELECT * FROM meter.get_ledger('alice', 'llm_call', 'tokens', p_limit := 50);
 ```
 
-*Source: meter/src/functions/020_query.sql:105*
+*Source: meter/src/functions/020_query.sql:103*
 
 ---
 
@@ -425,7 +425,7 @@ Get org-level usage totals across all users
 SELECT * FROM meter.get_namespace_usage('2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:210*
+*Source: meter/src/functions/020_query.sql:208*
 
 ---
 
@@ -450,7 +450,7 @@ Get aggregated usage (consumption only) for a user
 SELECT * FROM meter.get_usage('alice', '2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:167*
+*Source: meter/src/functions/020_query.sql:165*
 
 ---
 
@@ -473,7 +473,7 @@ Get all balances for a user across all event types and resources
 SELECT * FROM meter.get_user_balances('alice');
 ```
 
-*Source: meter/src/functions/020_query.sql:68*
+*Source: meter/src/functions/020_query.sql:66*
 
 ---
 
@@ -542,7 +542,7 @@ SELECT * FROM meter.allocate('alice', 'llm_call', 100000, 'tokens', 'claude-sonn
 ### meter.commit
 
 ```sql
-meter.commit(p_reservation_id: text, p_actual_amount: numeric, p_metadata: jsonb, p_namespace: text) -> table(success: bool, consumed: numeric, released: numeric, reserved_amount: numeric, balance: numeric, entry_id: int8)
+meter.commit(p_reservation_id: text, p_actual_amount: numeric, p_metadata: jsonb, p_namespace: text, p_idempotency_key: text) -> table(success: bool, consumed: numeric, released: numeric, reserved_amount: numeric, balance: numeric, entry_id: int8)
 ```
 
 Commit a reservation with actual consumption. Only actual consumption affects balance. The hold is released and reservation marked 'committed'.
@@ -552,6 +552,7 @@ Commit a reservation with actual consumption. Only actual consumption affects ba
 - `p_actual_amount`: Actual amount consumed (can exceed reserved; overage policy is caller's responsibility)
 - `p_metadata`: Optional JSON metadata
 - `p_namespace`: Tenant namespace
+- `p_idempotency_key`: Optional dedup key; a replay returns the original result
 
 **Returns:** success, consumed, released, reserved_amount, balance, entry_id
 
@@ -561,7 +562,7 @@ SELECT * FROM meter.commit('res_abc123', 2347);
 SELECT consumed - reserved_amount AS overage FROM meter.commit('res_abc123', 500);
 ```
 
-*Source: meter/src/functions/012_reserve.sql:124*
+*Source: meter/src/functions/012_reserve.sql:121*
 
 ---
 
@@ -574,7 +575,7 @@ meter.consume(p_user_id: text, p_event_type: text, p_amount: numeric, p_unit: te
 Record consumption (debit from account)
 
 **Parameters:**
-- `p_user_id`: User ID (required for consumption)
+- `p_user_id`: User ID (NULL for namespace-level pool)
 - `p_event_type`: Event type
 - `p_amount`: Amount consumed (must be positive, stored as negative)
 - `p_unit`: Unit of measurement
@@ -599,7 +600,7 @@ SELECT * FROM meter.consume('alice', 'llm_call', 1500, 'tokens', 'claude-sonnet'
 ### meter.release
 
 ```sql
-meter.release(p_reservation_id: text, p_namespace: text) -> bool
+meter.release(p_reservation_id: text, p_namespace: text, p_idempotency_key: text) -> bool
 ```
 
 Release a reservation without consuming. Does not affect balance or create ledger entries. Only releases the hold and marks reservation 'released'.
@@ -607,6 +608,7 @@ Release a reservation without consuming. Does not affect balance or create ledge
 **Parameters:**
 - `p_reservation_id`: Reservation to release
 - `p_namespace`: Tenant namespace
+- `p_idempotency_key`: Optional dedup key; a replay of a completed release returns true
 
 **Returns:** True if released, false if not found
 
@@ -615,7 +617,7 @@ Release a reservation without consuming. Does not affect balance or create ledge
 SELECT meter.release('res_abc123');
 ```
 
-*Source: meter/src/functions/012_reserve.sql:228*
+*Source: meter/src/functions/012_reserve.sql:262*
 
 ---
 
@@ -628,7 +630,7 @@ meter.reserve(p_user_id: text, p_event_type: text, p_amount: numeric, p_unit: te
 Reserve quota for pending operation. Reservations are HOLDS, not balance changes. They don't create ledger entries. Only commit affects balance.
 
 **Parameters:**
-- `p_user_id`: User ID (required)
+- `p_user_id`: User ID (NULL for namespace-level pool)
 - `p_event_type`: Event type
 - `p_amount`: Amount to reserve
 - `p_unit`: Unit of measurement

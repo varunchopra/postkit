@@ -45,7 +45,6 @@ CREATE UNIQUE INDEX reservations_idempotency_idx
 CREATE INDEX accounts_namespace_idx
     ON meter.accounts (namespace, event_type, resource, unit);
 
--- User balance lookups (get_user_balances, dashboard queries)
-CREATE INDEX accounts_user_lookup_idx
-    ON meter.accounts (namespace, user_id)
-    WHERE user_id IS NOT NULL;
+-- (namespace, user_id) lookups (user balances, dashboards) are served by the
+-- accounts_user_unique_idx prefix, which also supplies their sort order, so no
+-- separate two-column index is kept - it would be dead write-time maintenance.

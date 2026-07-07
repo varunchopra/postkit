@@ -152,6 +152,35 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = presence, pg_temp;
 
 
+-- @function presence._validate_hook_queue
+-- @brief Validate a configured hook queue name (on_death_queue/on_revival_queue).
+-- @param p_value Queue name to validate (callers guard NULL, which means no hook)
+-- Rules mirror queue._validate_queue_name, duplicated rather than delegated
+-- because queue is a soft dependency and may not be installed here.
+CREATE OR REPLACE FUNCTION presence._validate_hook_queue(p_value text)
+RETURNS void AS $$
+BEGIN
+    IF p_value = '' THEN
+        RAISE EXCEPTION 'Hook queue name cannot be empty'
+            USING ERRCODE = 'string_data_length_mismatch',
+                  HINT = 'postkit:presence:VAL_HOOK_QUEUE_EMPTY';
+    END IF;
+
+    IF length(p_value) > 256 THEN
+        RAISE EXCEPTION 'Hook queue name exceeds maximum length of 256 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:presence:VAL_HOOK_QUEUE_TOO_LONG';
+    END IF;
+
+    IF p_value !~ '^[a-zA-Z_][a-zA-Z0-9_-]*$' THEN
+        RAISE EXCEPTION 'Hook queue name must start with a letter or underscore and contain only letters, digits, underscores, and hyphens (got: %)', p_value
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:presence:VAL_HOOK_QUEUE_FORMAT';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = presence, pg_temp;
+
+
 -- @function presence._warn_namespace_mismatch
 -- @brief Warns if namespace doesn't match RLS tenant context.
 -- @param p_namespace The namespace being queried

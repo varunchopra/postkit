@@ -22,7 +22,7 @@ Create an adjustment entry (correction, refund, etc.).
 
 **Returns:** Dict with 'balance' and 'entry_id'
 
-*Source: sdk/src/postkit/meter/client.py:277*
+*Source: sdk/src/postkit/meter/client.py:281*
 
 ---
 
@@ -100,14 +100,14 @@ Calling close_period multiple times is safe but will recalculate based on curren
 **Returns:** Dict with expired (amount removed), carried_over (amount preserved),
 and new_balance (balance after expiration)
 
-*Source: sdk/src/postkit/meter/client.py:492*
+*Source: sdk/src/postkit/meter/client.py:496*
 
 ---
 
 ### commit
 
 ```python
-commit(reservation_id: str, actual_amount: float | int | Decimal, metadata: dict | None = None) -> dict
+commit(reservation_id: str, actual_amount: float | int | Decimal, metadata: dict | None = None, idempotency_key: str | None = None) -> dict
 ```
 
 Commit a reservation with actual consumption.
@@ -118,6 +118,7 @@ Meter measures. It does not enforce. If actual consumption exceeds reserved amou
 - `reservation_id`: Reservation to commit
 - `actual_amount`: Actual amount consumed (can be more or less than reserved)
 - `metadata`: Optional JSON metadata
+- `idempotency_key`: Optional dedup key; a replay returns the original result
 
 **Returns:** Dict with 'success', 'consumed', 'released', 'reserved_amount',
 'balance', 'entry_id'
@@ -137,13 +138,13 @@ if overage > 0:
 ### consume
 
 ```python
-consume(user_id: str, event_type: str, amount: float | int | Decimal, unit: str, resource: str | None = None, check_balance: bool = False, idempotency_key: str | None = None, event_time: datetime | None = None, metadata: dict | None = None) -> dict
+consume(user_id: str | None, event_type: str, amount: float | int | Decimal, unit: str, resource: str | None = None, check_balance: bool = False, idempotency_key: str | None = None, event_time: datetime | None = None, metadata: dict | None = None) -> dict
 ```
 
 Record consumption.
 
 **Parameters:**
-- `user_id`: User ID (required)
+- `user_id`: User ID (None for namespace-level pool)
 - `event_type`: Event type
 - `amount`: Amount consumed (must be positive)
 - `unit`: Unit of measurement
@@ -169,7 +170,7 @@ Not supported - meter module does not have audit events.
 
 The meter module uses a ledger-based design where all transactions are recorded in the ledger table. Use get_ledger() for transaction history instead.
 
-*Source: sdk/src/postkit/meter/client.py:649*
+*Source: sdk/src/postkit/meter/client.py:653*
 
 ---
 
@@ -211,7 +212,7 @@ balance = meter.get_balance(user_id, "api_request", "requests")
 print(f"API calls remaining: {balance['available']}")
 ```
 
-*Source: sdk/src/postkit/meter/client.py:322*
+*Source: sdk/src/postkit/meter/client.py:326*
 
 ---
 
@@ -234,7 +235,7 @@ Get ledger entries for an account.
 
 **Returns:** List of ledger entry dicts
 
-*Source: sdk/src/postkit/meter/client.py:405*
+*Source: sdk/src/postkit/meter/client.py:409*
 
 ---
 
@@ -248,7 +249,7 @@ Get namespace statistics.
 
 **Returns:** Dict with counts and totals
 
-*Source: sdk/src/postkit/meter/client.py:630*
+*Source: sdk/src/postkit/meter/client.py:634*
 
 ---
 
@@ -268,7 +269,7 @@ Get aggregated consumption for a user.
 **Returns:** List of dicts with 'event_type', 'resource', 'unit',
 'total_consumed', 'event_count'
 
-*Source: sdk/src/postkit/meter/client.py:382*
+*Source: sdk/src/postkit/meter/client.py:386*
 
 ---
 
@@ -286,7 +287,7 @@ Get all balances for a user across all event types and resources.
 **Returns:** List of dicts with 'event_type', 'resource', 'unit', 'balance',
 'reserved', 'available'
 
-*Source: sdk/src/postkit/meter/client.py:366*
+*Source: sdk/src/postkit/meter/client.py:370*
 
 ---
 
@@ -314,7 +315,7 @@ NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key wit
 
 **Returns:** New balance after allocation
 
-*Source: sdk/src/postkit/meter/client.py:532*
+*Source: sdk/src/postkit/meter/client.py:536*
 
 ---
 
@@ -333,24 +334,25 @@ Checks two invariants:
 **Returns:** List of dicts with 'user_id', 'event_type', 'resource', 'unit',
 'issue_type', 'expected', 'actual', 'discrepancy'
 
-*Source: sdk/src/postkit/meter/client.py:613*
+*Source: sdk/src/postkit/meter/client.py:617*
 
 ---
 
 ### release
 
 ```python
-release(reservation_id: str) -> bool
+release(reservation_id: str, idempotency_key: str | None = None) -> bool
 ```
 
 Release a reservation without consuming.
 
 **Parameters:**
 - `reservation_id`: Reservation to release
+- `idempotency_key`: Optional dedup key; a replay of a completed release returns True
 
 **Returns:** True if released, False if not found
 
-*Source: sdk/src/postkit/meter/client.py:260*
+*Source: sdk/src/postkit/meter/client.py:263*
 
 ---
 
@@ -370,14 +372,14 @@ No ledger entries are created because reservations are holds on existing balance
 
 **Returns:** Count of reservations that were expired and released.
 
-*Source: sdk/src/postkit/meter/client.py:586*
+*Source: sdk/src/postkit/meter/client.py:590*
 
 ---
 
 ### reserve
 
 ```python
-reserve(user_id: str, event_type: str, amount: float | int | Decimal, unit: str, resource: str | None = None, ttl_seconds: int = 300, idempotency_key: str | None = None, metadata: dict | None = None) -> dict
+reserve(user_id: str | None, event_type: str, amount: float | int | Decimal, unit: str, resource: str | None = None, ttl_seconds: int = 300, idempotency_key: str | None = None, metadata: dict | None = None) -> dict
 ```
 
 Reserve quota for pending operation (streaming, uncertain consumption).
@@ -385,7 +387,7 @@ Reserve quota for pending operation (streaming, uncertain consumption).
 Reservations are HOLDS, not balance changes. They don't create ledger entries. The hold is tracked in accounts.reserved and the reservations table. Only actual consumption (via commit) affects balance.
 
 **Parameters:**
-- `user_id`: User ID (required)
+- `user_id`: User ID (None for namespace-level pool)
 - `event_type`: Event type
 - `amount`: Amount to reserve
 - `unit`: Unit of measurement
@@ -446,6 +448,6 @@ Period dates use the DATE type (not TIMESTAMP). Timezone handling is the caller'
 - `period_allocation`: Amount to allocate each period (must be positive)
 - `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over
 
-*Source: sdk/src/postkit/meter/client.py:446*
+*Source: sdk/src/postkit/meter/client.py:450*
 
 ---

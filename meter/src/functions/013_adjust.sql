@@ -30,6 +30,7 @@ DECLARE
     v_new_balance numeric;
     v_entry_id bigint;
     v_existing RECORD;
+    v_rows int;
 BEGIN
     -- Validate
     PERFORM meter._validate_namespace(p_namespace);
@@ -77,10 +78,12 @@ BEGIN
         last_entry_id = v_entry_id,
         updated_at = now()
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    PERFORM meter._assert_account_write(v_rows);
 
     RETURN QUERY SELECT v_new_balance, v_entry_id;
 END;

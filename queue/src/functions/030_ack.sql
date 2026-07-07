@@ -4,12 +4,20 @@
 -- @brief Acknowledge successful job completion.
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
--- @returns True if acknowledged, false if job not found or not running
+-- @param p_worker_id Optional worker identity; refuses jobs running under another worker
+-- @returns True if acknowledged, false if job not found, not running, or owned by another worker
 --
 -- Job is either deleted or marked completed (based on archive_completed config).
+--
+-- After a visibility-timeout redelivery the job can be re-pulled by another
+-- worker. Pass p_worker_id so a late ack from the timed-out worker does not
+-- settle the successor's attempt; with NULL the caller is trusted and settles
+-- whoever holds it. A wrong-owner ack returns false rather than raising,
+-- consistent with ack's existing not-running return.
 CREATE OR REPLACE FUNCTION queue.ack(
     p_namespace text,
-    p_job_id bigint
+    p_job_id bigint,
+    p_worker_id text DEFAULT NULL
 )
 RETURNS boolean AS $$
 DECLARE
@@ -43,13 +51,15 @@ BEGIN
             updated_at = now()
         WHERE namespace = p_namespace
           AND id = p_job_id
-          AND status = 'running';
+          AND status = 'running'
+          AND (p_worker_id IS NULL OR locked_by IS NOT DISTINCT FROM p_worker_id);
     ELSE
         -- Delete the job
         DELETE FROM queue.jobs
         WHERE namespace = p_namespace
           AND id = p_job_id
-          AND status = 'running';
+          AND status = 'running'
+          AND (p_worker_id IS NULL OR locked_by IS NOT DISTINCT FROM p_worker_id);
     END IF;
 
     GET DIAGNOSTICS v_updated = ROW_COUNT;

@@ -59,11 +59,11 @@ RETURNS meter.accounts AS $$
 DECLARE
     v_account meter.accounts;
 BEGIN
-    -- Try to get existing with lock
+    -- IS NOT DISTINCT FROM is not sargable and seq-scans; hence this spelling.
     SELECT * INTO v_account
     FROM meter.accounts
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit
@@ -73,15 +73,18 @@ BEGIN
         RETURN v_account;
     END IF;
 
-    -- Create new account
-    INSERT INTO meter.accounts (namespace, user_id, event_type, resource, unit)
-    VALUES (p_namespace, p_user_id, p_event_type, COALESCE(p_resource, ''), p_unit)
-    ON CONFLICT (namespace, user_id, event_type, resource, unit)
-        WHERE user_id IS NOT NULL
-        DO NOTHING;
-
-    -- Handle namespace-level account conflict
-    IF p_user_id IS NULL THEN
+    -- ON CONFLICT inference cannot name a partial index by its predicate, so a
+    -- pool row (conflicting on the WHERE user_id IS NULL index) routes through
+    -- the catch-all rather than a named arbiter. A single per-user insert used
+    -- for a pool row would miss its arbiter and raise unique_violation on a
+    -- concurrent cold-start, hence the split by kind.
+    IF p_user_id IS NOT NULL THEN
+        INSERT INTO meter.accounts (namespace, user_id, event_type, resource, unit)
+        VALUES (p_namespace, p_user_id, p_event_type, COALESCE(p_resource, ''), p_unit)
+        ON CONFLICT (namespace, user_id, event_type, resource, unit)
+            WHERE user_id IS NOT NULL
+            DO NOTHING;
+    ELSE
         INSERT INTO meter.accounts (namespace, user_id, event_type, resource, unit)
         VALUES (p_namespace, NULL, p_event_type, COALESCE(p_resource, ''), p_unit)
         ON CONFLICT DO NOTHING;
@@ -91,13 +94,31 @@ BEGIN
     SELECT * INTO v_account
     FROM meter.accounts
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit
     FOR UPDATE;
 
     RETURN v_account;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- @function meter._assert_account_write
+-- @brief Guard that a balance write touched exactly one account row.
+-- @param p_rows ROW_COUNT from the preceding UPDATE meter.accounts
+-- A balance write is keyed by an account just upserted or locked, so it must
+-- affect exactly one row. Zero means the WHERE clause missed it - the
+-- three-valued user_id = NULL trap pool accounts invite - which silently
+-- diverges the stored balance from the ledger. Fail loudly instead.
+CREATE OR REPLACE FUNCTION meter._assert_account_write(p_rows int)
+RETURNS void AS $$
+BEGIN
+    IF p_rows <> 1 THEN
+        RAISE EXCEPTION 'account balance write affected % rows, expected exactly 1', p_rows
+            USING ERRCODE = 'internal_error';
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 

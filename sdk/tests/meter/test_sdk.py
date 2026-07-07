@@ -286,6 +286,32 @@ class TestReservation:
         assert second["success"] is False
 
 
+class TestCommitReleaseIdempotency:
+    """commit and release are safely retryable with an idempotency key.
+
+    Without a key a retry after a network blip returns a bare success=False
+    that cannot be told apart from a released, expired, or never-existent
+    reservation. With the key, commit replays the original result and release
+    replays the original true, so an at-least-once caller need not read the
+    reservation status to disambiguate.
+    """
+
+    def test_replayed_commit_returns_the_original_result(self, meter):
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+        res = meter.reserve("alice", "llm_call", 500, "tokens")
+
+        first = meter.commit(res["reservation_id"], 400, idempotency_key="c1")
+        replay = meter.commit(res["reservation_id"], 400, idempotency_key="c1")
+        assert replay == first
+
+    def test_replayed_release_returns_the_original_result(self, meter):
+        meter.allocate("alice", "llm_call", 1000, "tokens")
+        res = meter.reserve("alice", "llm_call", 500, "tokens")
+
+        assert meter.release(res["reservation_id"], idempotency_key="r1") is True
+        assert meter.release(res["reservation_id"], idempotency_key="r1") is True
+
+
 class TestCommitOverage:
     """Tests for overage reporting in meter.commit()"""
 

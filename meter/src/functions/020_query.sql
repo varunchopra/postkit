@@ -9,9 +9,7 @@
 -- @param p_namespace Tenant namespace
 -- @returns balance, reserved, available (balance - reserved)
 --
--- PERFORMANCE: Hot path - called for balance checks and UI displays. Single index
--- lookup on accounts PK (namespace, user_id, event_type, resource, unit).
--- IS NOT DISTINCT FROM handles NULL user_id for namespace-level accounts.
+-- IS NOT DISTINCT FROM is not sargable and seq-scans; hence this spelling.
 --
 -- @example SELECT * FROM meter.get_balance('alice', 'llm_call', 'tokens', 'claude-sonnet');
 CREATE FUNCTION meter.get_balance(
@@ -29,7 +27,7 @@ BEGIN
     SELECT a.balance, a.reserved, a.balance - a.reserved
     FROM meter.accounts a
     WHERE a.namespace = p_namespace
-      AND a.user_id IS NOT DISTINCT FROM p_user_id
+      AND (a.user_id = p_user_id OR (a.user_id IS NULL AND p_user_id IS NULL))
       AND a.event_type = p_event_type
       AND a.resource = COALESCE(p_resource, '')
       AND a.unit = p_unit;
@@ -61,7 +59,7 @@ CREATE FUNCTION meter.get_account(
 RETURNS meter.accounts AS $$
     SELECT * FROM meter.accounts
     WHERE namespace = p_namespace
-      AND user_id IS NOT DISTINCT FROM p_user_id
+      AND (user_id = p_user_id OR (user_id IS NULL AND p_user_id IS NULL))
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
@@ -99,7 +97,7 @@ BEGIN
         a.balance - a.reserved
     FROM meter.accounts a
     WHERE a.namespace = p_namespace
-      AND a.user_id = p_user_id
+      AND (a.user_id = p_user_id OR (a.user_id IS NULL AND p_user_id IS NULL))
     ORDER BY a.event_type, a.resource, a.unit;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = meter, pg_temp;
@@ -155,7 +153,7 @@ BEGIN
         l.actor_id, l.request_id, l.on_behalf_of, l.reason, l.metadata
     FROM meter.ledger l
     WHERE l.namespace = p_namespace
-      AND l.user_id IS NOT DISTINCT FROM p_user_id
+      AND (l.user_id = p_user_id OR (l.user_id IS NULL AND p_user_id IS NULL))
       AND l.event_type = p_event_type
       AND l.resource = COALESCE(p_resource, '')
       AND l.unit = p_unit
@@ -200,7 +198,7 @@ BEGIN
         COUNT(*) AS event_count
     FROM meter.ledger l
     WHERE l.namespace = p_namespace
-      AND l.user_id = p_user_id
+      AND (l.user_id = p_user_id OR (l.user_id IS NULL AND p_user_id IS NULL))
       AND l.entry_type = 'consumption'
       AND l.event_time >= p_start_time
       AND l.event_time < p_end_time

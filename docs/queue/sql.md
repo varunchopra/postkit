@@ -7,7 +7,7 @@
 ### queue.ack
 
 ```sql
-queue.ack(p_namespace: text, p_job_id: int8) -> bool
+queue.ack(p_namespace: text, p_job_id: int8, p_worker_id: text) -> bool
 ```
 
 Acknowledge successful job completion.
@@ -15,8 +15,9 @@ Acknowledge successful job completion.
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
+- `p_worker_id`: Optional worker identity; refuses jobs running under another worker
 
-**Returns:** True if acknowledged, false if job not found or not running
+**Returns:** True if acknowledged, false if job not found, not running, or owned by another worker
 
 *Source: queue/src/functions/030_ack.sql:1*
 
@@ -36,7 +37,7 @@ Acknowledge multiple jobs as completed.
 
 **Returns:** Count of jobs acknowledged
 
-*Source: queue/src/functions/030_ack.sql:58*
+*Source: queue/src/functions/030_ack.sql:68*
 
 ---
 
@@ -54,7 +55,7 @@ Cancel a pending job by deleting it.
 
 **Returns:** True if cancelled, false if job not found or not pending
 
-*Source: queue/src/functions/030_ack.sql:284*
+*Source: queue/src/functions/030_ack.sql:294*
 
 ---
 
@@ -74,7 +75,7 @@ Move job to dead letter queue (permanent failure).
 
 **Returns:** True if moved to DLQ, false if job settled, missing, or owned by another worker
 
-*Source: queue/src/functions/030_ack.sql:222*
+*Source: queue/src/functions/030_ack.sql:232*
 
 ---
 
@@ -95,7 +96,7 @@ Return job to queue for retry (temporary failure).
 
 **Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ)
 
-*Source: queue/src/functions/030_ack.sql:112*
+*Source: queue/src/functions/030_ack.sql:122*
 
 ---
 
@@ -113,7 +114,7 @@ Delete all pending jobs from a queue.
 
 **Returns:** Count of deleted jobs
 
-*Source: queue/src/functions/030_ack.sql:371*
+*Source: queue/src/functions/030_ack.sql:381*
 
 ---
 
@@ -131,7 +132,7 @@ Release all jobs held by a worker, returning them to pending.
 
 **Returns:** Count of jobs released
 
-*Source: queue/src/functions/030_ack.sql:324*
+*Source: queue/src/functions/030_ack.sql:334*
 
 ---
 

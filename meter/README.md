@@ -48,6 +48,49 @@ SELECT meter.release('res_abc123');
 
 Reservations auto-expire after 5 minutes (configurable). Run `meter.release_expired_reservations()` periodically to clean up.
 
+## Pool Accounts
+
+An account is identified by `(namespace, user_id, event_type, resource, unit)`. Pass a concrete `user_id` for a per-user balance, or `NULL` (Python `None`) for a **namespace-level pool**: one shared balance the whole tenant draws from. Per-user and pool accounts coexist for the same event, and every operation takes `NULL` for the pool.
+
+```sql
+-- Deposit into both a per-user balance and a shared team pool
+SELECT * FROM meter.allocate('alice', 'llm_call', 5000,    'tokens', 'claude-sonnet');
+SELECT * FROM meter.allocate(NULL,    'llm_call', 1000000, 'tokens', 'claude-sonnet');
+
+-- Draw directly from either
+SELECT * FROM meter.consume('alice', 'llm_call', 1500, 'tokens', 'claude-sonnet');  -- charges Alice
+SELECT * FROM meter.consume(NULL,    'llm_call', 1500, 'tokens', 'claude-sonnet');  -- charges the pool
+```
+
+meter measures; it does not impose a hierarchy, so fallback policies are yours to compose. A common one is "spend the user's own balance first, overflow to the shared pool." `check_balance` makes it atomic: a shortfall returns `success = false` *without* deducting, so nothing is charged twice.
+
+```sql
+CREATE FUNCTION app.charge(p_user text, p_amount numeric) RETURNS text AS $$
+DECLARE
+    v_charged boolean;
+BEGIN
+    -- Try the user's own balance. check_balance => true returns success = false
+    -- and deducts nothing when the balance cannot cover the charge.
+    SELECT success INTO v_charged
+    FROM meter.consume(p_user, 'llm_call', p_amount, 'tokens', 'claude-sonnet',
+                       p_check_balance => true);
+    IF v_charged THEN
+        RETURN 'user';
+    END IF;
+
+    -- Short: draw the whole charge from the shared pool instead.
+    PERFORM meter.consume(NULL, 'llm_call', p_amount, 'tokens', 'claude-sonnet');
+    RETURN 'pool';
+END;
+$$ LANGUAGE plpgsql;
+```
+
+With Alice at 5000, `app.charge('alice', 1500)` returns `user` and leaves her at 3500; a following `app.charge('alice', 4000)` exceeds her balance, returns `pool`, and draws 4000 from the shared pool while her balance is untouched. To split a charge instead (spend what the user has, overflow only the remainder), read `meter.get_balance(p_user, …)` first and issue two `consume` calls; that policy is the caller's, and so is its atomicity.
+
+Who acted is recorded in the ledger's actor columns (`actor_id`, `on_behalf_of`, `request_id`) even for a pool charge, so a shared-balance draw stays attributable.
+
+Schedule `meter.reconcile()` with alerting: it checks each account's stored `balance` against the sum of its ledger entries, the standing backstop that turns any balance drift into a detected, repairable condition.
+
 ## Billing Periods
 
 For monthly quotas with optional carry-over:

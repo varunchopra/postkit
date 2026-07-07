@@ -118,7 +118,7 @@ class MeterClient(BaseClient):
 
     def consume(
         self,
-        user_id: str,
+        user_id: str | None,
         event_type: str,
         amount: float | int | Decimal,
         unit: str,
@@ -131,7 +131,7 @@ class MeterClient(BaseClient):
         """Record consumption.
 
         Args:
-            user_id: User ID (required)
+            user_id: User ID (None for namespace-level pool)
             event_type: Event type
             amount: Amount consumed (must be positive)
             unit: Unit of measurement
@@ -167,7 +167,7 @@ class MeterClient(BaseClient):
 
     def reserve(
         self,
-        user_id: str,
+        user_id: str | None,
         event_type: str,
         amount: float | int | Decimal,
         unit: str,
@@ -183,7 +183,7 @@ class MeterClient(BaseClient):
         table. Only actual consumption (via commit) affects balance.
 
         Args:
-            user_id: User ID (required)
+            user_id: User ID (None for namespace-level pool)
             event_type: Event type
             amount: Amount to reserve
             unit: Unit of measurement
@@ -220,6 +220,7 @@ class MeterClient(BaseClient):
         reservation_id: str,
         actual_amount: float | int | Decimal,
         metadata: dict | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
         """Commit a reservation with actual consumption.
 
@@ -231,6 +232,7 @@ class MeterClient(BaseClient):
             reservation_id: Reservation to commit
             actual_amount: Actual amount consumed (can be more or less than reserved)
             metadata: Optional JSON metadata
+            idempotency_key: Optional dedup key; a replay returns the original result
 
         Returns:
             Dict with 'success', 'consumed', 'released', 'reserved_amount',
@@ -244,12 +246,13 @@ class MeterClient(BaseClient):
         """
         result = self._fetch_one(
             """SELECT success, consumed, released, reserved_amount, balance, entry_id
-               FROM meter.commit(%s, %s, %s::jsonb, %s)""",
+               FROM meter.commit(%s, %s, %s::jsonb, %s, %s)""",
             (
                 reservation_id,
                 actual_amount,
                 json.dumps(metadata) if metadata else None,
                 self.namespace,
+                idempotency_key,
             ),
             write=True,
         )
@@ -257,19 +260,20 @@ class MeterClient(BaseClient):
             raise MeterError("meter.commit returned no row")
         return result
 
-    def release(self, reservation_id: str) -> bool:
+    def release(self, reservation_id: str, idempotency_key: str | None = None) -> bool:
         """Release a reservation without consuming.
 
         Args:
             reservation_id: Reservation to release
+            idempotency_key: Optional dedup key; a replay of a completed release returns True
 
         Returns:
             True if released, False if not found
         """
         return bool(
             self._fetch_val(
-                "SELECT meter.release(%s, %s)",
-                (reservation_id, self.namespace),
+                "SELECT meter.release(%s, %s, %s)",
+                (reservation_id, self.namespace, idempotency_key),
                 write=True,
             )
         )

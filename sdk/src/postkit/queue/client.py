@@ -315,21 +315,24 @@ class QueueClient(BaseClient):
     # Completion Operations
     # =========================================================================
 
-    def ack(self, job_id: int) -> bool:
+    def ack(self, job_id: int, *, worker_id: str | None = None) -> bool:
         """Acknowledge successful job completion.
 
         Args:
             job_id: Job ID
+            worker_id: If set, refuse a job re-pulled under a different worker
 
         Returns:
-            True if acknowledged, False if job not found or not running
+            True if acknowledged, False if job not found, not running, or
+            running under a different worker than worker_id
         """
         result = self._fetch_val(
             """SELECT queue.ack(
                 p_namespace := %s,
-                p_job_id := %s
+                p_job_id := %s,
+                p_worker_id := %s
             )""",
-            (self.namespace, job_id),
+            (self.namespace, job_id, worker_id),
             write=True,
         )
         return bool(result)

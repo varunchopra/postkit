@@ -51,6 +51,7 @@ DECLARE
     v_now timestamptz;
     v_flap record;
     v_transition presence.transitions;
+    v_ok boolean;
 BEGIN
     -- Validate inputs
     IF p_namespace IS NOT NULL THEN
@@ -105,32 +106,47 @@ BEGIN
                 )
             );
 
-            v_flap := presence._advance_flap(v_entity, v_config);
-            v_transition := presence._record_transition(
-                v_entity, 'dead', v_flap.flapping, v_now - v_entity.last_seen
-            );
-
-            UPDATE presence.entities e
-            SET status = 'dead',
-                dead_since = v_now,
-                -- The flag means "a death alert is owed": set only when
-                -- damping suppressed a hook that was actually configured
-                hook_suppressed = v_flap.flapping
-                                  AND v_config.on_death_queue IS NOT NULL,
-                flap_count = v_flap.flap_count,
-                flap_window_started = v_flap.flap_window_started,
-                updated_at = v_now
-            WHERE e.namespace = v_entity.namespace
-              AND e.entity_id = v_entity.entity_id;
-
-            PERFORM presence._notify_if_enabled(v_config, v_transition);
-            IF NOT v_transition.flapping THEN
-                PERFORM presence._fire_hooks(
-                    v_config, v_entity.namespace, v_entity.entity_id,
-                    v_entity.kind, 'alive', 'dead',
-                    v_transition.at, v_transition.silent_for
+            -- Isolate the death and its hook in a subtransaction: a failing
+            -- hook rolls back only this entity and the pass continues, so one
+            -- tenant's bad hook cannot stall another's deaths. The failure is
+            -- surfaced (RAISE WARNING), not swallowed silently, and the entity
+            -- stays alive for the next sweep to retry.
+            BEGIN
+                v_flap := presence._advance_flap(v_entity, v_config);
+                v_transition := presence._record_transition(
+                    v_entity, 'dead', v_flap.flapping, v_now - v_entity.last_seen
                 );
-            END IF;
+
+                UPDATE presence.entities e
+                SET status = 'dead',
+                    dead_since = v_now,
+                    -- The flag means "a death alert is owed": set only when
+                    -- damping suppressed a hook that was actually configured
+                    hook_suppressed = v_flap.flapping
+                                      AND v_config.on_death_queue IS NOT NULL,
+                    flap_count = v_flap.flap_count,
+                    flap_window_started = v_flap.flap_window_started,
+                    updated_at = v_now
+                WHERE e.namespace = v_entity.namespace
+                  AND e.entity_id = v_entity.entity_id;
+
+                PERFORM presence._notify_if_enabled(v_config, v_transition);
+                IF NOT v_transition.flapping THEN
+                    PERFORM presence._fire_hooks(
+                        v_config, v_entity.namespace, v_entity.entity_id,
+                        v_entity.kind, 'alive', 'dead',
+                        v_transition.at, v_transition.silent_for
+                    );
+                END IF;
+
+                v_ok := true;
+            EXCEPTION WHEN OTHERS THEN
+                v_ok := false;
+                RAISE WARNING 'presence.sweep: death hook failed for %/%: %',
+                    v_entity.namespace, v_entity.entity_id, SQLERRM;
+            END;
+
+            CONTINUE WHEN NOT v_ok;
 
             v_remaining := v_remaining - 1;
             RETURN NEXT v_transition;
@@ -161,17 +177,27 @@ BEGIN
             -- the entity row - dead_since is the real death time, and
             -- dead_since - last_seen recovers the original silent_for
             -- exactly (dead_since was the clock at death).
-            PERFORM presence._fire_hooks(
-                v_config, v_entity.namespace, v_entity.entity_id,
-                v_entity.kind, 'alive', 'dead',
-                v_entity.dead_since, v_entity.dead_since - v_entity.last_seen
-            );
+            BEGIN
+                PERFORM presence._fire_hooks(
+                    v_config, v_entity.namespace, v_entity.entity_id,
+                    v_entity.kind, 'alive', 'dead',
+                    v_entity.dead_since, v_entity.dead_since - v_entity.last_seen
+                );
 
-            UPDATE presence.entities e
-            SET hook_suppressed = false,
-                updated_at = clock_timestamp()
-            WHERE e.namespace = v_entity.namespace
-              AND e.entity_id = v_entity.entity_id;
+                UPDATE presence.entities e
+                SET hook_suppressed = false,
+                    updated_at = clock_timestamp()
+                WHERE e.namespace = v_entity.namespace
+                  AND e.entity_id = v_entity.entity_id;
+
+                v_ok := true;
+            EXCEPTION WHEN OTHERS THEN
+                v_ok := false;
+                RAISE WARNING 'presence.sweep: deferred death hook failed for %/%: %',
+                    v_entity.namespace, v_entity.entity_id, SQLERRM;
+            END;
+
+            CONTINUE WHEN NOT v_ok;
 
             v_remaining := v_remaining - 1;
             EXIT WHEN v_remaining <= 0;
