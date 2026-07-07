@@ -160,3 +160,39 @@ class TestWorkerOwnership:
             (namespace,),
         ).fetchone()[0]
         assert dlq_count == 0
+
+    def test_worker_id_does_not_block_nack_recovery_of_a_pending_job(
+        self, consumer, db_connection
+    ):
+        conn, client, namespace = consumer
+        job_id = client.push("tasks", {"n": 1})
+        conn.commit()
+
+        _pull_and_roll_back(conn, client, worker_id="worker-a")
+
+        assert client.nack(job_id, error="ssh timeout", worker_id="worker-a") is True
+        conn.commit()
+
+        status = db_connection.execute(
+            "SELECT status FROM queue.jobs WHERE namespace = %s AND id = %s",
+            (namespace, job_id),
+        ).fetchone()[0]
+        assert status == "pending"
+
+    def test_worker_id_does_not_block_fail_recovery_of_a_pending_job(
+        self, consumer, db_connection
+    ):
+        conn, client, namespace = consumer
+        job_id = client.push("tasks", {"n": 1})
+        conn.commit()
+
+        _pull_and_roll_back(conn, client, worker_id="worker-a")
+
+        assert client.fail(job_id, error="poison", worker_id="worker-a") is True
+        conn.commit()
+
+        status = db_connection.execute(
+            "SELECT status FROM queue.jobs WHERE namespace = %s AND id = %s",
+            (namespace, job_id),
+        ).fetchone()[0]
+        assert status == "dead"

@@ -390,11 +390,5 @@ class TestAckOwnership:
     def test_stale_ack_is_refused(self, queue):
         job_id = self._redeliver_to_new_worker(queue)
 
-        # nack raises BIZ_JOB_NOT_YOURS and fail returns False on a foreign
-        # worker; ack could mirror either. The invariant is that A's stale ack
-        # does not settle B's job, so B's attempt stays running.
-        try:
-            assert queue.ack(job_id, worker_id="A") is False
-        except QueueValidationError:
-            pass
+        assert queue.ack(job_id, worker_id="A") is False
         assert queue.get_stats()["running"] == 1
