@@ -23,7 +23,7 @@ Create a monthly partition for ledger
 SELECT meter.create_partition(2025, 1);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:1*
+*Source: meter/src/functions/040_maintenance.sql:9*
 
 ---
 
@@ -45,7 +45,7 @@ Drop partitions older than retention period
 SELECT * FROM meter.drop_old_partitions(12);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:75*
+*Source: meter/src/functions/040_maintenance.sql:83*
 
 ---
 
@@ -67,7 +67,7 @@ Create partitions for upcoming months
 SELECT * FROM meter.ensure_partitions(6);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:44*
+*Source: meter/src/functions/040_maintenance.sql:52*
 
 ---
 
@@ -89,7 +89,7 @@ Get namespace statistics
 SELECT * FROM meter.get_stats();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:200*
+*Source: meter/src/functions/040_maintenance.sql:208*
 
 ---
 
@@ -111,7 +111,7 @@ Verify account invariants: balance vs ledger sum, reserved vs active reservation
 SELECT * FROM meter.reconcile();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:123*
+*Source: meter/src/functions/040_maintenance.sql:131*
 
 ---
 
@@ -132,7 +132,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: meter/src/functions/050_rls.sql:77*
+*Source: meter/src/functions/050_rls.sql:85*
 
 ---
 
@@ -149,7 +149,7 @@ Clear actor context
 SELECT meter.clear_actor();
 ```
 
-*Source: meter/src/functions/050_rls.sql:52*
+*Source: meter/src/functions/050_rls.sql:58*
 
 ---
 
@@ -166,7 +166,7 @@ Clear tenant context (fail-closed: queries return no rows). Call before returnin
 SELECT meter.clear_tenant();
 ```
 
-*Source: meter/src/functions/050_rls.sql:17*
+*Source: meter/src/functions/050_rls.sql:24*
 
 ---
 
@@ -189,7 +189,7 @@ Set actor context for audit trail
 SELECT meter.set_actor('user:admin-bob', 'req-123', 'user:alice', 'refund');
 ```
 
-*Source: meter/src/functions/050_rls.sql:29*
+*Source: meter/src/functions/050_rls.sql:39*
 
 ---
 
@@ -212,7 +212,7 @@ SELECT * FROM meter.balances;
 COMMIT;
 ```
 
-*Source: meter/src/functions/050_rls.sql:1*
+*Source: meter/src/functions/050_rls.sql:11*
 
 ---
 
@@ -241,7 +241,7 @@ Close a billing period, handle expiration and carry-over
 SELECT * FROM meter.close_period('alice', 'llm_call', 'tokens', NULL, '2025-01-31');
 ```
 
-*Source: meter/src/functions/030_periods.sql:53*
+*Source: meter/src/functions/030_periods.sql:66*
 
 ---
 
@@ -269,7 +269,7 @@ Open a new billing period with fresh allocation
 SELECT meter.open_period('alice', 'llm_call', 'tokens', NULL, '2025-02-01');
 ```
 
-*Source: meter/src/functions/030_periods.sql:137*
+*Source: meter/src/functions/030_periods.sql:151*
 
 ---
 
@@ -291,7 +291,7 @@ Mark expired reservations as 'expired' and release their holds. Distinct from 'r
 SELECT meter.release_expired_reservations();
 ```
 
-*Source: meter/src/functions/030_periods.sql:221*
+*Source: meter/src/functions/030_periods.sql:230*
 
 ---
 
@@ -318,7 +318,7 @@ Configure period settings for an account
 SELECT meter.set_period_config('alice', 'llm_call', 'tokens', NULL, '2025-01-01', 100000, 10000);
 ```
 
-*Source: meter/src/functions/030_periods.sql:1*
+*Source: meter/src/functions/030_periods.sql:14*
 
 ---
 
@@ -346,7 +346,7 @@ Get full account details
 SELECT * FROM meter.get_account('alice', 'llm_call', 'tokens');
 ```
 
-*Source: meter/src/functions/020_query.sql:40*
+*Source: meter/src/functions/020_query.sql:52*
 
 ---
 
@@ -372,7 +372,7 @@ Get current balance for an account
 SELECT * FROM meter.get_balance('alice', 'llm_call', 'tokens', 'claude-sonnet');
 ```
 
-*Source: meter/src/functions/020_query.sql:1*
+*Source: meter/src/functions/020_query.sql:15*
 
 ---
 
@@ -401,7 +401,7 @@ Get ledger entries for an account
 SELECT * FROM meter.get_ledger('alice', 'llm_call', 'tokens', p_limit := 50);
 ```
 
-*Source: meter/src/functions/020_query.sql:103*
+*Source: meter/src/functions/020_query.sql:118*
 
 ---
 
@@ -425,7 +425,7 @@ Get org-level usage totals across all users
 SELECT * FROM meter.get_namespace_usage('2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:208*
+*Source: meter/src/functions/020_query.sql:218*
 
 ---
 
@@ -450,7 +450,7 @@ Get aggregated usage (consumption only) for a user
 SELECT * FROM meter.get_usage('alice', '2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:165*
+*Source: meter/src/functions/020_query.sql:176*
 
 ---
 
@@ -473,7 +473,7 @@ Get all balances for a user across all event types and resources
 SELECT * FROM meter.get_user_balances('alice');
 ```
 
-*Source: meter/src/functions/020_query.sql:66*
+*Source: meter/src/functions/020_query.sql:75*
 
 ---
 
@@ -505,7 +505,7 @@ Create an adjustment entry (correction, refund, etc.)
 SELECT * FROM meter.adjust('alice', 'llm_call', -500, 'tokens', 'claude-sonnet', p_reference_id := 12345);
 ```
 
-*Source: meter/src/functions/013_adjust.sql:1*
+*Source: meter/src/functions/013_adjust.sql:16*
 
 ---
 
@@ -535,7 +535,7 @@ Add quota/credits to an account
 SELECT * FROM meter.allocate('alice', 'llm_call', 100000, 'tokens', 'claude-sonnet');
 ```
 
-*Source: meter/src/functions/010_allocate.sql:1*
+*Source: meter/src/functions/010_allocate.sql:16*
 
 ---
 
@@ -562,7 +562,7 @@ SELECT * FROM meter.commit('res_abc123', 2347);
 SELECT consumed - reserved_amount AS overage FROM meter.commit('res_abc123', 500);
 ```
 
-*Source: meter/src/functions/012_reserve.sql:121*
+*Source: meter/src/functions/012_reserve.sql:139*
 
 ---
 
@@ -593,7 +593,7 @@ Record consumption (debit from account)
 SELECT * FROM meter.consume('alice', 'llm_call', 1500, 'tokens', 'claude-sonnet');
 ```
 
-*Source: meter/src/functions/011_consume.sql:1*
+*Source: meter/src/functions/011_consume.sql:22*
 
 ---
 
@@ -617,7 +617,7 @@ Release a reservation without consuming. Does not affect balance or create ledge
 SELECT meter.release('res_abc123');
 ```
 
-*Source: meter/src/functions/012_reserve.sql:262*
+*Source: meter/src/functions/012_reserve.sql:277*
 
 ---
 
@@ -647,6 +647,6 @@ Reserve quota for pending operation. Reservations are HOLDS, not balance changes
 SELECT * FROM meter.reserve('alice', 'llm_call', 4000, 'tokens', 'claude-sonnet');
 ```
 
-*Source: meter/src/functions/012_reserve.sql:1*
+*Source: meter/src/functions/012_reserve.sql:17*
 
 ---

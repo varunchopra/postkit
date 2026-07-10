@@ -37,6 +37,7 @@
 | [`outbox.lag`](sql.md#outboxlag) | Per-consumer backlog for a topic (or all topics). |
 | [`outbox.list_consumers`](sql.md#outboxlist_consumers) | List consumer cursors in a namespace. |
 | [`outbox.trim`](sql.md#outboxtrim) | Delete old events, keeping deletions a contiguous (xid, id) prefix. |
+| [`outbox.channel_name`](sql.md#outboxchannel_name) | NOTIFY channel for a topic; LISTEN on this to receive emit wake-ups. |
 | [`outbox.ack`](sql.md#outboxack) | Advance a consumer's cursor after processing. |
 | [`outbox.has_pending`](sql.md#outboxhas_pending) | Whether a consumer has readable events past its cursor. |
 | [`outbox.poll`](sql.md#outboxpoll) | Read the next events for a consumer. Does not advance the cursor. |

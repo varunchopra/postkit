@@ -43,7 +43,7 @@ BEGIN
     END IF;
 
     -- Reject control characters
-    IF v_normalized ~ '[\x00-\x1F\x7F]' THEN
+    IF v_normalized ~ '[\x00-\x1F\x7F\u0085\u2028\u2029]' THEN
         RAISE EXCEPTION 'Email contains invalid control characters'
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:authn:VAL_EMAIL_INVALID_CHARS';
@@ -97,7 +97,7 @@ BEGIN
     END IF;
 
     -- Reject control characters
-    IF p_hash ~ '[\x00-\x1F\x7F]' THEN
+    IF p_hash ~ '[\x00-\x1F\x7F\u0085\u2028\u2029]' THEN
         RAISE EXCEPTION '% contains invalid control characters', p_field_name
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:authn:VAL_HASH_INVALID_CHARS';
@@ -205,8 +205,8 @@ BEGIN
                   HINT = 'postkit:authn:VAL_NAMESPACE_TOO_LONG';
     END IF;
 
-    -- Reject control characters (0x00-0x1F, 0x7F)
-    IF p_value ~ '[\x00-\x1F\x7F]' THEN
+    -- Reject control characters and Unicode line separators
+    IF p_value ~ '[\x00-\x1F\x7F\u0085\u2028\u2029]' THEN
         RAISE EXCEPTION 'Namespace contains invalid control characters'
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:authn:VAL_NAMESPACE_INVALID_CHARS';

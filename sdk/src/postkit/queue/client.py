@@ -570,7 +570,7 @@ class QueueClient(BaseClient):
         The schedule is identified by name (unique within the namespace).
 
         Args:
-            name: Schedule name (alphanumeric, underscores, hyphens)
+            name: Schedule name
             queue: Target queue name for generated jobs
             payload: Job payload template (must be JSON-serializable)
             cron_expression: Standard 5-field cron ('*/5 * * * *')

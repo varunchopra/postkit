@@ -38,6 +38,12 @@ def make_namespace(request) -> str:
     return "t_" + namespace.lower()[:50]
 
 
+def channel_name(cursor, schema: str, namespace: str, name: str) -> str:
+    """Resolve a module's NOTIFY channel through its SQL contract."""
+    cursor.execute(f"SELECT {schema}.channel_name(%s, %s)", (namespace, name))
+    return cursor.fetchone()[0]
+
+
 def fetch_row(cursor) -> dict | None:
     """Convert the current cursor result row to a dict, or None if no row.
 
@@ -50,17 +56,59 @@ def fetch_row(cursor) -> dict | None:
     return dict(zip(columns, row))
 
 
-VALID_NAMESPACES = ["default", "tenant_123", "org:my-org", "MyOrg", "a" * 1024]
+# Characters every name field must reject. NUL is missing because Postgres
+# text values cannot contain it, so it cannot be tested.
+CONTROL_CHARS = {
+    "tab": chr(9),
+    "lf": chr(10),
+    "cr": chr(13),
+    "u0085_nel": chr(0x85),
+    "u2028_ls": chr(0x2028),
+    "u2029_ps": chr(0x2029),
+}
+
+# Non-breaking space (U+00A0) is Unicode whitespace but not a control
+# character, so names may contain it; the rules only reject characters that
+# could forge log lines.
+VALID_NAMESPACES = [
+    "default",
+    "tenant_123",
+    "org:my-org",
+    "MyOrg",
+    "a" * 1024,
+    "org" + chr(0xA0) + "eu",
+]
+
+ACCEPTED_NAMES = [
+    "sensor:eu:42",
+    "order.created",
+    "team/backend",
+    "café",
+    "123-leading",
+    "has space",
+    "mid" + chr(0xA0) + "nbsp",
+]
+
+
+def name_error_cases(prefix: str) -> list:
+    """Reject cases for one name field, keyed by its error-code prefix: every
+    CONTROL_CHARS character, leading/trailing whitespace, and whitespace-only
+    input (which counts as empty rather than whitespace)."""
+    return [
+        pytest.param("bad" + char + "name", f"{prefix}_INVALID_CHARS", id=name)
+        for name, char in CONTROL_CHARS.items()
+    ] + [
+        pytest.param(" leading", f"{prefix}_WHITESPACE", id="leading_whitespace"),
+        pytest.param("trailing ", f"{prefix}_WHITESPACE", id="trailing_whitespace"),
+        pytest.param("   ", f"{prefix}_EMPTY", id="whitespace_only"),
+    ]
+
 
 NAMESPACE_ERROR_CASES = [
     pytest.param(None, "VAL_NAMESPACE_NULL", id="null"),
     pytest.param("", "VAL_NAMESPACE_EMPTY", id="empty"),
-    pytest.param("   ", "VAL_NAMESPACE_EMPTY", id="whitespace_only"),
     pytest.param("a" * 1025, "VAL_NAMESPACE_TOO_LONG", id="too_long"),
-    pytest.param("has\ttab", "VAL_NAMESPACE_INVALID_CHARS", id="control_chars"),
-    pytest.param(" leading", "VAL_NAMESPACE_WHITESPACE", id="leading_whitespace"),
-    pytest.param("trailing ", "VAL_NAMESPACE_WHITESPACE", id="trailing_whitespace"),
-]
+] + name_error_cases("VAL_NAMESPACE")
 
 
 def assert_audit_fields(event: dict, **expected) -> None:

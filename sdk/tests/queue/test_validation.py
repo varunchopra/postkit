@@ -5,8 +5,10 @@ from postkit.errors import QueueErrorCode
 from postkit.queue import QueueError, QueueValidationError
 
 from tests.helpers import (
+    ACCEPTED_NAMES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
+    name_error_cases,
 )
 
 
@@ -44,6 +46,32 @@ class TestQueueNameBoundaries:
     def test_accepts_hyphens_and_underscores(self, queue):
         job_id = queue.push("my-queue_name", {"data": 1})
         assert job_id is not None
+
+
+class TestNameRules:
+    """Queue and schedule names follow the shared name rules."""
+
+    @pytest.mark.parametrize(("name", "code_name"), name_error_cases("VAL_QUEUE"))
+    def test_queue_name_violations(self, queue, name, code_name):
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.push(name, {"n": 1})
+        assert exc_info.value.error_code == getattr(QueueErrorCode, code_name)
+
+    @pytest.mark.parametrize(
+        ("name", "code_name"), name_error_cases("VAL_SCHEDULE_NAME")
+    )
+    def test_schedule_name_violations(self, queue, name, code_name):
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.create_schedule(name, "target", {"n": 1}, cron_expression="* * * * *")
+        assert exc_info.value.error_code == getattr(QueueErrorCode, code_name)
+
+    @pytest.mark.parametrize("name", ACCEPTED_NAMES)
+    def test_flexible_names_accepted(self, queue, name):
+        assert queue.push(name, {"n": 1}) is not None
+        schedule = queue.create_schedule(
+            name, name, {"n": 1}, cron_expression="* * * * *"
+        )
+        assert schedule is not None
 
 
 class TestValidationErrorType:

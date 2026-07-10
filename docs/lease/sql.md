@@ -26,7 +26,7 @@ Acquire or take over a named lease.
 SELECT * FROM lease.acquire('default', 'scheduler', 'worker-1');
 ```
 
-*Source: lease/src/functions/010_acquire.sql:1*
+*Source: lease/src/functions/010_acquire.sql:49*
 
 ---
 
@@ -47,7 +47,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: lease/src/functions/080_rls.sql:99*
+*Source: lease/src/functions/080_rls.sql:107*
 
 ---
 
@@ -59,7 +59,7 @@ lease.clear_actor() -> void
 
 Clear actor context. Call before returning connections to pool.
 
-*Source: lease/src/functions/080_rls.sql:53*
+*Source: lease/src/functions/080_rls.sql:59*
 
 ---
 
@@ -71,7 +71,7 @@ lease.clear_tenant() -> void
 
 Clear the tenant context. Call before returning connections to pool.
 
-*Source: lease/src/functions/080_rls.sql:19*
+*Source: lease/src/functions/080_rls.sql:25*
 
 ---
 
@@ -89,7 +89,7 @@ Set actor context for the event log.
 - `p_on_behalf_of`: Optional ID if acting on behalf of another user
 - `p_reason`: Optional reason for the action Actor context is captured on leases and lease.events rows.
 
-*Source: lease/src/functions/080_rls.sql:30*
+*Source: lease/src/functions/080_rls.sql:40*
 
 ---
 
@@ -104,7 +104,7 @@ Set the tenant context for RLS policies.
 **Parameters:**
 - `p_tenant_id`: Tenant/namespace identifier Must be called before any operations. Transaction-local scope.
 
-*Source: lease/src/functions/080_rls.sql:1*
+*Source: lease/src/functions/080_rls.sql:13*
 
 ---
 
@@ -129,7 +129,7 @@ Inspect a lease without locking it.
 SELECT * FROM lease.current('default', 'scheduler');
 ```
 
-*Source: lease/src/functions/040_inspect.sql:1*
+*Source: lease/src/functions/040_inspect.sql:13*
 
 ---
 
@@ -153,7 +153,7 @@ Read the lease event log, newest first.
 SELECT * FROM lease.get_events('default', 'scheduler');
 ```
 
-*Source: lease/src/functions/040_inspect.sql:97*
+*Source: lease/src/functions/040_inspect.sql:107*
 
 ---
 
@@ -175,7 +175,7 @@ Get namespace-wide lease statistics.
 SELECT * FROM lease.get_stats('default');
 ```
 
-*Source: lease/src/functions/040_inspect.sql:64*
+*Source: lease/src/functions/040_inspect.sql:75*
 
 ---
 
@@ -198,7 +198,7 @@ List leases in a namespace.
 SELECT * FROM lease.list('default', p_include_expired := false);
 ```
 
-*Source: lease/src/functions/040_inspect.sql:36*
+*Source: lease/src/functions/040_inspect.sql:45*
 
 ---
 
@@ -225,7 +225,32 @@ Delete old lease events.
 SELECT lease.prune_events('default', '90 days');
 ```
 
-*Source: lease/src/functions/050_maintenance.sql:1*
+*Source: lease/src/functions/050_maintenance.sql:17*
+
+---
+
+## Notifications
+
+### lease.channel_name
+
+```sql
+lease.channel_name(p_namespace: text, p_name: text) -> text
+```
+
+NOTIFY channel for a lease; LISTEN on this to receive release wake-ups.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_name`: Lease name
+
+**Returns:** Channel name The namespace and name are joined with the control character U+001F before hashing. Names and namespaces can never contain control characters, so two different (namespace, name) pairs can never produce the same channel. md5 keeps the channel inside PostgreSQL's 63-byte identifier limit and is not used for security; replace it with pgcrypto where md5 is prohibited.
+
+**Example:**
+```sql
+SELECT lease.channel_name('default', 'daily-report');
+```
+
+*Source: lease/src/functions/003_channel.sql:15*
 
 ---
 
@@ -252,7 +277,7 @@ Release a lease you hold.
 SELECT lease.release('default', 'scheduler', 'worker-1', 42);
 ```
 
-*Source: lease/src/functions/020_renew_release.sql:74*
+*Source: lease/src/functions/020_renew_release.sql:95*
 
 ---
 
@@ -278,7 +303,7 @@ Extend a live lease you hold.
 SELECT * FROM lease.renew('default', 'scheduler', 'worker-1', 42);
 ```
 
-*Source: lease/src/functions/020_renew_release.sql:1*
+*Source: lease/src/functions/020_renew_release.sql:26*
 
 ---
 
@@ -303,6 +328,6 @@ Assert, inside your transaction, that you still hold a lease.
 SELECT lease.verify('default', 'exporter:cust_42', 'worker-1', 42);
 ```
 
-*Source: lease/src/functions/030_verify.sql:1*
+*Source: lease/src/functions/030_verify.sql:50*
 
 ---

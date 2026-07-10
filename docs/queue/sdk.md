@@ -94,7 +94,7 @@ Create a recurring schedule that produces jobs automatically.
 Schedules use either a cron expression or a fixed interval, not both. The schedule is identified by name (unique within the namespace).
 
 **Parameters:**
-- `name`: Schedule name (alphanumeric, underscores, hyphens)
+- `name`: Schedule name
 - `queue`: Target queue name for generated jobs
 - `payload`: Job payload template (must be JSON-serializable)
 - `cron_expression`: Standard 5-field cron ('*/5 * * * *')

@@ -1,9 +1,43 @@
 """Tests for queue push operations."""
 
+import json
+
+import psycopg
 import psycopg.errors
 import pytest
 from postkit.errors import QueueErrorCode
 from postkit.queue import QueueValidationError
+
+from tests.conftest import DATABASE_URL
+from tests.helpers import channel_name
+
+
+class TestPushNotify:
+    """queue.channel_name(namespace, queue) is the channel to LISTEN on for
+    push wake-ups; two different (namespace, queue) pairs never share one."""
+
+    def test_distinct_pairs_get_distinct_channels(
+        self, db_connection
+    ):
+        cur = db_connection.cursor()
+        cur.execute(
+            "SELECT queue.channel_name('acme', 'corp/jobs'),"
+            "       queue.channel_name('acme/corp', 'jobs')"
+        )
+        first, second = cur.fetchone()
+        assert first != second
+
+    def test_push_notifies_on_helper_channel(self, queue, db_connection):
+        channel = channel_name(db_connection.cursor(), "queue", queue.namespace, "jobs")
+        listener = psycopg.connect(DATABASE_URL, autocommit=True)
+        try:
+            listener.execute(f'LISTEN "{channel}"')
+            job_id = queue.push("jobs", {"n": 1})
+            got = list(listener.notifies(timeout=10, stop_after=1))
+            assert len(got) == 1
+            assert json.loads(got[0].payload) == {"id": job_id, "queue": "jobs"}
+        finally:
+            listener.close()
 
 
 class TestPush:
@@ -140,13 +174,6 @@ class TestPushValidation:
         with pytest.raises(QueueValidationError) as exc_info:
             queue.push("", {"data": 1})
         assert exc_info.value.error_code == QueueErrorCode.VAL_QUEUE_EMPTY
-
-    def test_push_rejects_invalid_queue_name(self, queue):
-        """Invalid queue name format raises validation error."""
-
-        with pytest.raises(QueueValidationError) as exc_info:
-            queue.push("123-starts-with-number", {"data": 1})
-        assert exc_info.value.error_code == QueueErrorCode.VAL_QUEUE_FORMAT
 
     def test_push_rejects_priority_out_of_range(self, queue):
         """Priority outside -1000 to 1000 raises validation error."""

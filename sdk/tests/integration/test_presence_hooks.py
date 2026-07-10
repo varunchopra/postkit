@@ -258,7 +258,7 @@ class TestSweepHookIsolation:
         h = PresenceTestHelpers(cur, ns)
         try:
             with pytest.raises(psycopg.errors.InvalidParameterValue):
-                h.set_config(on_death_queue="bad/queue")
+                h.set_config(on_death_queue="bad\tqueue")
         finally:
             _cleanup_presence(cur, ns)
             cur.close()

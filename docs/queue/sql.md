@@ -19,7 +19,7 @@ Acknowledge successful job completion.
 
 **Returns:** True if acknowledged, false if job not found, not running, or owned by another worker
 
-*Source: queue/src/functions/030_ack.sql:1*
+*Source: queue/src/functions/030_ack.sql:17*
 
 ---
 
@@ -37,7 +37,7 @@ Acknowledge multiple jobs as completed.
 
 **Returns:** Count of jobs acknowledged
 
-*Source: queue/src/functions/030_ack.sql:68*
+*Source: queue/src/functions/030_ack.sql:76*
 
 ---
 
@@ -55,7 +55,7 @@ Cancel a pending job by deleting it.
 
 **Returns:** True if cancelled, false if job not found or not pending
 
-*Source: queue/src/functions/030_ack.sql:294*
+*Source: queue/src/functions/030_ack.sql:306*
 
 ---
 
@@ -75,7 +75,7 @@ Move job to dead letter queue (permanent failure).
 
 **Returns:** True if moved to DLQ, false if job settled, missing, or owned by another worker
 
-*Source: queue/src/functions/030_ack.sql:232*
+*Source: queue/src/functions/030_ack.sql:249*
 
 ---
 
@@ -96,7 +96,7 @@ Return job to queue for retry (temporary failure).
 
 **Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ)
 
-*Source: queue/src/functions/030_ack.sql:122*
+*Source: queue/src/functions/030_ack.sql:147*
 
 ---
 
@@ -114,7 +114,7 @@ Delete all pending jobs from a queue.
 
 **Returns:** Count of deleted jobs
 
-*Source: queue/src/functions/030_ack.sql:381*
+*Source: queue/src/functions/030_ack.sql:393*
 
 ---
 
@@ -132,7 +132,7 @@ Release all jobs held by a worker, returning them to pending.
 
 **Returns:** Count of jobs released
 
-*Source: queue/src/functions/030_ack.sql:334*
+*Source: queue/src/functions/030_ack.sql:347*
 
 ---
 
@@ -153,7 +153,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: queue/src/functions/080_rls.sql:99*
+*Source: queue/src/functions/080_rls.sql:107*
 
 ---
 
@@ -165,7 +165,7 @@ queue.clear_actor() -> void
 
 Clear actor context. Call before returning connections to pool.
 
-*Source: queue/src/functions/080_rls.sql:53*
+*Source: queue/src/functions/080_rls.sql:59*
 
 ---
 
@@ -177,7 +177,7 @@ queue.clear_tenant() -> void
 
 Clear the tenant context. Call before returning connections to pool.
 
-*Source: queue/src/functions/080_rls.sql:19*
+*Source: queue/src/functions/080_rls.sql:25*
 
 ---
 
@@ -195,7 +195,7 @@ Set actor context for audit trail.
 - `p_on_behalf_of`: Optional ID if acting on behalf of another user
 - `p_reason`: Optional reason for the action (for audit) Actor context is captured when jobs are pushed and stored with the job.
 
-*Source: queue/src/functions/080_rls.sql:30*
+*Source: queue/src/functions/080_rls.sql:40*
 
 ---
 
@@ -210,7 +210,7 @@ Set the tenant context for RLS policies.
 **Parameters:**
 - `p_tenant_id`: Tenant/namespace identifier Must be called before any operations. Transaction-local scope.
 
-*Source: queue/src/functions/080_rls.sql:1*
+*Source: queue/src/functions/080_rls.sql:13*
 
 ---
 
@@ -231,7 +231,7 @@ Delete old un-retried dead letters.
 
 **Returns:** Count of deleted dead letters
 
-*Source: queue/src/functions/060_dead_letters.sql:203*
+*Source: queue/src/functions/060_dead_letters.sql:215*
 
 ---
 
@@ -250,7 +250,7 @@ Retry a dead-lettered job by creating a new job from its payload.
 
 **Returns:** New job ID
 
-*Source: queue/src/functions/060_dead_letters.sql:1*
+*Source: queue/src/functions/060_dead_letters.sql:16*
 
 ---
 
@@ -269,7 +269,32 @@ Retry multiple dead letters for a queue in a single transaction.
 
 **Returns:** Rows of (dead_letter_id, job_id) for each retried entry
 
-*Source: queue/src/functions/060_dead_letters.sql:110*
+*Source: queue/src/functions/060_dead_letters.sql:124*
+
+---
+
+## Notifications
+
+### queue.channel_name
+
+```sql
+queue.channel_name(p_namespace: text, p_queue: text) -> text
+```
+
+NOTIFY channel for a queue; LISTEN on this to receive push wake-ups.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_queue`: Queue name
+
+**Returns:** Channel name The namespace and queue are joined with the control character U+001F before hashing. Names and namespaces can never contain control characters, so two different (namespace, queue) pairs can never produce the same channel. md5 keeps the channel inside PostgreSQL's 63-byte identifier limit and is not used for security; replace it with pgcrypto where md5 is prohibited.
+
+**Example:**
+```sql
+SELECT queue.channel_name('default', 'emails');
+```
+
+*Source: queue/src/functions/003_channel.sql:15*
 
 ---
 
@@ -290,7 +315,7 @@ Extend the visibility timeout of a running job.
 
 **Returns:** True if extended, false if job not found or not running
 
-*Source: queue/src/functions/020_pull.sql:193*
+*Source: queue/src/functions/020_pull.sql:204*
 
 ---
 
@@ -310,7 +335,7 @@ Pull one job from a queue.
 
 **Returns:** Job record, or NULL if queue is empty
 
-*Source: queue/src/functions/020_pull.sql:1*
+*Source: queue/src/functions/020_pull.sql:13*
 
 ---
 
@@ -330,7 +355,7 @@ Pull one job from multiple queues (priority order).
 
 **Returns:** Job record from first queue with available job, or NULL
 
-*Source: queue/src/functions/020_pull.sql:122*
+*Source: queue/src/functions/020_pull.sql:135*
 
 ---
 
@@ -351,7 +376,7 @@ Pull multiple jobs from a queue.
 
 **Returns:** Set of job records
 
-*Source: queue/src/functions/020_pull.sql:60*
+*Source: queue/src/functions/020_pull.sql:73*
 
 ---
 
@@ -378,7 +403,7 @@ Push a job onto a queue.
 
 **Returns:** Job ID, or NULL if deduplicated
 
-*Source: queue/src/functions/010_push.sql:1*
+*Source: queue/src/functions/010_push.sql:18*
 
 ---
 
@@ -400,7 +425,7 @@ Push multiple jobs onto a queue efficiently.
 
 **Returns:** Array of job IDs
 
-*Source: queue/src/functions/010_push.sql:110*
+*Source: queue/src/functions/010_push.sql:124*
 
 ---
 
@@ -429,7 +454,7 @@ Create a recurring schedule that produces jobs automatically.
 
 **Returns:** Schedule ID
 
-*Source: queue/src/functions/050_schedules.sql:1*
+*Source: queue/src/functions/050_schedules.sql:17*
 
 ---
 
@@ -447,7 +472,7 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, false if not found
 
-*Source: queue/src/functions/050_schedules.sql:193*
+*Source: queue/src/functions/050_schedules.sql:201*
 
 ---
 
@@ -465,7 +490,7 @@ Get a schedule by name.
 
 **Returns:** Schedule row, or empty if not found
 
-*Source: queue/src/functions/050_schedules.sql:100*
+*Source: queue/src/functions/050_schedules.sql:108*
 
 ---
 
@@ -486,7 +511,7 @@ List schedules with optional filters and cursor pagination.
 
 **Returns:** Schedule rows ordered by name
 
-*Source: queue/src/functions/050_schedules.sql:145*
+*Source: queue/src/functions/050_schedules.sql:156*
 
 ---
 
@@ -504,7 +529,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, false if already paused or not found
 
-*Source: queue/src/functions/050_schedules.sql:220*
+*Source: queue/src/functions/050_schedules.sql:228*
 
 ---
 
@@ -522,7 +547,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, false if already active or not found
 
-*Source: queue/src/functions/050_schedules.sql:251*
+*Source: queue/src/functions/050_schedules.sql:259*
 
 ---
 
@@ -540,7 +565,7 @@ Process due schedules and create jobs.
 
 **Returns:** Rows of (schedule_name, job_id, next_run_at) for each processed schedule
 
-*Source: queue/src/functions/055_tick.sql:1*
+*Source: queue/src/functions/055_tick.sql:12*
 
 ---
 
@@ -558,7 +583,7 @@ Reclaim running jobs whose visibility timeout has expired.
 
 **Returns:** Rows of (job_id, queue, stuck_duration) for each reclaimed job
 
-*Source: queue/src/functions/055_tick.sql:107*
+*Source: queue/src/functions/055_tick.sql:124*
 
 ---
 
@@ -578,7 +603,7 @@ Get per-queue statistics with operational metrics.
 
 **Returns:** Row per queue with status counts, oldest pending age, and un-retried dead letter count
 
-*Source: queue/src/functions/040_stats.sql:33*
+*Source: queue/src/functions/040_stats.sql:46*
 
 ---
 
@@ -595,6 +620,6 @@ Get namespace-wide queue statistics.
 
 **Returns:** Row with total_jobs, pending, running, completed, dead, total_queues
 
-*Source: queue/src/functions/040_stats.sql:1*
+*Source: queue/src/functions/040_stats.sql:7*
 
 ---

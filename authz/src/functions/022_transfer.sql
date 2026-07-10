@@ -31,8 +31,12 @@ DECLARE
 BEGIN
     -- Self-transfer is a no-op: return whether the grant exists without
     -- touching the row (preserves tuple_id and avoids spurious audit events).
+    -- Both sides of this comparison are function parameters, and parameters
+    -- compare under the database's default byte-wise collation rather than
+    -- the id columns' collation, so COLLATE is spelled out to treat two
+    -- Unicode spellings of the same id as the same subject.
     IF p_from_subject_type = p_to_subject_type
-       AND p_from_subject_id = p_to_subject_id THEN
+       AND p_from_subject_id = p_to_subject_id COLLATE authz.canonical THEN
         RETURN EXISTS (
             SELECT 1 FROM authz.tuples
             WHERE namespace = p_namespace

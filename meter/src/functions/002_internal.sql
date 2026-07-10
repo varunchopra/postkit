@@ -19,8 +19,12 @@ $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE SECURITY INVOKER;
 CREATE FUNCTION meter._idempotency_lock(p_namespace text, p_idempotency_key text)
 RETURNS void AS $$
 BEGIN
-    -- Advisory lock scoped to transaction, automatically released on commit/rollback
-    PERFORM pg_advisory_xact_lock(meter._hash64(p_namespace || ':' || p_idempotency_key));
+    -- Advisory lock scoped to the transaction; released automatically on
+    -- commit or rollback. The namespace and key are joined with the control
+    -- character U+001F, which neither can contain; a printable separator
+    -- like ':' could appear inside an idempotency key and let two different
+    -- (namespace, key) pairs produce the same lock.
+    PERFORM pg_advisory_xact_lock(meter._hash64(p_namespace || E'\x1F' || p_idempotency_key));
 END;
 $$ LANGUAGE plpgsql;
 

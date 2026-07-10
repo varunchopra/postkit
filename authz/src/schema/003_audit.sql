@@ -52,10 +52,10 @@ CREATE TABLE authz.audit_events (
     -- Tuple/hierarchy data
     namespace text NOT NULL,
     resource_type text NOT NULL,
-    resource_id text NOT NULL,
+    resource_id text COLLATE authz.canonical NOT NULL,
     relation text NOT NULL,
     subject_type text NOT NULL,
-    subject_id text NOT NULL,
+    subject_id text COLLATE authz.canonical NOT NULL,
     subject_relation text,
     tuple_id bigint,
     expires_at timestamptz,  -- The tuple's expiration at time of event

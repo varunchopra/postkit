@@ -69,8 +69,8 @@ BEGIN
                   HINT = 'postkit:config:VAL_NAMESPACE_TOO_LONG';
     END IF;
 
-    -- Reject control characters (0x00-0x1F, 0x7F)
-    IF p_value ~ '[\x00-\x1F\x7F]' THEN
+    -- Reject control characters and Unicode line separators
+    IF p_value ~ '[\x00-\x1F\x7F\u0085\u2028\u2029]' THEN
         RAISE EXCEPTION 'Namespace contains invalid control characters'
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:config:VAL_NAMESPACE_INVALID_CHARS';

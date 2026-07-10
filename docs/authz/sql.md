@@ -17,7 +17,7 @@ Clear actor context (subsequent audit events will have NULL actor)
 SELECT authz.clear_actor();
 ```
 
-*Source: authz/src/functions/033_audit.sql:28*
+*Source: authz/src/functions/033_audit.sql:33*
 
 ---
 
@@ -36,7 +36,7 @@ Create a monthly partition for audit events
 SELECT authz.create_audit_partition(2024, 1); -- January 2024
 ```
 
-*Source: authz/src/functions/033_audit.sql:44*
+*Source: authz/src/functions/033_audit.sql:50*
 
 ---
 
@@ -59,7 +59,7 @@ Delete old audit partitions (default: keep 7 years for compliance)
 SELECT * FROM authz.drop_audit_partitions(84);
 ```
 
-*Source: authz/src/functions/033_audit.sql:123*
+*Source: authz/src/functions/033_audit.sql:131*
 
 ---
 
@@ -82,7 +82,7 @@ Create partitions for upcoming months (run monthly via cron)
 SELECT * FROM authz.ensure_audit_partitions(3);
 ```
 
-*Source: authz/src/functions/033_audit.sql:94*
+*Source: authz/src/functions/033_audit.sql:102*
 
 ---
 
@@ -107,7 +107,7 @@ SELECT authz.set_actor('user:admin-bob', on_behalf_of := 'user:customer-alice', 
 SELECT authz.write('repo', 'api', 'admin', 'team', 'eng');
 ```
 
-*Source: authz/src/functions/033_audit.sql:1*
+*Source: authz/src/functions/033_audit.sql:12*
 
 ---
 
@@ -133,7 +133,7 @@ SELECT * FROM authz.explain('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/025_explain.sql:1*
+*Source: authz/src/functions/025_explain.sql:11*
 
 ---
 
@@ -157,7 +157,7 @@ SELECT * FROM authz.explain_text('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain_text('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/025_explain.sql:194*
+*Source: authz/src/functions/025_explain.sql:203*
 
 ---
 
@@ -176,7 +176,7 @@ Simpler delete_tuple when you don't need subject_relation
 SELECT authz.delete('doc', 'spec', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/021_delete.sql:45*
+*Source: authz/src/functions/021_delete.sql:50*
 
 ---
 
@@ -196,7 +196,7 @@ Revoke a permission (remove a grant)
 SELECT authz.delete_tuple('doc', 'spec', 'read', 'user', 'alice', NULL, 'default');
 ```
 
-*Source: authz/src/functions/021_delete.sql:1*
+*Source: authz/src/functions/021_delete.sql:8*
 
 ---
 
@@ -217,7 +217,7 @@ Delete expired grants to reclaim storage (optional, run via cron)
 SELECT * FROM authz.cleanup_expired('default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:141*
+*Source: authz/src/functions/031_expiration.sql:147*
 
 ---
 
@@ -234,7 +234,7 @@ Make a grant permanent (remove expiration)
 SELECT authz.clear_expiration('repo', 'api', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:38*
+*Source: authz/src/functions/031_expiration.sql:43*
 
 ---
 
@@ -258,7 +258,7 @@ SELECT authz.extend_expiration('repo', 'api', 'read', 'user', 'alice',
 interval '30 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:51*
+*Source: authz/src/functions/031_expiration.sql:60*
 
 ---
 
@@ -281,7 +281,7 @@ Find grants that will expire soon (for renewal reminders)
 SELECT * FROM authz.list_expiring(interval '7 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:100*
+*Source: authz/src/functions/031_expiration.sql:108*
 
 ---
 
@@ -305,7 +305,7 @@ SELECT authz.set_expiration('repo', 'api', 'read', 'user', 'contractor-bob',
 now() + interval '90 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:1*
+*Source: authz/src/functions/031_expiration.sql:10*
 
 ---
 
@@ -332,7 +332,7 @@ SELECT authz.add_hierarchy('repo', 'admin', 'write', 'default');
 SELECT authz.add_hierarchy('repo', 'write', 'read', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:1*
+*Source: authz/src/functions/030_hierarchy.sql:33*
 
 ---
 
@@ -351,7 +351,7 @@ Remove all hierarchy rules for a resource type (start fresh)
 SELECT authz.clear_hierarchy('repo', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:129*
+*Source: authz/src/functions/030_hierarchy.sql:135*
 
 ---
 
@@ -368,7 +368,7 @@ Remove a permission implication rule
 SELECT authz.remove_hierarchy('repo', 'admin', 'write', 'default');
 ```
 
-*Source: authz/src/functions/030_hierarchy.sql:102*
+*Source: authz/src/functions/030_hierarchy.sql:107*
 
 ---
 
@@ -395,7 +395,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/024_list.sql:204*
+*Source: authz/src/functions/024_list.sql:214*
 
 ---
 
@@ -422,7 +422,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/024_list.sql:285*
+*Source: authz/src/functions/024_list.sql:297*
 
 ---
 
@@ -450,7 +450,7 @@ SELECT * FROM authz.list_resources('user', 'alice', 'doc', 'read', 'default');
 SELECT * FROM authz.list_resources('api_key', 'key-123', 'repo', 'read', 'default');
 ```
 
-*Source: authz/src/functions/024_list.sql:1*
+*Source: authz/src/functions/024_list.sql:15*
 
 ---
 
@@ -479,7 +479,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/024_list.sql:97*
+*Source: authz/src/functions/024_list.sql:111*
 
 ---
 
@@ -500,7 +500,7 @@ Get namespace statistics for monitoring dashboards
 SELECT * FROM authz.get_stats('default');
 ```
 
-*Source: authz/src/functions/032_maintenance.sql:51*
+*Source: authz/src/functions/032_maintenance.sql:57*
 
 ---
 
@@ -524,7 +524,7 @@ SELECT authz.grant_to_resources_bulk('doc', ARRAY['doc1', 'doc2', ...],
 'read', 'user', 'alice', NULL, 'default');
 ```
 
-*Source: authz/src/functions/032_maintenance.sql:81*
+*Source: authz/src/functions/032_maintenance.sql:90*
 
 ---
 
@@ -544,7 +544,7 @@ Check for data corruption (circular memberships, broken hierarchies, partition i
 SELECT * FROM authz.verify_integrity('default');
 ```
 
-*Source: authz/src/functions/032_maintenance.sql:1*
+*Source: authz/src/functions/032_maintenance.sql:8*
 
 ---
 
@@ -565,7 +565,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: authz/src/functions/034_rls.sql:45*
+*Source: authz/src/functions/034_rls.sql:53*
 
 ---
 
@@ -582,7 +582,7 @@ Clear tenant context (fail-closed: queries return no rows). Call before returnin
 SELECT authz.clear_tenant();
 ```
 
-*Source: authz/src/functions/034_rls.sql:20*
+*Source: authz/src/functions/034_rls.sql:26*
 
 ---
 
@@ -605,7 +605,7 @@ SELECT * FROM authz.tuples;
 COMMIT;
 ```
 
-*Source: authz/src/functions/034_rls.sql:1*
+*Source: authz/src/functions/034_rls.sql:11*
 
 ---
 
@@ -634,7 +634,7 @@ SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/023_check.sql:81*
+*Source: authz/src/functions/023_check.sql:99*
 
 ---
 
@@ -660,7 +660,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:145*
+*Source: authz/src/functions/023_check.sql:157*
 
 ---
 
@@ -686,7 +686,7 @@ Check if a subject has any of the specified permissions
 SELECT authz.check_any('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:116*
+*Source: authz/src/functions/023_check.sql:128*
 
 ---
 
@@ -716,7 +716,7 @@ SELECT * FROM authz.list_subject_grants('api_key', 'key-123', 'default');
 SELECT * FROM authz.list_subject_grants('api_key', 'key-123', 'default', 'note');
 ```
 
-*Source: authz/src/functions/035_subject_grants.sql:1*
+*Source: authz/src/functions/035_subject_grants.sql:14*
 
 ---
 
@@ -744,7 +744,7 @@ SELECT authz.revoke_resource_grants('note', 'note-123', 'default');
 SELECT authz.revoke_resource_grants('note', 'note-123', 'default', 'view');
 ```
 
-*Source: authz/src/functions/035_subject_grants.sql:75*
+*Source: authz/src/functions/035_subject_grants.sql:88*
 
 ---
 
@@ -772,7 +772,7 @@ SELECT authz.revoke_subject_grants('api_key', 'key-123', 'default');
 SELECT authz.revoke_subject_grants('api_key', 'key-123', 'default', 'note');
 ```
 
-*Source: authz/src/functions/035_subject_grants.sql:36*
+*Source: authz/src/functions/035_subject_grants.sql:49*
 
 ---
 
@@ -804,7 +804,7 @@ Move a grant from one subject to another atomically.
 SELECT authz.transfer_tuple('org', '1', 'owner', 'user', 'alice', 'user', 'bob');
 ```
 
-*Source: authz/src/functions/022_transfer.sql:1*
+*Source: authz/src/functions/022_transfer.sql:17*
 
 ---
 
@@ -823,7 +823,7 @@ Simpler write_tuple when you don't need subject_relation
 SELECT authz.write('doc', 'spec', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:116*
+*Source: authz/src/functions/020_write.sql:133*
 
 ---
 
@@ -852,7 +852,7 @@ SELECT authz.write_tuple('team', 'platform', 'member', 'team', 'infra', NULL, 'd
 SELECT authz.write_tuple('repo', 'api', 'write', 'team', 'eng', 'admin', 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:1*
+*Source: authz/src/functions/020_write.sql:18*
 
 ---
 
@@ -876,6 +876,6 @@ SELECT authz.write_tuples_bulk('project', 'atlas', 'read', 'user',
 ARRAY['alice', 'bob', 'charlie'], 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:135*
+*Source: authz/src/functions/020_write.sql:156*
 
 ---

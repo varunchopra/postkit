@@ -19,7 +19,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: presence/src/functions/080_rls.sql:99*
+*Source: presence/src/functions/080_rls.sql:107*
 
 ---
 
@@ -31,7 +31,7 @@ presence.clear_actor() -> void
 
 Clear actor context. Call before returning connections to pool.
 
-*Source: presence/src/functions/080_rls.sql:53*
+*Source: presence/src/functions/080_rls.sql:59*
 
 ---
 
@@ -43,7 +43,7 @@ presence.clear_tenant() -> void
 
 Clear the tenant context. Call before returning connections to pool.
 
-*Source: presence/src/functions/080_rls.sql:19*
+*Source: presence/src/functions/080_rls.sql:25*
 
 ---
 
@@ -61,7 +61,7 @@ Set actor context for the transition history.
 - `p_on_behalf_of`: Optional ID if acting on behalf of another user
 - `p_reason`: Optional reason for the action Actor context is captured on entities and presence.transitions rows.
 
-*Source: presence/src/functions/080_rls.sql:30*
+*Source: presence/src/functions/080_rls.sql:40*
 
 ---
 
@@ -76,7 +76,7 @@ Set the tenant context for RLS policies.
 **Parameters:**
 - `p_tenant_id`: Tenant/namespace identifier Must be called before any operations. Transaction-local scope.
 
-*Source: presence/src/functions/080_rls.sql:1*
+*Source: presence/src/functions/080_rls.sql:13*
 
 ---
 
@@ -101,7 +101,7 @@ Report an entity alive.
 SELECT presence.heartbeat('default', 'worker-7');
 ```
 
-*Source: presence/src/functions/020_heartbeat.sql:94*
+*Source: presence/src/functions/020_heartbeat.sql:110*
 
 ---
 
@@ -124,7 +124,7 @@ Report a batch of entities alive in one round trip.
 SELECT * FROM presence.heartbeat_many('default', ARRAY['w1', 'w2']);
 ```
 
-*Source: presence/src/functions/020_heartbeat.sql:135*
+*Source: presence/src/functions/020_heartbeat.sql:154*
 
 ---
 
@@ -148,7 +148,7 @@ Get namespace-wide presence statistics.
 SELECT * FROM presence.get_stats('default');
 ```
 
-*Source: presence/src/functions/040_inspect.sql:144*
+*Source: presence/src/functions/040_inspect.sql:157*
 
 ---
 
@@ -172,7 +172,7 @@ Read the transition history, newest first.
 SELECT * FROM presence.get_transitions('default', 'worker-7');
 ```
 
-*Source: presence/src/functions/040_inspect.sql:109*
+*Source: presence/src/functions/040_inspect.sql:122*
 
 ---
 
@@ -196,7 +196,7 @@ List entities in a namespace.
 SELECT * FROM presence.list('default', p_status := 'dead');
 ```
 
-*Source: presence/src/functions/040_inspect.sql:70*
+*Source: presence/src/functions/040_inspect.sql:80*
 
 ---
 
@@ -219,7 +219,7 @@ Inspect one entity, with the wall-clock truth alongside the cache.
 SELECT * FROM presence.status('default', 'worker-7');
 ```
 
-*Source: presence/src/functions/040_inspect.sql:1*
+*Source: presence/src/functions/040_inspect.sql:18*
 
 ---
 
@@ -245,7 +245,32 @@ Delete old transitions.
 SELECT * FROM presence.trim('90 days', 'default');
 ```
 
-*Source: presence/src/functions/050_maintenance.sql:1*
+*Source: presence/src/functions/050_maintenance.sql:21*
+
+---
+
+## Notifications
+
+### presence.channel_name
+
+```sql
+presence.channel_name(p_namespace: text, p_kind: text) -> text
+```
+
+NOTIFY channel for a kind; LISTEN on this to receive status transitions.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_kind`: Entity kind
+
+**Returns:** Channel name The namespace and kind are joined with the control character U+001F before hashing. Names and namespaces can never contain control characters, so two different (namespace, kind) pairs can never produce the same channel. md5 keeps the channel inside PostgreSQL's 63-byte identifier limit and is not used for security; replace it with pgcrypto where md5 is prohibited.
+
+**Example:**
+```sql
+SELECT presence.channel_name('default', 'worker');
+```
+
+*Source: presence/src/functions/003_channel.sql:15*
 
 ---
 
@@ -270,7 +295,7 @@ Remove an entity deliberately, emitting a departed transition.
 SELECT presence.deregister('default', 'worker-7');
 ```
 
-*Source: presence/src/functions/010_register.sql:72*
+*Source: presence/src/functions/010_register.sql:87*
 
 ---
 
@@ -296,7 +321,7 @@ Register an entity for liveness tracking, or update its attributes.
 SELECT * FROM presence.register('default', 'worker-7');
 ```
 
-*Source: presence/src/functions/010_register.sql:1*
+*Source: presence/src/functions/010_register.sql:24*
 
 ---
 
@@ -321,6 +346,6 @@ Mark overdue entities dead and deliver deferred death alerts.
 SELECT * FROM presence.sweep('default');
 ```
 
-*Source: presence/src/functions/030_sweep.sql:1*
+*Source: presence/src/functions/030_sweep.sql:40*
 
 ---

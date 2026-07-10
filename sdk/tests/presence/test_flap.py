@@ -1,9 +1,10 @@
 """P5: flap damping records but suppresses; suppression defers terminal
 alerts, never drops them."""
 
-import hashlib
 import json
 import time
+
+from tests.helpers import channel_name
 
 
 def force_edges(presence, test_helpers, entity: str, edges: int) -> None:
@@ -106,9 +107,17 @@ class TestNotifySuppression:
     def _listen(self, connect, namespace: str, kind: str = "default"):
         conn = connect()
         conn.autocommit = True
-        channel = "presence_" + hashlib.md5(f"{namespace}/{kind}".encode()).hexdigest()
+        channel = channel_name(conn.cursor(), "presence", namespace, kind)
         conn.execute(f'LISTEN "{channel}"')
         return conn
+
+    def test_distinct_pairs_get_distinct_channels(self, connect):
+        conn = connect()
+        row = conn.execute(
+            "SELECT presence.channel_name('fleet', 'eu/sensor'),"
+            "       presence.channel_name('fleet/eu', 'sensor')"
+        ).fetchone()
+        assert row[0] != row[1]
 
     def _drain(self, conn, timeout: float) -> list[dict]:
         got = []

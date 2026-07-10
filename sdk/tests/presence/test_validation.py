@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import psycopg
 import pytest
 from postkit.presence import (
     PresenceClient,
@@ -10,7 +11,12 @@ from postkit.presence import (
     PresenceValidationError,
 )
 
-from tests.helpers import NAMESPACE_ERROR_CASES, VALID_NAMESPACES
+from tests.helpers import (
+    ACCEPTED_NAMES,
+    NAMESPACE_ERROR_CASES,
+    VALID_NAMESPACES,
+    name_error_cases,
+)
 from tests.presence.helpers import cleanup_namespace
 
 
@@ -56,8 +62,6 @@ class TestInputValidation:
             (None, PresenceErrorCode.VAL_ENTITY_NULL),
             ("", PresenceErrorCode.VAL_ENTITY_EMPTY),
             ("a" * 1025, PresenceErrorCode.VAL_ENTITY_TOO_LONG),
-            ("has\ttab", PresenceErrorCode.VAL_ENTITY_INVALID_CHARS),
-            (" padded", PresenceErrorCode.VAL_ENTITY_WHITESPACE),
         ],
     )
     def test_bad_entity_ids(self, presence, entity, code):
@@ -70,14 +74,38 @@ class TestInputValidation:
         [
             ("", PresenceErrorCode.VAL_KIND_EMPTY),
             ("a" * 257, PresenceErrorCode.VAL_KIND_TOO_LONG),
-            ("1leading", PresenceErrorCode.VAL_KIND_FORMAT),
-            ("has space", PresenceErrorCode.VAL_KIND_FORMAT),
         ],
     )
     def test_bad_kinds(self, presence, kind, code):
         with pytest.raises(PresenceValidationError) as exc_info:
             presence.register("w1", kind=kind)
         assert exc_info.value.error_code == code
+
+    @pytest.mark.parametrize(("entity", "code_name"), name_error_cases("VAL_ENTITY"))
+    def test_entity_violations(self, presence, entity, code_name):
+        with pytest.raises(PresenceValidationError) as exc_info:
+            presence.register(entity)
+        assert exc_info.value.error_code == getattr(PresenceErrorCode, code_name)
+
+    @pytest.mark.parametrize(("kind", "code_name"), name_error_cases("VAL_KIND"))
+    def test_kind_violations(self, presence, kind, code_name):
+        with pytest.raises(PresenceValidationError) as exc_info:
+            presence.register("w1", kind=kind)
+        assert exc_info.value.error_code == getattr(PresenceErrorCode, code_name)
+
+    @pytest.mark.parametrize(
+        ("queue_name", "code_name"), name_error_cases("VAL_HOOK_QUEUE")
+    )
+    def test_hook_queue_violations(self, test_helpers, queue_name, code_name):
+        """Hook queues have no SDK write path; the config trigger validates."""
+        with pytest.raises(psycopg.errors.DataError) as exc_info:
+            test_helpers.set_config(on_death_queue=queue_name)
+        assert exc_info.value.diag.message_hint == f"postkit:presence:{code_name}"
+
+    @pytest.mark.parametrize("kind", ACCEPTED_NAMES)
+    def test_flexible_kinds_accepted(self, presence, kind):
+        assert presence.register("w1", kind=kind)["kind"] == kind
+        assert presence.register(kind)["status"] == "unknown"
 
     def test_negative_timeout(self, presence):
         with pytest.raises(PresenceValidationError) as exc_info:

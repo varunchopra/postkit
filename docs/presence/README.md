@@ -34,6 +34,7 @@
 | [`presence.list`](sql.md#presencelist) | List entities in a namespace. |
 | [`presence.status`](sql.md#presencestatus) | Inspect one entity, with the wall-clock truth alongside the cache. |
 | [`presence.trim`](sql.md#presencetrim) | Delete old transitions. |
+| [`presence.channel_name`](sql.md#presencechannel_name) | NOTIFY channel for a kind; LISTEN on this to receive status transitions. |
 | [`presence.deregister`](sql.md#presencederegister) | Remove an entity deliberately, emitting a departed transition. |
 | [`presence.register`](sql.md#presenceregister) | Register an entity for liveness tracking, or update its attributes. |
 | [`presence.sweep`](sql.md#presencesweep) | Mark overdue entities dead and deliver deferred death alerts. |

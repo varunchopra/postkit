@@ -53,6 +53,7 @@
 | [`queue.purge_dead_letters`](sql.md#queuepurge_dead_letters) | Delete old un-retried dead letters. |
 | [`queue.retry_dead_letter`](sql.md#queueretry_dead_letter) | Retry a dead-lettered job by creating a new job from its payload. |
 | [`queue.retry_dead_letters`](sql.md#queueretry_dead_letters) | Retry multiple dead letters for a queue in a single transaction. |
+| [`queue.channel_name`](sql.md#queuechannel_name) | NOTIFY channel for a queue; LISTEN on this to receive push wake-ups. |
 | [`queue.extend_visibility`](sql.md#queueextend_visibility) | Extend the visibility timeout of a running job. |
 | [`queue.pull`](sql.md#queuepull) | Pull one job from a queue. |
 | [`queue.pull_any`](sql.md#queuepull_any) | Pull one job from multiple queues (priority order). |

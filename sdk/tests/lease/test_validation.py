@@ -8,7 +8,12 @@ from postkit.lease import (
     LeaseValidationError,
 )
 
-from tests.helpers import NAMESPACE_ERROR_CASES, VALID_NAMESPACES
+from tests.helpers import (
+    ACCEPTED_NAMES,
+    NAMESPACE_ERROR_CASES,
+    VALID_NAMESPACES,
+    name_error_cases,
+)
 
 
 class TestNamespaceValidation:
@@ -45,8 +50,6 @@ class TestNameAndHolderValidation:
             (None, LeaseErrorCode.VAL_LEASE_NAME_NULL),
             ("", LeaseErrorCode.VAL_LEASE_NAME_EMPTY),
             ("a" * 1025, LeaseErrorCode.VAL_LEASE_NAME_TOO_LONG),
-            ("has\ttab", LeaseErrorCode.VAL_LEASE_NAME_INVALID_CHARS),
-            (" leading", LeaseErrorCode.VAL_LEASE_NAME_WHITESPACE),
         ],
     )
     def test_bad_lease_names(self, lease, name, code):
@@ -60,14 +63,28 @@ class TestNameAndHolderValidation:
             (None, LeaseErrorCode.VAL_HOLDER_NULL),
             ("", LeaseErrorCode.VAL_HOLDER_EMPTY),
             ("a" * 1025, LeaseErrorCode.VAL_HOLDER_TOO_LONG),
-            ("has\x01ctl", LeaseErrorCode.VAL_HOLDER_INVALID_CHARS),
-            ("trailing ", LeaseErrorCode.VAL_HOLDER_WHITESPACE),
         ],
     )
     def test_bad_holders(self, lease, holder, code):
         with pytest.raises(LeaseValidationError) as exc_info:
             lease.acquire("job", holder)
         assert exc_info.value.error_code == code
+
+    @pytest.mark.parametrize(("name", "code_name"), name_error_cases("VAL_LEASE_NAME"))
+    def test_lease_name_violations(self, lease, name, code_name):
+        with pytest.raises(LeaseValidationError) as exc_info:
+            lease.acquire(name, "w1")
+        assert exc_info.value.error_code == getattr(LeaseErrorCode, code_name)
+
+    @pytest.mark.parametrize(("holder", "code_name"), name_error_cases("VAL_HOLDER"))
+    def test_holder_violations(self, lease, holder, code_name):
+        with pytest.raises(LeaseValidationError) as exc_info:
+            lease.acquire("job", holder)
+        assert exc_info.value.error_code == getattr(LeaseErrorCode, code_name)
+
+    @pytest.mark.parametrize("name", ACCEPTED_NAMES)
+    def test_flexible_names_accepted(self, lease, name):
+        assert lease.acquire(name, name)["acquired"] is True
 
     def test_null_fence_rejected(self, lease):
         lease.acquire("job", "w1")

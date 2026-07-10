@@ -68,10 +68,14 @@ CREATE OR REPLACE FUNCTION authz._expand_resource_ancestors(
 RETURNS TABLE(resource_type text, resource_id text)
 AS $$
     WITH RECURSIVE ancestors AS (
-        -- The resource itself
+        -- The resource itself. PostgreSQL requires both halves of a
+        -- recursive UNION to use the same collation. The recursive half
+        -- reads the id columns, which carry authz.canonical; this first row
+        -- is built from parameters, which do not, so the collation is set
+        -- explicitly.
         SELECT
             p_resource_type AS resource_type,
-            p_resource_id AS resource_id,
+            p_resource_id COLLATE authz.canonical AS resource_id,
             0 AS depth
 
         UNION
@@ -113,10 +117,14 @@ CREATE OR REPLACE FUNCTION authz._expand_resource_descendants(
 RETURNS TABLE(resource_type text, resource_id text)
 AS $$
     WITH RECURSIVE descendants AS (
-        -- The resource itself
+        -- The resource itself. PostgreSQL requires both halves of a
+        -- recursive UNION to use the same collation. The recursive half
+        -- reads the id columns, which carry authz.canonical; this first row
+        -- is built from parameters, which do not, so the collation is set
+        -- explicitly.
         SELECT
             p_resource_type AS resource_type,
-            p_resource_id AS resource_id,
+            p_resource_id COLLATE authz.canonical AS resource_id,
             0 AS depth
 
         UNION

@@ -5,6 +5,7 @@ import pytest
 from postkit.authn import AuthnError, AuthnErrorCode, AuthnValidationError
 
 from tests.helpers import (
+    CONTROL_CHARS,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
 )
@@ -60,6 +61,12 @@ class TestEmailValidation:
             authn.create_user("user\x01@example.com", "hash")
         assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_INVALID_CHARS
 
+    @pytest.mark.parametrize("char", CONTROL_CHARS.values(), ids=list(CONTROL_CHARS))
+    def test_rejects_all_control_chars(self, authn, char):
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.create_user(f"user{char}x@example.com", "hash")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_EMAIL_INVALID_CHARS
+
     def test_normalizes_to_lowercase(self, authn):
         user_id = authn.create_user("UPPER@EXAMPLE.COM", "hash")
         user = authn.get_user(user_id)
@@ -106,6 +113,12 @@ class TestHashValidation:
         """Password hashes with control characters are rejected."""
         with pytest.raises(AuthnValidationError) as exc_info:
             authn.create_user("alice@example.com", "hash\x01value")
+        assert exc_info.value.error_code == AuthnErrorCode.VAL_HASH_INVALID_CHARS
+
+    @pytest.mark.parametrize("char", CONTROL_CHARS.values(), ids=list(CONTROL_CHARS))
+    def test_rejects_all_control_chars(self, authn, char):
+        with pytest.raises(AuthnValidationError) as exc_info:
+            authn.create_user("alice@example.com", f"hash{char}value")
         assert exc_info.value.error_code == AuthnErrorCode.VAL_HASH_INVALID_CHARS
 
 

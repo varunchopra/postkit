@@ -44,7 +44,7 @@ $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = queue, pg_temp;
 -- @param p_namespace Tenant namespace for channel name
 -- @param p_queue Queue name for channel
 -- @param p_payload Notification payload (JSON)
--- Channel name: queue_{namespace}_{queue_name}
+-- Channel derivation lives in queue.channel_name, the public LISTEN contract.
 CREATE OR REPLACE FUNCTION queue._notify_if_enabled(
     p_config queue.config,
     p_namespace text,
@@ -52,18 +52,9 @@ CREATE OR REPLACE FUNCTION queue._notify_if_enabled(
     p_payload jsonb
 )
 RETURNS void AS $$
-DECLARE
-    v_channel text;
 BEGIN
     IF p_config.notify_on_push THEN
-        -- Hash the channel name to fit PostgreSQL's 63-byte identifier limit.
-        -- Without hashing, long namespace + queue names get silently truncated,
-        -- causing unrelated queues to share a channel. md5 is used as a
-        -- non-cryptographic hash here, not for security. FedRAMP environments
-        -- that prohibit md5 should disable notify_on_push in queue config or
-        -- replace this with a FIPS-approved hash via pgcrypto.
-        v_channel := 'q_' || md5(p_namespace || '/' || p_queue);
-        PERFORM pg_notify(v_channel, p_payload::text);
+        PERFORM pg_notify(queue.channel_name(p_namespace, p_queue), p_payload::text);
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

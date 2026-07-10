@@ -12,7 +12,7 @@ config.clear_actor() -> void
 
 Clear actor context
 
-*Source: config/src/functions/030_audit.sql:24*
+*Source: config/src/functions/030_audit.sql:29*
 
 ---
 
@@ -30,7 +30,7 @@ Create a monthly partition for audit events
 
 **Returns:** Partition name if created, NULL if already exists
 
-*Source: config/src/functions/030_audit.sql:38*
+*Source: config/src/functions/030_audit.sql:46*
 
 ---
 
@@ -47,7 +47,7 @@ Delete old audit partitions
 
 **Returns:** Names of dropped partitions
 
-*Source: config/src/functions/030_audit.sql:123*
+*Source: config/src/functions/030_audit.sql:130*
 
 ---
 
@@ -64,7 +64,7 @@ Create partitions for upcoming months
 
 **Returns:** Names of created partitions
 
-*Source: config/src/functions/030_audit.sql:90*
+*Source: config/src/functions/030_audit.sql:97*
 
 ---
 
@@ -87,7 +87,7 @@ Set actor context for audit logging
 SELECT config.set_actor('user:admin-bob', on_behalf_of := 'user:customer-alice');
 ```
 
-*Source: config/src/functions/030_audit.sql:1*
+*Source: config/src/functions/030_audit.sql:10*
 
 ---
 
@@ -108,7 +108,7 @@ Activate a specific version (for rollback or promotion)
 SELECT config.activate('prompts/support-bot', 2);
 ```
 
-*Source: config/src/functions/010_entries.sql:184*
+*Source: config/src/functions/010_entries.sql:191*
 
 ---
 
@@ -127,7 +127,7 @@ Delete all versions of a config entry
 SELECT config.delete('prompts/deprecated-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:376*
+*Source: config/src/functions/010_entries.sql:383*
 
 ---
 
@@ -146,7 +146,7 @@ Delete a specific version (cannot delete active version)
 SELECT config.delete_version('prompts/support-bot', 1);
 ```
 
-*Source: config/src/functions/010_entries.sql:415*
+*Source: config/src/functions/010_entries.sql:422*
 
 ---
 
@@ -165,7 +165,7 @@ Check if a config key exists (has an active version)
 IF config.exists('flags/new-checkout') THEN ...
 ```
 
-*Source: config/src/functions/010_entries.sql:466*
+*Source: config/src/functions/010_entries.sql:473*
 
 ---
 
@@ -189,7 +189,7 @@ SELECT * FROM config.get('prompts/support-bot');
 SELECT * FROM config.get('prompts/support-bot', 3);
 ```
 
-*Source: config/src/functions/010_entries.sql:105*
+*Source: config/src/functions/010_entries.sql:120*
 
 ---
 
@@ -211,7 +211,7 @@ Get multiple config entries in one query
 SELECT * FROM config.get_batch(ARRAY['prompts/bot-a', 'prompts/bot-b', 'flags/checkout']);
 ```
 
-*Source: config/src/functions/010_entries.sql:154*
+*Source: config/src/functions/010_entries.sql:162*
 
 ---
 
@@ -235,7 +235,7 @@ SELECT config.get_path('prompts/bot', ARRAY['temperature']);
 SELECT config.get_path('flags/checkout', ARRAY['rollout']);
 ```
 
-*Source: config/src/functions/010_entries.sql:488*
+*Source: config/src/functions/010_entries.sql:498*
 
 ---
 
@@ -254,7 +254,7 @@ Get version history for a key
 SELECT * FROM config.history('prompts/support-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:340*
+*Source: config/src/functions/010_entries.sql:347*
 
 ---
 
@@ -280,7 +280,7 @@ SELECT * FROM config.list('prompts/');
 SELECT * FROM config.list('flags/');
 ```
 
-*Source: config/src/functions/010_entries.sql:297*
+*Source: config/src/functions/010_entries.sql:309*
 
 ---
 
@@ -304,7 +304,7 @@ SELECT config.merge('prompts/bot', '{"temperature": 0.8}');
 SELECT config.merge('flags/checkout', '{"rollout": 0.75}');
 ```
 
-*Source: config/src/functions/010_entries.sql:518*
+*Source: config/src/functions/010_entries.sql:528*
 
 ---
 
@@ -323,7 +323,7 @@ Activate the previous version
 SELECT config.rollback('prompts/support-bot');
 ```
 
-*Source: config/src/functions/010_entries.sql:252*
+*Source: config/src/functions/010_entries.sql:259*
 
 ---
 
@@ -347,7 +347,7 @@ SELECT * FROM config.search('{"enabled": true}');
 SELECT * FROM config.search('{"model": "claude-sonnet-4-20250514"}', 'prompts/');
 ```
 
-*Source: config/src/functions/010_entries.sql:558*
+*Source: config/src/functions/010_entries.sql:568*
 
 ---
 
@@ -373,7 +373,7 @@ SELECT config.set('flags/new-checkout', '{"enabled": true, "rollout": 0.5}');
 SELECT config.set('secrets/OPENAI_API_KEY', '{"encrypted": "aes256gcm:..."}');
 ```
 
-*Source: config/src/functions/010_entries.sql:1*
+*Source: config/src/functions/010_entries.sql:12*
 
 ---
 
@@ -400,7 +400,7 @@ SELECT * FROM config.set_default('plans/free', '{"tokens": 10000}');
 SELECT * FROM config.set_default('plans/free', '{"tokens": 5000}'); -- returns (1, false)
 ```
 
-*Source: config/src/functions/010_entries.sql:58*
+*Source: config/src/functions/010_entries.sql:71*
 
 ---
 
@@ -419,7 +419,7 @@ Delete a schema by its key pattern
 
 **Returns:** true if deleted, false if not found
 
-*Source: config/src/functions/060_schemas.sql:154*
+*Source: config/src/functions/060_schemas.sql:161*
 
 ---
 
@@ -445,7 +445,7 @@ Matching precedence:
 3. No match = returns NULL (no validation required)
 ```
 
-*Source: config/src/functions/060_schemas.sql:111*
+*Source: config/src/functions/060_schemas.sql:125*
 
 ---
 
@@ -463,7 +463,7 @@ List all schemas, optionally filtered by prefix
 
 **Returns:** Table of schemas
 
-*Source: config/src/functions/060_schemas.sql:177*
+*Source: config/src/functions/060_schemas.sql:185*
 
 ---
 
@@ -487,7 +487,7 @@ Delete old inactive versions, keeping N most recent per key
 SELECT config.cleanup_old_versions(5);
 ```
 
-*Source: config/src/functions/020_maintenance.sql:1*
+*Source: config/src/functions/020_maintenance.sql:8*
 
 ---
 
@@ -504,7 +504,7 @@ Get namespace statistics
 SELECT * FROM config.get_stats();
 ```
 
-*Source: config/src/functions/020_maintenance.sql:38*
+*Source: config/src/functions/020_maintenance.sql:44*
 
 ---
 
@@ -525,7 +525,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: config/src/functions/040_rls.sql:42*
+*Source: config/src/functions/040_rls.sql:50*
 
 ---
 
@@ -542,7 +542,7 @@ Clear tenant context (fail-closed: queries return no rows). Call before returnin
 SELECT config.clear_tenant();
 ```
 
-*Source: config/src/functions/040_rls.sql:18*
+*Source: config/src/functions/040_rls.sql:25*
 
 ---
 
@@ -565,6 +565,6 @@ SELECT * FROM config.entries;
 COMMIT;
 ```
 
-*Source: config/src/functions/040_rls.sql:1*
+*Source: config/src/functions/040_rls.sql:11*
 
 ---

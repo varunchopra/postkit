@@ -105,6 +105,11 @@ class TestBatchChecks:
 
         assert not authz.check_all(("user", "alice"), ["read", "write"], ("doc", "1"))
 
+    def test_check_all_ignores_duplicate_permissions(self, authz):
+        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+        assert authz.check_all(("user", "alice"), ["read", "read"], ("doc", "1"))
+
     def test_check_all_empty_list_returns_true(self, authz):
         # Vacuous truth: user has all zero required permissions
         assert authz.check_all(("user", "alice"), [], ("doc", "1"))

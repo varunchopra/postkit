@@ -164,6 +164,8 @@ CREATE OR REPLACE FUNCTION authz.check_all(
 ) RETURNS boolean AS $$
 BEGIN
     PERFORM authz._warn_namespace_mismatch(p_namespace);
+    -- Compare distinct counts on both sides so duplicate entries in
+    -- p_permissions do not inflate the requirement.
     RETURN COALESCE(array_length(p_permissions, 1), 0) = 0
         OR (
             SELECT COUNT(DISTINCT permission)
@@ -171,6 +173,6 @@ BEGIN
                 p_subject_type, p_subject_id, p_resource_type, p_resource_id, p_namespace
             )
             WHERE permission = ANY(p_permissions)
-        ) = array_length(p_permissions, 1);
+        ) = (SELECT COUNT(DISTINCT p) FROM unnest(p_permissions) AS p);
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

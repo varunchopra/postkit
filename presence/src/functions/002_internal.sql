@@ -133,30 +133,24 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = presence, pg_temp;
 -- @brief Send NOTIFY for a transition if configured and not flapping.
 -- @param p_config Config record (caller already fetched it)
 -- @param p_transition The transition to announce
--- Channel name: presence_{md5(namespace/kind)}. Hash the channel name to
--- fit PostgreSQL's 63-byte identifier limit: without hashing, long
--- namespace + kind names get silently truncated, causing unrelated kinds
--- to share a channel. md5 is non-cryptographic here; replace with pgcrypto
--- where md5 is prohibited. NOTIFY is transactional, so the wake-up is
--- delivered only if the emitting transaction commits; the payload is a
--- hint, never correctness. Suppressed while flapping (P5, see
--- 001_tables.sql).
+-- Channel derivation lives in presence.channel_name, the public LISTEN
+-- contract. NOTIFY is transactional, so the wake-up is delivered only if the
+-- emitting transaction commits; the payload is a hint, never correctness.
+-- Suppressed while flapping (P5, see 001_tables.sql).
 CREATE OR REPLACE FUNCTION presence._notify_if_enabled(
     p_config presence.config,
     p_transition presence.transitions
 )
 RETURNS void AS $$
-DECLARE
-    v_channel text;
 BEGIN
     IF p_config.notify AND NOT p_transition.flapping THEN
-        v_channel := 'presence_'
-            || md5(p_transition.namespace || '/' || p_transition.kind);
-        PERFORM pg_notify(v_channel, jsonb_build_object(
-            'entity_id', p_transition.entity_id,
-            'from', p_transition.from_status,
-            'to', p_transition.to_status
-        )::text);
+        PERFORM pg_notify(
+            presence.channel_name(p_transition.namespace, p_transition.kind),
+            jsonb_build_object(
+                'entity_id', p_transition.entity_id,
+                'from', p_transition.from_status,
+                'to', p_transition.to_status
+            )::text);
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = presence, pg_temp;

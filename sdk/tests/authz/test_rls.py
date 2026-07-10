@@ -10,6 +10,7 @@ import pytest
 from postkit.authz import AuthzClient, AuthzError
 
 from tests.authz.helpers import cleanup_namespace
+from tests.authz.test_canonical_equivalence import NFC, NFD
 from tests.helpers import connect_as_rls_user, ensure_rls_role
 
 
@@ -321,6 +322,44 @@ class TestAuthzRowLevelSecurity:
             "SELECT * FROM authz.tuples WHERE namespace = 'org-a' AND resource_id = 'bobs-share'"
         )
         assert len(superuser_cursor.fetchall()) == 1
+
+    def test_recipient_policies_match_across_normalization(
+        self, rls_connection, db_connection
+    ):
+        """Recipient policies match the viewer id by Unicode canonical equivalence.
+
+        A recipient whose viewer context uses a different normalization form
+        than the stored grant can still see the share and leave it; a missed
+        leave here would be a revoke that silently fails.
+        """
+        superuser_cursor = db_connection.cursor()
+        org_a = AuthzClient(superuser_cursor, "org-a")
+        org_a.grant("read", resource=("doc", "shared-canon"), subject=("user", NFD))
+
+        cursor = rls_connection.cursor()
+        org_b = AuthzClient(cursor, "org-b")
+        org_b.set_viewer(("user", NFC))
+
+        cursor.execute(
+            "SELECT subject_id FROM authz.tuples"
+            " WHERE namespace = 'org-a' AND resource_id = 'shared-canon'"
+        )
+        assert len(cursor.fetchall()) == 1
+
+        cursor.execute(
+            "DELETE FROM authz.tuples"
+            " WHERE namespace = 'org-a' AND resource_type = 'doc'"
+            " AND resource_id = 'shared-canon'"
+            " AND subject_type = 'user' AND subject_id = %s",
+            (NFC,),
+        )
+        rls_connection.commit()
+
+        superuser_cursor.execute(
+            "SELECT * FROM authz.tuples"
+            " WHERE namespace = 'org-a' AND resource_id = 'shared-canon'"
+        )
+        assert superuser_cursor.fetchall() == []
 
     def test_clear_viewer_blocks_recipient_visibility(
         self, rls_connection, db_connection

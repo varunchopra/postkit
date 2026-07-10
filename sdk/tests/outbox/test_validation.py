@@ -9,7 +9,12 @@ from postkit.outbox import (
     OutboxValidationError,
 )
 
-from tests.helpers import NAMESPACE_ERROR_CASES, VALID_NAMESPACES
+from tests.helpers import (
+    ACCEPTED_NAMES,
+    NAMESPACE_ERROR_CASES,
+    VALID_NAMESPACES,
+    name_error_cases,
+)
 
 
 @pytest.fixture
@@ -64,8 +69,6 @@ class TestTopicAndInputValidation:
             (None, OutboxErrorCode.VAL_TOPIC_NULL),
             ("", OutboxErrorCode.VAL_TOPIC_EMPTY),
             ("a" * 257, OutboxErrorCode.VAL_TOPIC_TOO_LONG),
-            ("has space", OutboxErrorCode.VAL_TOPIC_FORMAT),
-            ("1leading", OutboxErrorCode.VAL_TOPIC_FORMAT),
         ],
     )
     def test_bad_topics(self, outbox, db_connection, topic, code):
@@ -74,10 +77,41 @@ class TestTopicAndInputValidation:
                 outbox.emit(topic, "e.created", {})
         assert exc_info.value.error_code == code
 
-    def test_bad_consumer(self, outbox):
+
+class TestNameRules:
+    """Topics, consumers, and event types follow the shared name rules."""
+
+    @pytest.mark.parametrize(("topic", "code_name"), name_error_cases("VAL_TOPIC"))
+    def test_topic_violations(self, outbox, db_connection, topic, code_name):
         with pytest.raises(OutboxValidationError) as exc_info:
-            outbox.subscribe("orders", "has space", from_="start")
-        assert exc_info.value.error_code == OutboxErrorCode.VAL_CONSUMER_FORMAT
+            with db_connection.transaction():
+                outbox.emit(topic, "e.created", {})
+        assert exc_info.value.error_code == getattr(OutboxErrorCode, code_name)
+
+    @pytest.mark.parametrize(
+        ("consumer", "code_name"), name_error_cases("VAL_CONSUMER")
+    )
+    def test_consumer_violations(self, outbox, consumer, code_name):
+        with pytest.raises(OutboxValidationError) as exc_info:
+            outbox.subscribe("orders", consumer, from_="start")
+        assert exc_info.value.error_code == getattr(OutboxErrorCode, code_name)
+
+    @pytest.mark.parametrize(
+        ("event_type", "code_name"), name_error_cases("VAL_EVENT_TYPE")
+    )
+    def test_event_type_violations(
+        self, outbox, db_connection, event_type, code_name
+    ):
+        with pytest.raises(OutboxValidationError) as exc_info:
+            with db_connection.transaction():
+                outbox.emit("orders", event_type, {})
+        assert exc_info.value.error_code == getattr(OutboxErrorCode, code_name)
+
+    @pytest.mark.parametrize("name", ACCEPTED_NAMES)
+    def test_flexible_names_accepted(self, outbox, db_connection, name):
+        with db_connection.transaction():
+            assert outbox.emit(name, name, {}) > 0
+        assert outbox.subscribe(name, name, from_="start") is not None
 
     def test_negative_position(self, outbox):
         outbox.subscribe("orders", "billing", from_="start")

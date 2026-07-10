@@ -64,10 +64,14 @@ CREATE OR REPLACE FUNCTION authz._would_create_cycle(
 )
 RETURNS boolean AS $$
     WITH RECURSIVE ancestors AS (
-        -- Start from the proposed parent
+        -- Start from the proposed parent. PostgreSQL requires both halves of a
+        -- recursive UNION to use the same collation. The recursive half
+        -- reads the id columns, which carry authz.canonical; this first row
+        -- is built from parameters, which do not, so the collation is set
+        -- explicitly.
         SELECT
             p_parent_type AS group_type,
-            p_parent_id AS group_id,
+            p_parent_id COLLATE authz.canonical AS group_id,
             1 AS depth
 
         UNION
@@ -166,10 +170,14 @@ CREATE OR REPLACE FUNCTION authz._would_create_resource_cycle(
 )
 RETURNS boolean AS $$
     WITH RECURSIVE ancestors AS (
-        -- Start from the proposed parent
+        -- Start from the proposed parent. PostgreSQL requires both halves of a
+        -- recursive UNION to use the same collation. The recursive half
+        -- reads the id columns, which carry authz.canonical; this first row
+        -- is built from parameters, which do not, so the collation is set
+        -- explicitly.
         SELECT
             p_parent_type AS resource_type,
-            p_parent_id AS resource_id,
+            p_parent_id COLLATE authz.canonical AS resource_id,
             1 AS depth
 
         UNION

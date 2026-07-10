@@ -1,11 +1,11 @@
 """O2: an event exists iff the transaction that emitted it committed."""
 
-import hashlib
 import json
 
 import psycopg
 import pytest
 
+from tests.helpers import channel_name
 from tests.outbox.test_horizon import emit
 
 
@@ -24,13 +24,21 @@ class TestTransactionalEmit:
         conn.commit()
         assert test_helpers.event_ids("orders") == [event_id]
 
+    def test_distinct_pairs_get_distinct_channels(self, connect):
+        conn = connect()
+        row = conn.execute(
+            "SELECT outbox.channel_name('acme', 'billing/invoices'),"
+            "       outbox.channel_name('acme/billing', 'invoices')"
+        ).fetchone()
+        assert row[0] != row[1]
+
     def test_notify_only_on_commit(self, test_helpers, connect):
         """The wake-up must never precede the event: LISTEN before emitting,
         assert silence while the transaction is open, delivery after commit."""
         ns = test_helpers.namespace
-        channel = "outbox_" + hashlib.md5(f"{ns}/orders".encode()).hexdigest()
 
         listener = connect()
+        channel = channel_name(listener.cursor(), "outbox", ns, "orders")
         listener.execute(f'LISTEN "{channel}"')
         listener.commit()
 
@@ -47,9 +55,9 @@ class TestTransactionalEmit:
     def test_notify_disabled_by_config(self, test_helpers, connect):
         ns = test_helpers.namespace
         test_helpers.set_config(notify=False)
-        channel = "outbox_" + hashlib.md5(f"{ns}/orders".encode()).hexdigest()
 
         listener = connect()
+        channel = channel_name(listener.cursor(), "outbox", ns, "orders")
         listener.execute(f'LISTEN "{channel}"')
         listener.commit()
 

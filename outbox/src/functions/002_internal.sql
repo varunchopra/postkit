@@ -51,9 +51,10 @@ $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = outbox, pg_temp;
 -- @param p_namespace Tenant namespace for channel name
 -- @param p_topic Topic for channel
 -- @param p_event_id Id of the emitted event (hint payload only)
--- Channel name: outbox_{md5(namespace/topic)}. NOTIFY is transactional, so
--- the wake-up is delivered only if the emitting transaction commits; the
--- payload is a hint, never correctness. Consumers re-read via poll.
+-- Channel derivation lives in outbox.channel_name, the public LISTEN contract.
+-- NOTIFY is transactional, so the wake-up is delivered only if the emitting
+-- transaction commits; the payload is a hint, never correctness. Consumers
+-- re-read via poll.
 CREATE OR REPLACE FUNCTION outbox._notify_if_enabled(
     p_config outbox.config,
     p_namespace text,
@@ -61,16 +62,9 @@ CREATE OR REPLACE FUNCTION outbox._notify_if_enabled(
     p_event_id bigint
 )
 RETURNS void AS $$
-DECLARE
-    v_channel text;
 BEGIN
     IF p_config.notify THEN
-        -- Hash the channel name to fit PostgreSQL's 63-byte identifier limit.
-        -- Without hashing, long namespace + topic names get silently truncated,
-        -- causing unrelated topics to share a channel. md5 is non-cryptographic
-        -- here; replace with pgcrypto where md5 is prohibited.
-        v_channel := 'outbox_' || md5(p_namespace || '/' || p_topic);
-        PERFORM pg_notify(v_channel, jsonb_build_object(
+        PERFORM pg_notify(outbox.channel_name(p_namespace, p_topic), jsonb_build_object(
             'topic', p_topic,
             'id', p_event_id
         )::text);

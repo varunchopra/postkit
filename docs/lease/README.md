@@ -32,6 +32,7 @@
 | [`lease.get_stats`](sql.md#leaseget_stats) | Get namespace-wide lease statistics. |
 | [`lease.list`](sql.md#leaselist) | List leases in a namespace. |
 | [`lease.prune_events`](sql.md#leaseprune_events) | Delete old lease events. |
+| [`lease.channel_name`](sql.md#leasechannel_name) | NOTIFY channel for a lease; LISTEN on this to receive release wake-ups. |
 | [`lease.release`](sql.md#leaserelease) | Release a lease you hold. |
 | [`lease.renew`](sql.md#leaserenew) | Extend a live lease you hold. |
 | [`lease.verify`](sql.md#leaseverify) | Assert, inside your transaction, that you still hold a lease. |

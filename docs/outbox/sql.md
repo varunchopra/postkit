@@ -19,7 +19,7 @@ Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
 bypasses every policy and exercises none of the tenancy model.
 ```
 
-*Source: outbox/src/functions/080_rls.sql:98*
+*Source: outbox/src/functions/080_rls.sql:106*
 
 ---
 
@@ -31,7 +31,7 @@ outbox.clear_actor() -> void
 
 Clear actor context. Call before returning connections to pool.
 
-*Source: outbox/src/functions/080_rls.sql:52*
+*Source: outbox/src/functions/080_rls.sql:58*
 
 ---
 
@@ -43,7 +43,7 @@ outbox.clear_tenant() -> void
 
 Clear the tenant context. Call before returning connections to pool.
 
-*Source: outbox/src/functions/080_rls.sql:19*
+*Source: outbox/src/functions/080_rls.sql:25*
 
 ---
 
@@ -61,7 +61,7 @@ Set actor context, captured on emitted events.
 - `p_on_behalf_of`: Optional ID if acting on behalf of another user
 - `p_reason`: Optional reason for the action
 
-*Source: outbox/src/functions/080_rls.sql:30*
+*Source: outbox/src/functions/080_rls.sql:39*
 
 ---
 
@@ -76,7 +76,7 @@ Set the tenant context for RLS policies.
 **Parameters:**
 - `p_tenant_id`: Tenant/namespace identifier Must be called before any operations. Transaction-local scope.
 
-*Source: outbox/src/functions/080_rls.sql:1*
+*Source: outbox/src/functions/080_rls.sql:13*
 
 ---
 
@@ -104,7 +104,7 @@ Append an event inside the caller's transaction.
 SELECT outbox.emit('default', 'orders', 'order.created', '{"order_id": 42}');
 ```
 
-*Source: outbox/src/functions/010_emit.sql:1*
+*Source: outbox/src/functions/010_emit.sql:21*
 
 ---
 
@@ -128,7 +128,7 @@ Get namespace-wide outbox statistics.
 SELECT * FROM outbox.get_stats('default');
 ```
 
-*Source: outbox/src/functions/040_inspect.sql:65*
+*Source: outbox/src/functions/040_inspect.sql:76*
 
 ---
 
@@ -147,7 +147,7 @@ Transactions whose open writes pin the visibility horizon.
 SELECT * FROM outbox.horizon_blockers();
 ```
 
-*Source: outbox/src/functions/040_inspect.sql:123*
+*Source: outbox/src/functions/040_inspect.sql:154*
 
 ---
 
@@ -170,7 +170,7 @@ Per-consumer backlog for a topic (or all topics).
 SELECT * FROM outbox.lag('default', 'orders');
 ```
 
-*Source: outbox/src/functions/040_inspect.sql:1*
+*Source: outbox/src/functions/040_inspect.sql:20*
 
 ---
 
@@ -193,7 +193,7 @@ List consumer cursors in a namespace.
 SELECT * FROM outbox.list_consumers('default', 'orders');
 ```
 
-*Source: outbox/src/functions/040_inspect.sql:95*
+*Source: outbox/src/functions/040_inspect.sql:104*
 
 ---
 
@@ -220,7 +220,32 @@ Delete old events, keeping deletions a contiguous (xid, id) prefix.
 SELECT * FROM outbox.trim('30 days', 'default');
 ```
 
-*Source: outbox/src/functions/050_maintenance.sql:1*
+*Source: outbox/src/functions/050_maintenance.sql:44*
+
+---
+
+## Notifications
+
+### outbox.channel_name
+
+```sql
+outbox.channel_name(p_namespace: text, p_topic: text) -> text
+```
+
+NOTIFY channel for a topic; LISTEN on this to receive emit wake-ups.
+
+**Parameters:**
+- `p_namespace`: Tenant namespace
+- `p_topic`: Topic name
+
+**Returns:** Channel name The namespace and topic are joined with the control character U+001F before hashing. Names and namespaces can never contain control characters, so two different (namespace, topic) pairs can never produce the same channel. md5 keeps the channel inside PostgreSQL's 63-byte identifier limit and is not used for security; replace it with pgcrypto where md5 is prohibited.
+
+**Example:**
+```sql
+SELECT outbox.channel_name('default', 'orders');
+```
+
+*Source: outbox/src/functions/003_channel.sql:15*
 
 ---
 
@@ -248,7 +273,7 @@ Advance a consumer's cursor after processing.
 SELECT outbox.ack('default', 'orders', 'billing', '742', 42);
 ```
 
-*Source: outbox/src/functions/030_poll.sql:211*
+*Source: outbox/src/functions/030_poll.sql:230*
 
 ---
 
@@ -272,7 +297,7 @@ Whether a consumer has readable events past its cursor.
 SELECT outbox.has_pending('default', 'orders', 'billing');
 ```
 
-*Source: outbox/src/functions/030_poll.sql:82*
+*Source: outbox/src/functions/030_poll.sql:106*
 
 ---
 
@@ -297,7 +322,7 @@ Read the next events for a consumer. Does not advance the cursor.
 SELECT * FROM outbox.poll('default', 'orders', 'billing');
 ```
 
-*Source: outbox/src/functions/030_poll.sql:1*
+*Source: outbox/src/functions/030_poll.sql:26*
 
 ---
 
@@ -323,7 +348,7 @@ Read events from a position, for callers that keep their own cursor.
 SELECT * FROM outbox.read_from('default', 'orders', '0', 0, 50);
 ```
 
-*Source: outbox/src/functions/030_poll.sql:153*
+*Source: outbox/src/functions/030_poll.sql:171*
 
 ---
 
@@ -349,7 +374,7 @@ Move an existing consumer's cursor to a chosen position.
 SELECT outbox.replay('default', 'orders', 'billing', '0', 0);
 ```
 
-*Source: outbox/src/functions/020_subscribe.sql:75*
+*Source: outbox/src/functions/020_subscribe.sql:94*
 
 ---
 
@@ -374,6 +399,6 @@ Register a consumer on a topic and set its starting position.
 SELECT * FROM outbox.subscribe('default', 'orders', 'billing', 'start');
 ```
 
-*Source: outbox/src/functions/020_subscribe.sql:1*
+*Source: outbox/src/functions/020_subscribe.sql:24*
 
 ---

@@ -20,8 +20,10 @@ from postkit.authz import (
 )
 
 from tests.helpers import (
+    ACCEPTED_NAMES,
     NAMESPACE_ERROR_CASES,
     VALID_NAMESPACES,
+    name_error_cases,
 )
 
 
@@ -76,25 +78,22 @@ class TestBoundaryConditions:
             authz.grant("read", resource=("doc", "1"), subject=("user", ""))
         assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_EMPTY
 
-    def test_whitespace_only_rejected(self, authz):
-        """Whitespace-only identifiers are rejected."""
+    @pytest.mark.parametrize(("bad_id", "code_name"), name_error_cases("VAL_ID"))
+    def test_resource_id_violations(self, authz, bad_id, code_name):
         with pytest.raises(AuthzError) as exc_info:
-            authz.grant("read", resource=("doc", "   "), subject=("user", "alice"))
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_EMPTY
+            authz.grant("read", resource=("doc", bad_id), subject=("user", "alice"))
+        assert exc_info.value.error_code == getattr(AuthzErrorCode, code_name)
 
-    def test_control_chars_in_id_rejected(self, authz):
-        """IDs with control characters are rejected."""
+    @pytest.mark.parametrize(("bad_id", "code_name"), name_error_cases("VAL_ID"))
+    def test_subject_id_violations(self, authz, bad_id, code_name):
         with pytest.raises(AuthzError) as exc_info:
-            authz.grant(
-                "read", resource=("doc", "bad\x01id"), subject=("user", "alice")
-            )
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_INVALID_CHARS
+            authz.grant("read", resource=("doc", "1"), subject=("user", bad_id))
+        assert exc_info.value.error_code == getattr(AuthzErrorCode, code_name)
 
-    def test_leading_trailing_whitespace_rejected(self, authz):
-        """IDs with leading or trailing whitespace are rejected."""
-        with pytest.raises(AuthzError) as exc_info:
-            authz.grant("read", resource=("doc", " leading"), subject=("user", "alice"))
-        assert exc_info.value.error_code == AuthzErrorCode.VAL_ID_WHITESPACE
+    @pytest.mark.parametrize("name", ACCEPTED_NAMES)
+    def test_flexible_ids_accepted(self, authz, name):
+        authz.grant("read", resource=("doc", name), subject=("user", name))
+        assert authz.check(("user", name), "read", ("doc", name))
 
     def test_null_bytes_rejected_by_driver(self, authz):
         """Null bytes are rejected (by psycopg at protocol level, not our validation)."""

@@ -21,7 +21,7 @@ Each module is independent -- use what you need.
 
 ## Install
 
-Requires PostgreSQL 14+. Load the SQL from the latest release:
+Requires PostgreSQL 14+ built with ICU support (the default in official packages and images). Load the SQL from the latest release:
 
 ```bash
 curl -fsSL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql -v ON_ERROR_STOP=1 "$DATABASE_URL"

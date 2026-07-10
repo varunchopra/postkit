@@ -55,8 +55,14 @@ BEGIN
 
     -- Check for cycles when adding group-to-group membership
     IF p_relation = 'member' AND p_subject_type != 'user' THEN
-        -- Fast path: self-reference (no locks needed)
-        IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
+        -- A group cannot be made a member of itself; catch that here, before
+        -- any locks are taken. Both sides of this comparison are function
+        -- parameters, and parameters compare under the database's default
+        -- byte-wise collation rather than the id columns' collation, so
+        -- COLLATE is spelled out to treat two Unicode spellings of the same
+        -- id as the same group.
+        IF p_resource_type = p_subject_type
+           AND p_resource_id = p_subject_id COLLATE authz.canonical THEN
             RAISE EXCEPTION 'A group cannot be a member of itself'
                 USING ERRCODE = 'PK001',
                       HINT = 'postkit:authz:BIZ_SELF_MEMBERSHIP';
@@ -79,8 +85,14 @@ BEGIN
 
     -- Check for cycles when adding parent relation (resource hierarchy)
     IF p_relation = 'parent' THEN
-        -- Fast path: self-reference (no locks needed)
-        IF p_resource_type = p_subject_type AND p_resource_id = p_subject_id THEN
+        -- A resource cannot be its own parent; catch that here, before any
+        -- locks are taken. Both sides of this comparison are function
+        -- parameters, and parameters compare under the database's default
+        -- byte-wise collation rather than the id columns' collation, so
+        -- COLLATE is spelled out to treat two Unicode spellings of the same
+        -- id as the same resource.
+        IF p_resource_type = p_subject_type
+           AND p_resource_id = p_subject_id COLLATE authz.canonical THEN
             RAISE EXCEPTION 'A resource cannot be its own parent'
                 USING ERRCODE = 'PK001',
                       HINT = 'postkit:authz:BIZ_SELF_PARENT';

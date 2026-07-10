@@ -3,6 +3,19 @@
 -- =============================================================================
 CREATE SCHEMA IF NOT EXISTS authz;
 
+-- Unicode can spell the same visible text more than one way: "café" can be
+-- stored as four characters (an accented é) or as five (an e followed by a
+-- combining accent). Both look identical on screen but are different bytes,
+-- so a byte-wise comparison treats them as two different ids, and a grant
+-- could dodge its own revocation that way. This collation makes the two id
+-- columns compare by canonical equivalence, the Unicode standard's notion
+-- of "the same text": any two spellings of the same text are equal, while
+-- case, accents, and lookalike letters still count as different. Stored
+-- bytes are whatever the caller sent; only comparison changes. Everything
+-- that compares these columns (functions, row-level security policies, the
+-- unique index, SQL run by clients) inherits this behavior automatically.
+CREATE COLLATION authz.canonical (provider = icu, locale = 'und-u-ks-identic', deterministic = false);
+
 -- =============================================================================
 -- TUPLES TABLE
 -- =============================================================================
@@ -19,10 +32,10 @@ CREATE TABLE authz.tuples (
     id bigserial PRIMARY KEY,
     namespace text NOT NULL DEFAULT 'default',
     resource_type text NOT NULL,
-    resource_id text NOT NULL,
+    resource_id text COLLATE authz.canonical NOT NULL,
     relation text NOT NULL,
     subject_type text NOT NULL,
-    subject_id text NOT NULL,
+    subject_id text COLLATE authz.canonical NOT NULL,
     subject_relation text,
     created_at timestamptz NOT NULL DEFAULT now(),
     expires_at timestamptz DEFAULT NULL

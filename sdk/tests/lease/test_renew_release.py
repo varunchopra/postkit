@@ -1,8 +1,9 @@
 """Tests for lease.renew and lease.release via the SDK client."""
 
-import hashlib
 import json
 from datetime import timedelta
+
+from tests.helpers import channel_name
 
 
 class TestRenew:
@@ -51,14 +52,22 @@ class TestRelease:
         assert row["holder_id"] == "w2"
         assert row["fence_token"] == second["fence_token"]
 
+    def test_distinct_pairs_get_distinct_channels(self, connect):
+        conn = connect()
+        row = conn.execute(
+            "SELECT lease.channel_name('acme', 'eu/jobs'),"
+            "       lease.channel_name('acme/eu', 'jobs')"
+        ).fetchone()
+        assert row[0] != row[1]
+
     def test_notify_on_release(self, lease, test_helpers, connect):
-        """LISTEN on the computed md5 channel; the release NOTIFY arrives
-        after commit with the documented payload."""
+        """LISTEN on the lease.channel_name channel; the release NOTIFY
+        arrives after commit with the documented payload."""
         test_helpers.set_config(notify_on_release=True)
         got = lease.acquire("job", "w1")
 
-        channel = "lease_" + hashlib.md5(f"{lease.namespace}/job".encode()).hexdigest()
         listener = connect()
+        channel = channel_name(listener.cursor(), "lease", lease.namespace, "job")
         listener.execute(f'LISTEN "{channel}"')
         listener.commit()
 

@@ -42,23 +42,16 @@ $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = lease, pg_temp;
 -- @param p_config Config record (caller already fetched it)
 -- @param p_namespace Tenant namespace for channel name
 -- @param p_name Lease name for channel
--- Channel name: lease_{md5(namespace/name)}
+-- Channel derivation lives in lease.channel_name, the public LISTEN contract.
 CREATE OR REPLACE FUNCTION lease._notify_if_enabled(
     p_config lease.config,
     p_namespace text,
     p_name text
 )
 RETURNS void AS $$
-DECLARE
-    v_channel text;
 BEGIN
     IF p_config.notify_on_release THEN
-        -- Hash the channel name to fit PostgreSQL's 63-byte identifier limit.
-        -- Without hashing, long namespace + lease names get silently truncated,
-        -- causing unrelated leases to share a channel. md5 is non-cryptographic
-        -- here; replace with pgcrypto where md5 is prohibited.
-        v_channel := 'lease_' || md5(p_namespace || '/' || p_name);
-        PERFORM pg_notify(v_channel, jsonb_build_object(
+        PERFORM pg_notify(lease.channel_name(p_namespace, p_name), jsonb_build_object(
             'name', p_name,
             'event', 'released'
         )::text);
