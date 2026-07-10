@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/postkit)](https://pypi.org/project/postkit/)
 
-Postgres-native identity, configuration, metering, and job queues. Auth, permissions, versioned config, usage tracking, and scheduled tasks - no external services.
+Postgres-native auth, permissions, versioned config, usage metering, leases, transactional events, presence tracking, and job queues - no external services.
 
 ## Modules
 
