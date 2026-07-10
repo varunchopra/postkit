@@ -1,7 +1,7 @@
 [project]
 name = "postkit"
 version = "0.8.0"
-description = "PostgreSQL-native auth, permissions, versioned config, usage metering, leases, transactional events, presence tracking, and job queues"
+description = "Postgres-native application infrastructure: identity, configuration, metering, coordination, and messaging in one SQL install"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"

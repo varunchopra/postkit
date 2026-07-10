@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/postkit)](https://pypi.org/project/postkit/)
 
-Postgres-native auth, permissions, versioned config, usage metering, leases, transactional events, presence tracking, and job queues - no external services.
+Postgres-native application infrastructure: one SQL install replaces the separate services you would otherwise run for identity, configuration, metering, coordination, and messaging.
 
 ## Modules
 
