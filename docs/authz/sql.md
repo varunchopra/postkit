@@ -217,37 +217,41 @@ Delete expired grants to reclaim storage (optional, run via cron)
 SELECT * FROM authz.cleanup_expired('default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:147*
+*Source: authz/src/functions/031_expiration.sql:158*
 
 ---
 
 ### authz.clear_expiration
 
 ```sql
-authz.clear_expiration(p_resource_type: text, p_resource_id: text, p_relation: text, p_subject_type: text, p_subject_id: text, p_namespace: text) -> bool
+authz.clear_expiration(p_resource_type: text, p_resource_id: text, p_relation: text, p_subject_type: text, p_subject_id: text, p_namespace: text, p_subject_relation: text) -> bool
 ```
 
 Make a grant permanent (remove expiration)
+
+**Parameters:**
+- `p_subject_relation`: Relation on the subject for userset grants (NULL matches direct grants)
 
 **Example:**
 ```sql
 SELECT authz.clear_expiration('repo', 'api', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:43*
+*Source: authz/src/functions/031_expiration.sql:49*
 
 ---
 
 ### authz.extend_expiration
 
 ```sql
-authz.extend_expiration(p_resource_type: text, p_resource_id: text, p_relation: text, p_subject_type: text, p_subject_id: text, p_extension: interval, p_namespace: text) -> timestamptz
+authz.extend_expiration(p_resource_type: text, p_resource_id: text, p_relation: text, p_subject_type: text, p_subject_id: text, p_extension: interval, p_namespace: text, p_subject_relation: text) -> timestamptz
 ```
 
 Extend an existing grant's expiration by an interval
 
 **Parameters:**
 - `p_extension`: Time to add (e.g., '30 days')
+- `p_subject_relation`: Relation on the subject for userset grants (NULL matches direct grants)
 
 **Returns:** New expiration timestamp
 
@@ -258,7 +262,7 @@ SELECT authz.extend_expiration('repo', 'api', 'read', 'user', 'alice',
 interval '30 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:60*
+*Source: authz/src/functions/031_expiration.sql:67*
 
 ---
 
@@ -281,20 +285,21 @@ Find grants that will expire soon (for renewal reminders)
 SELECT * FROM authz.list_expiring(interval '7 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:108*
+*Source: authz/src/functions/031_expiration.sql:119*
 
 ---
 
 ### authz.set_expiration
 
 ```sql
-authz.set_expiration(p_resource_type: text, p_resource_id: text, p_relation: text, p_subject_type: text, p_subject_id: text, p_expires_at: timestamptz, p_namespace: text) -> bool
+authz.set_expiration(p_resource_type: text, p_resource_id: text, p_relation: text, p_subject_type: text, p_subject_id: text, p_expires_at: timestamptz, p_namespace: text, p_subject_relation: text) -> bool
 ```
 
 Add or update expiration on an existing grant
 
 **Parameters:**
 - `p_expires_at`: When the permission should auto-revoke (NULL to make permanent)
+- `p_subject_relation`: Relation on the subject for userset grants (NULL matches direct grants)
 
 **Returns:** True if grant was found and updated
 
@@ -305,7 +310,7 @@ SELECT authz.set_expiration('repo', 'api', 'read', 'user', 'contractor-bob',
 now() + interval '90 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:10*
+*Source: authz/src/functions/031_expiration.sql:11*
 
 ---
 

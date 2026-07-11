@@ -3,11 +3,12 @@
 -- @function authz.set_expiration
 -- @brief Add or update expiration on an existing grant
 -- @param p_expires_at When the permission should auto-revoke (NULL to make permanent)
+-- @param p_subject_relation Relation on the subject for userset grants (NULL matches direct grants)
 -- @returns True if grant was found and updated
 -- @example -- Contractor access expires in 90 days
 -- @example SELECT authz.set_expiration('repo', 'api', 'read', 'user', 'contractor-bob',
 -- @example   now() + interval '90 days', 'default');
-CREATE OR REPLACE FUNCTION authz.set_expiration (p_resource_type text, p_resource_id text, p_relation text, p_subject_type text, p_subject_id text, p_expires_at timestamptz, p_namespace text DEFAULT 'default')
+CREATE OR REPLACE FUNCTION authz.set_expiration (p_resource_type text, p_resource_id text, p_relation text, p_subject_type text, p_subject_id text, p_expires_at timestamptz, p_namespace text DEFAULT 'default', p_subject_relation text DEFAULT NULL)
     RETURNS boolean
     AS $$
 DECLARE
@@ -19,6 +20,9 @@ BEGIN
             USING ERRCODE = 'check_violation',
                   HINT = 'postkit:authz:VAL_EXPIRATION_FUTURE';
     END IF;
+    IF p_subject_relation IS NOT NULL THEN
+        PERFORM authz._validate_identifier(p_subject_relation, 'subject_relation');
+    END IF;
     UPDATE
         authz.tuples
     SET
@@ -29,7 +33,8 @@ BEGIN
         AND resource_id = p_resource_id
         AND relation = p_relation
         AND subject_type = p_subject_type
-        AND subject_id = p_subject_id;
+        AND subject_id = p_subject_id
+        AND COALESCE(subject_relation, '') = COALESCE(p_subject_relation, '');
     GET DIAGNOSTICS v_updated = ROW_COUNT;
     RETURN v_updated > 0;
 END;
@@ -39,12 +44,13 @@ SET search_path = authz, pg_temp;
 
 -- @function authz.clear_expiration
 -- @brief Make a grant permanent (remove expiration)
+-- @param p_subject_relation Relation on the subject for userset grants (NULL matches direct grants)
 -- @example SELECT authz.clear_expiration('repo', 'api', 'read', 'user', 'alice', 'default');
-CREATE OR REPLACE FUNCTION authz.clear_expiration (p_resource_type text, p_resource_id text, p_relation text, p_subject_type text, p_subject_id text, p_namespace text DEFAULT 'default')
+CREATE OR REPLACE FUNCTION authz.clear_expiration (p_resource_type text, p_resource_id text, p_relation text, p_subject_type text, p_subject_id text, p_namespace text DEFAULT 'default', p_subject_relation text DEFAULT NULL)
     RETURNS boolean
     AS $$
 BEGIN
-    RETURN authz.set_expiration (p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, NULL, p_namespace);
+    RETURN authz.set_expiration (p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, NULL, p_namespace, p_subject_relation);
 END;
 $$
 LANGUAGE plpgsql SECURITY INVOKER
@@ -53,17 +59,21 @@ SET search_path = authz, pg_temp;
 -- @function authz.extend_expiration
 -- @brief Extend an existing grant's expiration by an interval
 -- @param p_extension Time to add (e.g., '30 days')
+-- @param p_subject_relation Relation on the subject for userset grants (NULL matches direct grants)
 -- @returns New expiration timestamp
 -- @example -- Give alice another 30 days
 -- @example SELECT authz.extend_expiration('repo', 'api', 'read', 'user', 'alice',
 -- @example   interval '30 days', 'default');
-CREATE OR REPLACE FUNCTION authz.extend_expiration (p_resource_type text, p_resource_id text, p_relation text, p_subject_type text, p_subject_id text, p_extension interval, p_namespace text DEFAULT 'default')
+CREATE OR REPLACE FUNCTION authz.extend_expiration (p_resource_type text, p_resource_id text, p_relation text, p_subject_type text, p_subject_id text, p_extension interval, p_namespace text DEFAULT 'default', p_subject_relation text DEFAULT NULL)
     RETURNS timestamptz
     AS $$
 DECLARE
     v_current_expiration timestamptz;
     v_new_expiration timestamptz;
 BEGIN
+    IF p_subject_relation IS NOT NULL THEN
+        PERFORM authz._validate_identifier(p_subject_relation, 'subject_relation');
+    END IF;
     SELECT
         expires_at INTO v_current_expiration
     FROM
@@ -74,7 +84,8 @@ BEGIN
         AND resource_id = p_resource_id
         AND relation = p_relation
         AND subject_type = p_subject_type
-        AND subject_id = p_subject_id;
+        AND subject_id = p_subject_id
+        AND COALESCE(subject_relation, '') = COALESCE(p_subject_relation, '');
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Grant not found'
             USING ERRCODE = 'no_data_found',
@@ -92,7 +103,7 @@ BEGIN
                 v_new_expiration := v_current_expiration + p_extension;
             END IF;
             PERFORM
-                authz.set_expiration (p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, v_new_expiration, p_namespace);
+                authz.set_expiration (p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, v_new_expiration, p_namespace, p_subject_relation);
             RETURN v_new_expiration;
 END;
 $$

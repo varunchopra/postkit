@@ -343,6 +343,71 @@ class TestSetExpiration:
         expiring = authz.list_expiring(within=timedelta(days=30))
         assert len(expiring) == 0
 
+    def test_clear_expiration_matches_subject_relation(self, authz):
+        """Clearing expiration on a direct grant leaves a userset grant that
+        differs only by subject_relation untouched."""
+        direct_expires = datetime.now(timezone.utc) + timedelta(days=7)
+        userset_expires = datetime.now(timezone.utc) + timedelta(days=14)
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            expires_at=direct_expires,
+        )
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            subject_relation="member",
+            expires_at=userset_expires,
+        )
+
+        result = authz.clear_expiration(
+            "read", resource=("doc", "1"), subject=("team", "eng")
+        )
+
+        assert result is True
+        expiring = authz.list_expiring(within=timedelta(days=30))
+        assert len(expiring) == 1
+        assert expiring[0]["subject_relation"] == "member"
+        assert abs((expiring[0]["expires_at"] - userset_expires).total_seconds()) < 1
+
+    def test_extend_expiration_matches_subject_relation(self, authz):
+        """Extending a userset grant's expiration leaves a direct grant that
+        differs only by subject_relation untouched."""
+        direct_expires = datetime.now(timezone.utc) + timedelta(days=7)
+        userset_expires = datetime.now(timezone.utc) + timedelta(days=14)
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            expires_at=direct_expires,
+        )
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            subject_relation="member",
+            expires_at=userset_expires,
+        )
+
+        new_expires = authz.extend_expiration(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            subject_relation="member",
+            extension=timedelta(days=30),
+        )
+
+        expected = userset_expires + timedelta(days=30)
+        assert abs((new_expires - expected).total_seconds()) < 1
+        by_relation = {
+            row["subject_relation"]: row["expires_at"]
+            for row in authz.list_expiring(within=timedelta(days=60))
+        }
+        assert abs((by_relation[None] - direct_expires).total_seconds()) < 1
+        assert abs((by_relation["member"] - expected).total_seconds()) < 1
+
     def test_extend_expiration(self, authz):
         """Can extend an existing expiration."""
         original = datetime.now(timezone.utc) + timedelta(days=7)

@@ -1194,6 +1194,7 @@ class AuthzClient(BaseClient):
         *,
         resource: Entity,
         subject: Entity,
+        subject_relation: str | None = None,
         expires_at: datetime | None,
     ) -> bool:
         """
@@ -1203,6 +1204,8 @@ class AuthzClient(BaseClient):
             permission: The permission/relation
             resource: The resource as (type, id) tuple
             subject: The subject as (type, id) tuple
+            subject_relation: Relation on the subject for userset grants
+                (None matches direct grants)
             expires_at: New expiration time (None to make permanent)
 
         Returns:
@@ -1216,7 +1219,7 @@ class AuthzClient(BaseClient):
         subject_type, subject_id = subject
         return bool(
             self._fetch_val(
-                "SELECT authz.set_expiration(%s, %s, %s, %s, %s, %s, %s)",
+                "SELECT authz.set_expiration(%s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
                     resource_id,
@@ -1225,6 +1228,7 @@ class AuthzClient(BaseClient):
                     subject_id,
                     expires_at,
                     self.namespace,
+                    subject_relation,
                 ),
                 write=True,
             )
@@ -1236,6 +1240,7 @@ class AuthzClient(BaseClient):
         *,
         resource: Entity,
         subject: Entity,
+        subject_relation: str | None = None,
     ) -> bool:
         """
         Remove expiration from a grant (make it permanent).
@@ -1244,6 +1249,8 @@ class AuthzClient(BaseClient):
             permission: The permission/relation
             resource: The resource as (type, id) tuple
             subject: The subject as (type, id) tuple
+            subject_relation: Relation on the subject for userset grants
+                (None matches direct grants)
 
         Returns:
             True if grant was found and updated
@@ -1255,7 +1262,7 @@ class AuthzClient(BaseClient):
         subject_type, subject_id = subject
         return bool(
             self._fetch_val(
-                "SELECT authz.clear_expiration(%s, %s, %s, %s, %s, %s)",
+                "SELECT authz.clear_expiration(%s, %s, %s, %s, %s, %s, %s)",
                 (
                     resource_type,
                     resource_id,
@@ -1263,6 +1270,7 @@ class AuthzClient(BaseClient):
                     subject_type,
                     subject_id,
                     self.namespace,
+                    subject_relation,
                 ),
                 write=True,
             )
@@ -1274,6 +1282,7 @@ class AuthzClient(BaseClient):
         *,
         resource: Entity,
         subject: Entity,
+        subject_relation: str | None = None,
         extension: timedelta,
     ) -> datetime:
         """
@@ -1283,6 +1292,8 @@ class AuthzClient(BaseClient):
             permission: The permission/relation
             resource: The resource as (type, id) tuple
             subject: The subject as (type, id) tuple
+            subject_relation: Relation on the subject for userset grants
+                (None matches direct grants)
             extension: Time to add to current expiration
 
         Returns:
@@ -1296,7 +1307,7 @@ class AuthzClient(BaseClient):
         resource_type, resource_id = resource
         subject_type, subject_id = subject
         result = self._fetch_val(
-            "SELECT authz.extend_expiration(%s, %s, %s, %s, %s, %s, %s)",
+            "SELECT authz.extend_expiration(%s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 resource_type,
                 resource_id,
@@ -1305,6 +1316,7 @@ class AuthzClient(BaseClient):
                 subject_id,
                 extension,
                 self.namespace,
+                subject_relation,
             ),
             write=True,
         )

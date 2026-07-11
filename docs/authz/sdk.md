@@ -214,7 +214,7 @@ Clear actor context.
 ### clear_expiration
 
 ```python
-clear_expiration(permission: str, *, resource: Entity, subject: Entity) -> bool
+clear_expiration(permission: str, *, resource: Entity, subject: Entity, subject_relation: str | None = None) -> bool
 ```
 
 Remove expiration from a grant (make it permanent).
@@ -223,6 +223,7 @@ Remove expiration from a grant (make it permanent).
 - `permission`: The permission/relation
 - `resource`: The resource as (type, id) tuple
 - `subject`: The subject as (type, id) tuple
+- `subject_relation`: Relation on the subject for userset grants (None matches direct grants)
 
 **Returns:** True if grant was found and updated
 
@@ -231,7 +232,7 @@ Remove expiration from a grant (make it permanent).
 authz.clear_expiration("read", resource=("doc", "1"), subject=("user", "alice"))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1233*
+*Source: sdk/src/postkit/authz/client.py:1237*
 
 ---
 
@@ -318,7 +319,7 @@ paths = authz.explain(("user", "alice"), "read", ("repo", "api"))
 ### extend_expiration
 
 ```python
-extend_expiration(permission: str, *, resource: Entity, subject: Entity, extension: timedelta) -> datetime
+extend_expiration(permission: str, *, resource: Entity, subject: Entity, subject_relation: str | None = None, extension: timedelta) -> datetime
 ```
 
 Extend an existing expiration by a given interval.
@@ -327,6 +328,7 @@ Extend an existing expiration by a given interval.
 - `permission`: The permission/relation
 - `resource`: The resource as (type, id) tuple
 - `subject`: The subject as (type, id) tuple
+- `subject_relation`: Relation on the subject for userset grants (None matches direct grants)
 - `extension`: Time to add to current expiration
 
 **Returns:** The new expiration time
@@ -338,7 +340,7 @@ new_expires = authz.extend_expiration("read", resource=("doc", "1"),
                                       extension=timedelta(days=30))
 ```
 
-*Source: sdk/src/postkit/authz/client.py:1271*
+*Source: sdk/src/postkit/authz/client.py:1279*
 
 ---
 
@@ -717,7 +719,7 @@ client.set_actor(actor_id="user:alice")  # Add actor after auth
 ### set_expiration
 
 ```python
-set_expiration(permission: str, *, resource: Entity, subject: Entity, expires_at: datetime | None) -> bool
+set_expiration(permission: str, *, resource: Entity, subject: Entity, subject_relation: str | None = None, expires_at: datetime | None) -> bool
 ```
 
 Set or update expiration on an existing grant.
@@ -726,6 +728,7 @@ Set or update expiration on an existing grant.
 - `permission`: The permission/relation
 - `resource`: The resource as (type, id) tuple
 - `subject`: The subject as (type, id) tuple
+- `subject_relation`: Relation on the subject for userset grants (None matches direct grants)
 - `expires_at`: New expiration time (None to make permanent)
 
 **Returns:** True if grant was found and updated
