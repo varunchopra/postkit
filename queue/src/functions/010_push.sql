@@ -37,6 +37,7 @@ BEGIN
     PERFORM queue._validate_namespace(p_namespace);
     PERFORM queue._validate_queue_name(p_queue);
     PERFORM queue._validate_priority(p_priority);
+    PERFORM queue._validate_max_attempts(p_max_attempts);
 
     IF p_payload IS NULL THEN
         RAISE EXCEPTION 'Payload cannot be null'
@@ -140,6 +141,7 @@ BEGIN
     PERFORM queue._validate_namespace(p_namespace);
     PERFORM queue._validate_queue_name(p_queue);
     PERFORM queue._validate_priority(p_priority);
+    PERFORM queue._validate_max_attempts(p_max_attempts);
 
     IF p_payloads IS NULL OR array_length(p_payloads, 1) IS NULL THEN
         RETURN ARRAY[]::bigint[];

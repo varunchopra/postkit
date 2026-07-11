@@ -37,6 +37,7 @@ BEGIN
     PERFORM queue._validate_schedule_name(p_name);
     PERFORM queue._validate_queue_name(p_queue);
     PERFORM queue._validate_priority(p_priority);
+    PERFORM queue._validate_max_attempts(p_max_attempts);
 
     IF p_payload IS NULL THEN
         RAISE EXCEPTION 'Payload cannot be null'

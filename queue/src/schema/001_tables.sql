@@ -218,7 +218,11 @@ CREATE TABLE queue.config (
     default_visibility_timeout interval NOT NULL DEFAULT '5 minutes',
     default_max_attempts int NOT NULL DEFAULT 3,
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+
+    -- Same range _validate_max_attempts enforces on push/create_schedule
+    -- arguments; this table is written directly, so the bound lives here too.
+    CONSTRAINT config_max_attempts_range CHECK (default_max_attempts BETWEEN 1 AND 30)
 );
 
 -- Global defaults (read by all, write-protected via RLS)

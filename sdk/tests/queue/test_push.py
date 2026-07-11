@@ -186,6 +186,24 @@ class TestPushValidation:
             queue.push("test", {"data": 1}, priority=-2000)
         assert exc_info.value.error_code == QueueErrorCode.VAL_PRIORITY_RANGE
 
+    def test_push_rejects_max_attempts_out_of_range(self, queue):
+        """max_attempts outside 1 to 30 raises validation error."""
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.push("test", {"data": 1}, max_attempts=31)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_MAX_ATTEMPTS_RANGE
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.push("test", {"data": 1}, max_attempts=0)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_MAX_ATTEMPTS_RANGE
+
+    def test_push_batch_rejects_max_attempts_out_of_range(self, queue):
+        """max_attempts outside 1 to 30 raises validation error."""
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.push_batch("test", [{"data": 1}], max_attempts=31)
+        assert exc_info.value.error_code == QueueErrorCode.VAL_MAX_ATTEMPTS_RANGE
+
     def test_push_batch_rejects_null_payload_element(self, raw_cursor):
         """Batch push with a NULL array element raises null_value_not_allowed."""
         cursor, namespace = raw_cursor

@@ -209,6 +209,32 @@ class TestNack:
         delta = (scheduled_at - db_now).total_seconds()
         assert delta < 5, f"Expected ~1s backoff, got {delta:.1f}s"
 
+    def test_nack_at_attempt_ceiling_caps_backoff(self, raw_cursor):
+        """A job at the highest retryable attempt returns to pending with the
+        exponential delay capped at the one-hour default, not an error."""
+        cursor, namespace = raw_cursor
+
+        q = QueueClient(cursor, namespace)
+        q.push("tasks", {"task": 1}, max_attempts=30)
+        job = q.pull("tasks")
+
+        # Force the attempt counter to the ceiling.
+        cursor.execute(
+            "UPDATE queue.jobs SET attempts = 29 WHERE namespace = %s AND id = %s",
+            (namespace, job["id"]),
+        )
+
+        assert q.nack(job["id"]) is True
+
+        cursor.execute(
+            "SELECT status, scheduled_at - now() FROM queue.jobs "
+            "WHERE namespace = %s AND id = %s",
+            (namespace, job["id"]),
+        )
+        status, delay = cursor.fetchone()
+        assert status == "pending"
+        assert timedelta(minutes=59) <= delay <= timedelta(hours=1)
+
     def test_nack_max_attempts_moves_to_dlq(self, queue):
         """nack moves job to DLQ when max_attempts exceeded."""
         queue.push("tasks", {"task": 1}, max_attempts=1)

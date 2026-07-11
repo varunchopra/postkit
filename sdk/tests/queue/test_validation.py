@@ -1,5 +1,6 @@
 """Namespace and queue name validation tests for queue module."""
 
+import psycopg
 import pytest
 from postkit.errors import QueueErrorCode
 from postkit.queue import QueueError, QueueValidationError
@@ -10,6 +11,21 @@ from tests.helpers import (
     VALID_NAMESPACES,
     name_error_cases,
 )
+
+
+class TestConfigValidation:
+    """queue.config.default_max_attempts is bound to the same 1 to 30 range
+    as push's max_attempts."""
+
+    def test_config_rejects_default_max_attempts_out_of_range(self, raw_cursor):
+        cursor, namespace = raw_cursor
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            cursor.execute(
+                "INSERT INTO queue.config (namespace, default_max_attempts) "
+                "VALUES (%s, 100)",
+                (namespace,),
+            )
 
 
 class TestNamespaceValidation:

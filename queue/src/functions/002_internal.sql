@@ -74,16 +74,22 @@ CREATE OR REPLACE FUNCTION queue._calculate_backoff(
 )
 RETURNS interval AS $$
 DECLARE
+    v_exponent int;
     v_delay interval;
-    v_multiplier numeric;
 BEGIN
-    -- 2^(attempt-1): 1, 2, 4, 8, 16, ...
-    v_multiplier := power(2, GREATEST(p_attempt - 1, 0));
+    v_exponent := GREATEST(p_attempt - 1, 0);
 
-    -- Calculate delay
-    v_delay := p_base_delay * v_multiplier;
+    -- Saturate in numeric seconds before multiplying: interval arithmetic
+    -- overflows at high attempts long before the cap below could apply.
+    IF extract(epoch FROM p_base_delay) > 0
+        AND (v_exponent >= 64
+            OR extract(epoch FROM p_base_delay) * power(2::numeric, v_exponent)
+                >= extract(epoch FROM p_max_delay)) THEN
+        RETURN p_max_delay;
+    END IF;
 
-    -- Cap at max delay
+    v_delay := p_base_delay * power(2, v_exponent);
+
     IF v_delay > p_max_delay THEN
         v_delay := p_max_delay;
     END IF;

@@ -34,6 +34,18 @@ class TestCreateSchedule:
         assert schedule["max_attempts"] == 5
         assert schedule["tags"] == ["reports", "daily"]
 
+    def test_create_rejects_max_attempts_out_of_range(self, queue):
+        """max_attempts outside 1 to 30 raises validation error."""
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.create_schedule(
+                "bad_attempts",
+                "tasks",
+                {"action": "noop"},
+                every_interval=timedelta(hours=1),
+                max_attempts=31,
+            )
+        assert exc_info.value.error_code == QueueErrorCode.VAL_MAX_ATTEMPTS_RANGE
+
     def test_create_inactive_schedule(self, queue):
         """Inactive schedule has no next_run_at."""
         queue.create_schedule(

@@ -128,6 +128,27 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
 
 
+-- @function queue._validate_max_attempts
+-- @brief Validate max_attempts is within allowed range.
+-- @param p_value Max attempts to validate
+-- Range: 1 to 30, far above any real retry policy.
+CREATE OR REPLACE FUNCTION queue._validate_max_attempts(p_value int)
+RETURNS void AS $$
+BEGIN
+    IF p_value IS NULL THEN
+        -- NULL is OK, will use default
+        RETURN;
+    END IF;
+
+    IF p_value < 1 OR p_value > 30 THEN
+        RAISE EXCEPTION 'max_attempts must be between 1 and 30 (got: %)', p_value
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_MAX_ATTEMPTS_RANGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
 -- @function queue._validate_positive_int
 -- @brief Validate that an integer is positive.
 -- @param p_value Value to validate

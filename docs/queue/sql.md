@@ -425,7 +425,7 @@ Push multiple jobs onto a queue efficiently.
 
 **Returns:** Array of job IDs
 
-*Source: queue/src/functions/010_push.sql:124*
+*Source: queue/src/functions/010_push.sql:125*
 
 ---
 
@@ -472,7 +472,7 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, false if not found
 
-*Source: queue/src/functions/050_schedules.sql:201*
+*Source: queue/src/functions/050_schedules.sql:202*
 
 ---
 
@@ -490,7 +490,7 @@ Get a schedule by name.
 
 **Returns:** Schedule row, or empty if not found
 
-*Source: queue/src/functions/050_schedules.sql:108*
+*Source: queue/src/functions/050_schedules.sql:109*
 
 ---
 
@@ -511,7 +511,7 @@ List schedules with optional filters and cursor pagination.
 
 **Returns:** Schedule rows ordered by name
 
-*Source: queue/src/functions/050_schedules.sql:156*
+*Source: queue/src/functions/050_schedules.sql:157*
 
 ---
 
@@ -529,7 +529,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, false if already paused or not found
 
-*Source: queue/src/functions/050_schedules.sql:228*
+*Source: queue/src/functions/050_schedules.sql:229*
 
 ---
 
@@ -547,7 +547,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, false if already active or not found
 
-*Source: queue/src/functions/050_schedules.sql:259*
+*Source: queue/src/functions/050_schedules.sql:260*
 
 ---
 
