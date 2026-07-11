@@ -39,6 +39,12 @@ BEGIN
         v_name, v_start, v_end
     );
 
+    -- RLS does not propagate to partitions: left bare, a query naming this
+    -- partition directly would bypass tenant isolation. Forced RLS with no
+    -- policy denies direct access; parent-routed queries are unaffected.
+    EXECUTE format('ALTER TABLE meter.%I ENABLE ROW LEVEL SECURITY', v_name);
+    EXECUTE format('ALTER TABLE meter.%I FORCE ROW LEVEL SECURITY', v_name);
+
     RETURN v_name;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;

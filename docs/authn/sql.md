@@ -196,7 +196,7 @@ Delete old audit partitions (default: keep 7 years for compliance)
 SELECT * FROM authn.drop_audit_partitions(84);
 ```
 
-*Source: authn/src/functions/070_audit.sql:155*
+*Source: authn/src/functions/070_audit.sql:161*
 
 ---
 
@@ -218,7 +218,7 @@ Create partitions for upcoming months (run monthly via cron)
 SELECT * FROM authn.ensure_audit_partitions(3);
 ```
 
-*Source: authn/src/functions/070_audit.sql:122*
+*Source: authn/src/functions/070_audit.sql:128*
 
 ---
 

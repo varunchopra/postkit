@@ -47,7 +47,7 @@ Delete old audit partitions
 
 **Returns:** Names of dropped partitions
 
-*Source: config/src/functions/030_audit.sql:130*
+*Source: config/src/functions/030_audit.sql:136*
 
 ---
 
@@ -64,7 +64,7 @@ Create partitions for upcoming months
 
 **Returns:** Names of created partitions
 
-*Source: config/src/functions/030_audit.sql:97*
+*Source: config/src/functions/030_audit.sql:103*
 
 ---
 

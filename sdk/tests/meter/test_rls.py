@@ -8,7 +8,7 @@ tenant context recovery after commits and in autocommit mode.
 import psycopg
 import pytest
 from postkit.meter import MeterClient
-from tests.helpers import connect_as_rls_user, ensure_rls_role
+from tests.helpers import cleanup_partition, connect_as_rls_user, ensure_rls_role
 from tests.meter.helpers import cleanup_namespace
 
 
@@ -177,3 +177,42 @@ class TestMeterRowLevelSecurity:
         MeterClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM meter.reservations WHERE namespace = 'rls_a'")
         assert cursor.fetchall() == []
+
+    def test_ledger_partition_named_directly_returns_nothing(
+        self, rls_connection, db_connection
+    ):
+        """Querying a partition by name must not expose rows the parent's
+        tenant-isolation policy would hide; parent-routed reads stay
+        tenant-scoped."""
+        su = db_connection.cursor()
+        su.execute("SELECT meter.create_partition(2030, 1)")
+        partition = su.fetchone()[0]
+        try:
+            for ns in ("rls_a", "rls_b"):
+                su.execute(
+                    """
+                    INSERT INTO meter.ledger
+                        (namespace, event_type, unit, entry_type, amount,
+                         balance_after, event_time)
+                    VALUES (%s, 'api_call', 'count', 'allocation', 100, 100,
+                            '2030-01-15')
+                    """,
+                    (ns,),
+                )
+            # GRANT ... ON ALL TABLES predates the partition; re-grant so the
+            # by-name read is blocked by RLS, not by missing privileges.
+            ensure_rls_role(db_connection, "meter")
+
+            cursor = rls_connection.cursor()
+            MeterClient(cursor, "rls_a")
+
+            cursor.execute(
+                "SELECT namespace FROM meter.ledger WHERE event_time >= '2030-01-01'"
+            )
+            assert [row[0] for row in cursor.fetchall()] == ["rls_a"]
+
+            cursor.execute(f"SELECT * FROM meter.{partition}")
+            assert cursor.fetchall() == []
+        finally:
+            rls_connection.rollback()
+            cleanup_partition(su, "meter", partition)

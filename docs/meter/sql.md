@@ -45,7 +45,7 @@ Drop partitions older than retention period
 SELECT * FROM meter.drop_old_partitions(12);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:83*
+*Source: meter/src/functions/040_maintenance.sql:89*
 
 ---
 
@@ -67,7 +67,7 @@ Create partitions for upcoming months
 SELECT * FROM meter.ensure_partitions(6);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:52*
+*Source: meter/src/functions/040_maintenance.sql:58*
 
 ---
 
@@ -89,7 +89,7 @@ Get namespace statistics
 SELECT * FROM meter.get_stats();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:208*
+*Source: meter/src/functions/040_maintenance.sql:214*
 
 ---
 
@@ -111,7 +111,7 @@ Verify account invariants: balance vs ledger sum, reserved vs active reservation
 SELECT * FROM meter.reconcile();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:131*
+*Source: meter/src/functions/040_maintenance.sql:137*
 
 ---
 

@@ -87,6 +87,11 @@ END IF;
     -- Create the partition
     EXECUTE format('CREATE TABLE authz.%I PARTITION OF authz.audit_events
          FOR VALUES FROM (%L) TO (%L)', v_partition_name, v_start_date, v_end_date);
+    -- RLS does not propagate to partitions: left bare, a query naming this
+    -- partition directly would bypass tenant isolation. Forced RLS with no
+    -- policy denies direct access; parent-routed queries are unaffected.
+    EXECUTE format('ALTER TABLE authz.%I ENABLE ROW LEVEL SECURITY', v_partition_name);
+    EXECUTE format('ALTER TABLE authz.%I FORCE ROW LEVEL SECURITY', v_partition_name);
     RETURN v_partition_name;
 END;
 $$

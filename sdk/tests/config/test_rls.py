@@ -10,7 +10,12 @@ import pytest
 from postkit.config import ConfigClient
 
 from tests.config.helpers import cleanup_namespace
-from tests.helpers import connect_as_rls_user, ensure_rls_role
+from tests.helpers import (
+    assert_partition_create,
+    cleanup_partition,
+    connect_as_rls_user,
+    ensure_rls_role,
+)
 
 
 class TestConfigRowLevelSecurity:
@@ -233,3 +238,40 @@ class TestConfigRowLevelSecurity:
                 VALUES ('blocked/**', '{"type": "object"}', 'Should fail')
                 """
             )
+
+    def test_audit_partition_named_directly_returns_nothing(
+        self, rls_connection, db_connection
+    ):
+        """Querying a partition by name must not expose rows the parent's
+        tenant-isolation policy would hide; parent-routed reads stay
+        tenant-scoped."""
+        su = db_connection.cursor()
+        partition = assert_partition_create(su, "config", 2030, 1)
+        try:
+            for ns in ("rls_a", "rls_b"):
+                su.execute(
+                    """
+                    INSERT INTO config.audit_events
+                        (event_type, event_time, namespace, key)
+                    VALUES ('entry_created', '2030-01-15', %s, 'app/setting')
+                    """,
+                    (ns,),
+                )
+            # GRANT ... ON ALL TABLES predates the partition; re-grant so the
+            # by-name read is blocked by RLS, not by missing privileges.
+            ensure_rls_role(db_connection, "config")
+
+            cursor = rls_connection.cursor()
+            ConfigClient(cursor, "rls_a")
+
+            cursor.execute(
+                "SELECT namespace FROM config.audit_events "
+                "WHERE event_time >= '2030-01-01'"
+            )
+            assert [row[0] for row in cursor.fetchall()] == ["rls_a"]
+
+            cursor.execute(f"SELECT * FROM config.{partition}")
+            assert cursor.fetchall() == []
+        finally:
+            rls_connection.rollback()
+            cleanup_partition(su, "config", partition)

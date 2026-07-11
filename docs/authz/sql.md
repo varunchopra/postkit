@@ -59,7 +59,7 @@ Delete old audit partitions (default: keep 7 years for compliance)
 SELECT * FROM authz.drop_audit_partitions(84);
 ```
 
-*Source: authz/src/functions/033_audit.sql:131*
+*Source: authz/src/functions/033_audit.sql:136*
 
 ---
 
@@ -82,7 +82,7 @@ Create partitions for upcoming months (run monthly via cron)
 SELECT * FROM authz.ensure_audit_partitions(3);
 ```
 
-*Source: authz/src/functions/033_audit.sql:102*
+*Source: authz/src/functions/033_audit.sql:107*
 
 ---
 

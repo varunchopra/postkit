@@ -93,7 +93,8 @@ CREATE TABLE authn.audit_events (
 ) PARTITION BY RANGE (event_time);
 
 -- Default partition catches events if the cron job creating monthly partitions fails.
--- Monitor for rows here - if any appear, investigate partition creation.
+-- Monitor for rows here as a role with BYPASSRLS - if any appear, investigate
+-- partition creation.
 CREATE TABLE authn.audit_events_default PARTITION OF authn.audit_events DEFAULT;
 
 -- =============================================================================
@@ -121,6 +122,12 @@ CREATE INDEX audit_events_event_id_idx ON authn.audit_events (event_id);
 
 ALTER TABLE authn.audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE authn.audit_events FORCE ROW LEVEL SECURITY;
+
+-- RLS does not propagate to partitions: left bare, a query naming the
+-- partition directly would bypass tenant isolation. Forced RLS with no
+-- policy denies direct access; parent-routed queries are unaffected.
+ALTER TABLE authn.audit_events_default ENABLE ROW LEVEL SECURITY;
+ALTER TABLE authn.audit_events_default FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY audit_tenant_isolation ON authn.audit_events
     USING (
