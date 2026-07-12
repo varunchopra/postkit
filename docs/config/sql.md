@@ -439,10 +439,6 @@ Get the JSON Schema that applies to a config key
 **Example:**
 ```sql
 SELECT config.get_schema('flags/checkout');
-Matching precedence:
-1. Exact match wins over prefix
-2. Longer prefix wins over shorter
-3. No match = returns NULL (no validation required)
 ```
 
 *Source: config/src/functions/060_schemas.sql:125*
@@ -521,8 +517,6 @@ Raise unless row-level security applies to the current role.
 **Example:**
 ```sql
 SELECT config.assert_rls_active();
-Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
-bypasses every policy and exercises none of the tenancy model.
 ```
 
 *Source: config/src/functions/040_rls.sql:50*

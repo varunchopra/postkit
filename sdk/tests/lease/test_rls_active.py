@@ -3,7 +3,11 @@
 import pytest
 from postkit.lease import LeaseClient, LeaseError, LeaseErrorCode
 
-from tests.helpers import connect_as_rls_user, ensure_rls_role
+from tests.helpers import (
+    assert_global_row_delete_protected,
+    connect_as_rls_user,
+    ensure_rls_role,
+)
 
 
 class TestAssertRlsActive:
@@ -24,3 +28,7 @@ class TestAssertRlsActive:
             conn.rollback()
         finally:
             conn.close()
+
+
+def test_global_config_row_delete_protected(db_connection):
+    assert_global_row_delete_protected(db_connection, "lease", "lease.config")

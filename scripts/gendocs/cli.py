@@ -24,196 +24,67 @@ from .models import ExtractionResult
 from .validators import compute_coverage, validate_docs
 
 
+def _discover_modules(root: Path) -> list[str]:
+    """Discover modules: top-level directories with SQL sources.
+
+    Every SQL module must have an SDK client and vice versa, so a module
+    missing one half fails generation instead of silently losing its docs.
+    """
+    sql_modules = sorted(p.parent.parent.name for p in root.glob("*/src/functions"))
+    sdk_modules = sorted(
+        p.parent.name for p in (root / "sdk" / "src" / "postkit").glob("*/client.py")
+    )
+    if sql_modules != sdk_modules:
+        missing_sdk = set(sql_modules) - set(sdk_modules)
+        missing_sql = set(sdk_modules) - set(sql_modules)
+        for module in sorted(missing_sdk):
+            print(
+                f"  ✗ {module}: no sdk/src/postkit/{module}/client.py", file=sys.stderr
+            )
+        for module in sorted(missing_sql):
+            print(f"  ✗ {module}: no {module}/src/functions/", file=sys.stderr)
+        sys.exit(1)
+    if not sql_modules:
+        print("No modules found", file=sys.stderr)
+        sys.exit(1)
+    return sql_modules
+
+
 def main():
     """Generate all documentation."""
     root = Path(__file__).resolve().parent.parent.parent
     docs_dir = root / "docs"
+    modules = _discover_modules(root)
 
     # Clean and recreate docs directory
     if docs_dir.exists():
         shutil.rmtree(docs_dir)
-    (docs_dir / "authz").mkdir(parents=True)
-    (docs_dir / "authn").mkdir(parents=True)
-    (docs_dir / "config").mkdir(parents=True)
-    (docs_dir / "lease").mkdir(parents=True)
-    (docs_dir / "meter").mkdir(parents=True)
-    (docs_dir / "outbox").mkdir(parents=True)
-    (docs_dir / "presence").mkdir(parents=True)
-    (docs_dir / "queue").mkdir(parents=True)
+    for module in modules:
+        (docs_dir / module).mkdir(parents=True)
 
     print("Extracting Python docs...")
 
     python_results: dict[str, ExtractionResult] = {}
     sql_results: dict[str, ExtractionResult] = {}
 
-    # authz Python
-    authz_client = root / "sdk" / "src" / "postkit" / "authz" / "client.py"
-    if authz_client.exists():
-        result = extract_python_docs(authz_client, root)
-        python_results["authz"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ authz: {documented}/{len(result.all_public_functions)} functions")
-
-    # authn Python
-    authn_client = root / "sdk" / "src" / "postkit" / "authn" / "client.py"
-    if authn_client.exists():
-        result = extract_python_docs(authn_client, root)
-        python_results["authn"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ authn: {documented}/{len(result.all_public_functions)} functions")
-
-    # config Python
-    config_client = root / "sdk" / "src" / "postkit" / "config" / "client.py"
-    if config_client.exists():
-        result = extract_python_docs(config_client, root)
-        python_results["config"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ config: {documented}/{len(result.all_public_functions)} functions")
-
-    # lease Python
-    lease_client = root / "sdk" / "src" / "postkit" / "lease" / "client.py"
-    if lease_client.exists():
-        result = extract_python_docs(lease_client, root)
-        python_results["lease"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ lease: {documented}/{len(result.all_public_functions)} functions")
-
-    # meter Python
-    meter_client = root / "sdk" / "src" / "postkit" / "meter" / "client.py"
-    if meter_client.exists():
-        result = extract_python_docs(meter_client, root)
-        python_results["meter"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ meter: {documented}/{len(result.all_public_functions)} functions")
-
-    # outbox Python
-    outbox_client = root / "sdk" / "src" / "postkit" / "outbox" / "client.py"
-    if outbox_client.exists():
-        result = extract_python_docs(outbox_client, root)
-        python_results["outbox"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ outbox: {documented}/{len(result.all_public_functions)} functions")
-
-    # presence Python
-    presence_client = root / "sdk" / "src" / "postkit" / "presence" / "client.py"
-    if presence_client.exists():
-        result = extract_python_docs(presence_client, root)
-        python_results["presence"] = result
+    for module in modules:
+        client = root / "sdk" / "src" / "postkit" / module / "client.py"
+        result = extract_python_docs(client, root)
+        python_results[module] = result
         documented = sum(1 for f in result.functions if f.brief)
         print(
-            f"  ✓ presence: {documented}/{len(result.all_public_functions)} functions"
+            f"  ✓ {module}: {documented}/{len(result.all_public_functions)} functions"
         )
-
-    # queue Python
-    queue_client = root / "sdk" / "src" / "postkit" / "queue" / "client.py"
-    if queue_client.exists():
-        result = extract_python_docs(queue_client, root)
-        python_results["queue"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        print(f"  ✓ queue: {documented}/{len(result.all_public_functions)} functions")
 
     print("Extracting SQL docs...")
 
-    # authz SQL
-    authz_sql_dir = root / "authz" / "src" / "functions"
-    if authz_sql_dir.exists():
-        result = extract_sql_docs(authz_sql_dir, root)
-        sql_results["authz"] = result
+    for module in modules:
+        result = extract_sql_docs(root / module / "src" / "functions", root)
+        sql_results[module] = result
         documented = sum(1 for f in result.functions if f.brief)
         groups = sorted(set(f.group for f in result.functions if f.group))
         print(
-            f"  ✓ authz: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # authn SQL
-    authn_sql_dir = root / "authn" / "src" / "functions"
-    if authn_sql_dir.exists():
-        result = extract_sql_docs(authn_sql_dir, root)
-        sql_results["authn"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ authn: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # config SQL
-    config_sql_dir = root / "config" / "src" / "functions"
-    if config_sql_dir.exists():
-        result = extract_sql_docs(config_sql_dir, root)
-        sql_results["config"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ config: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # lease SQL
-    lease_sql_dir = root / "lease" / "src" / "functions"
-    if lease_sql_dir.exists():
-        result = extract_sql_docs(lease_sql_dir, root)
-        sql_results["lease"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ lease: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # meter SQL
-    meter_sql_dir = root / "meter" / "src" / "functions"
-    if meter_sql_dir.exists():
-        result = extract_sql_docs(meter_sql_dir, root)
-        sql_results["meter"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ meter: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # outbox SQL
-    outbox_sql_dir = root / "outbox" / "src" / "functions"
-    if outbox_sql_dir.exists():
-        result = extract_sql_docs(outbox_sql_dir, root)
-        sql_results["outbox"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ outbox: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # presence SQL
-    presence_sql_dir = root / "presence" / "src" / "functions"
-    if presence_sql_dir.exists():
-        result = extract_sql_docs(presence_sql_dir, root)
-        sql_results["presence"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ presence: {documented}/{len(result.all_public_functions)} SQL functions"
-        )
-        if groups:
-            print(f"    Groups: {', '.join(groups)}")
-
-    # queue SQL
-    queue_sql_dir = root / "queue" / "src" / "functions"
-    if queue_sql_dir.exists():
-        result = extract_sql_docs(queue_sql_dir, root)
-        sql_results["queue"] = result
-        documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
-        print(
-            f"  ✓ queue: {documented}/{len(result.all_public_functions)} SQL functions"
+            f"  ✓ {module}: {documented}/{len(result.all_public_functions)} SQL functions"
         )
         if groups:
             print(f"    Groups: {', '.join(groups)}")
@@ -235,7 +106,6 @@ def main():
     print("\nGenerated:")
 
     # docs/README.md
-    modules = sorted(set(python_results.keys()) | set(sql_results.keys()))
     readme = generate_docs_readme(modules)
     (docs_dir / "README.md").write_text(readme)
     print("  docs/README.md")

@@ -99,9 +99,7 @@ class TestNameRules:
     @pytest.mark.parametrize(
         ("event_type", "code_name"), name_error_cases("VAL_EVENT_TYPE")
     )
-    def test_event_type_violations(
-        self, outbox, db_connection, event_type, code_name
-    ):
+    def test_event_type_violations(self, outbox, db_connection, event_type, code_name):
         with pytest.raises(OutboxValidationError) as exc_info:
             with db_connection.transaction():
                 outbox.emit("orders", event_type, {})

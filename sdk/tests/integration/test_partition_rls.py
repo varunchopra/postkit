@@ -14,6 +14,7 @@ POSTKIT_SCHEMAS = [
     "authz",
     "config",
     "lease",
+    "memory",
     "meter",
     "outbox",
     "presence",
@@ -41,12 +42,20 @@ def partition_connection(db_connection):
     """
     dist_dir = Path(__file__).parent.parent.parent.parent / "dist"
     installed = []
-    for schema in ("lease", "meter", "outbox", "presence", "queue"):
+    for schema in ("lease", "memory", "meter", "outbox", "presence", "queue"):
         row = db_connection.execute(
             "SELECT 1 FROM pg_namespace WHERE nspname = %s", (schema,)
         ).fetchone()
         if row:
             continue
+        # memory needs pgvector and ships no partitioned tables, so a server
+        # without the extension is simply not asked to install it.
+        if schema == "memory":
+            vector = db_connection.execute(
+                "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'"
+            ).fetchone()
+            if vector is None:
+                continue
         sql_file = dist_dir / f"{schema}.sql"
         if not sql_file.exists():
             pytest.fail(f"dist/{schema}.sql not found. Run 'make build' first.")

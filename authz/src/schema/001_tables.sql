@@ -163,3 +163,10 @@ CREATE POLICY hierarchy_global_write_protection ON authz.permission_hierarchy
     FOR ALL
     USING (TRUE)
     WITH CHECK (namespace != 'global');
+
+-- DELETE consults only USING, never WITH CHECK, so the write protection
+-- above cannot block deleting global hierarchy rows.
+CREATE POLICY hierarchy_global_delete_protection ON authz.permission_hierarchy
+    AS RESTRICTIVE
+    FOR DELETE
+    USING (namespace != 'global');

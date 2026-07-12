@@ -5,6 +5,7 @@ from gendocs.extractors import (
     _extract_params,
     _extract_tag,
     _parse_docstring,
+    extract_python_docs,
 )
 
 
@@ -333,3 +334,53 @@ def test_extract_examples_stops_at_blank_comment_line():
     examples = _extract_examples(block)
     assert len(examples) == 1
     assert examples[0] == "SELECT do_something();"
+
+
+def test_extract_examples_trims_trailing_prose():
+    """Prose after the example code, with no blank -- line, is not captured."""
+    block = (
+        "-- @example SELECT assert_rls_active();\n"
+        "-- Call from CI setup: a suite connecting as a superuser or BYPASSRLS role\n"
+        "-- bypasses every policy and exercises none of the tenancy model.\n"
+    )
+    examples = _extract_examples(block)
+    assert len(examples) == 1
+    assert examples[0] == "SELECT assert_rls_active();"
+
+
+def test_extract_examples_keeps_multiline_sql():
+    """A statement spanning several comment lines is kept whole."""
+    block = (
+        "-- @example SELECT * FROM start_impersonation(\n"
+        "--     session_id, target_user_id,\n"
+        "--     'Support ticket #123'\n"
+        "-- );\n"
+    )
+    examples = _extract_examples(block)
+    assert len(examples) == 1
+    assert examples[0].endswith(");")
+    assert "'Support ticket #123'" in examples[0]
+
+
+def test_extract_examples_keeps_unparseable_fragment():
+    """An example that never parses as SQL (plpgsql fragment) is kept whole."""
+    block = "-- @example IF config.exists('flags/new-checkout') THEN ...\n"
+    examples = _extract_examples(block)
+    assert examples == ["IF config.exists('flags/new-checkout') THEN ..."]
+
+
+def test_extract_python_docs_skips_private_classes(tmp_path):
+    """Methods of underscore-prefixed classes are not public API."""
+    module = tmp_path / "client.py"
+    module.write_text(
+        "class _Loader:\n"
+        "    def load(self, data):\n"
+        '        """Load a value."""\n'
+        "\n"
+        "class Client:\n"
+        "    def get(self, key):\n"
+        '        """Get a value."""\n'
+    )
+    result = extract_python_docs(module, tmp_path)
+    assert result.all_public_functions == ["get"]
+    assert [f.name for f in result.functions] == ["get"]

@@ -161,26 +161,6 @@ List consumer cursors in the namespace.
 
 ---
 
-### load
-
-```python
-load(data: Buffer) -> int
-```
-
-*Source: sdk/src/postkit/outbox/client.py:38*
-
----
-
-### load
-
-```python
-load(data: Buffer) -> int
-```
-
-*Source: sdk/src/postkit/outbox/client.py:25*
-
----
-
 ### poll
 
 ```python

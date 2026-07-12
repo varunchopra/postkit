@@ -1,10 +1,9 @@
 """Pytest fixtures for postkit.presence tests."""
 
-import psycopg
 import pytest
 from postkit.presence import PresenceClient
 
-from tests.helpers import db_connection_for, make_namespace
+from tests.helpers import connection_factory_for, db_connection_for, make_namespace
 from tests.presence.helpers import PresenceTestHelpers, cleanup_namespace
 
 
@@ -50,32 +49,5 @@ def test_helpers(db_connection, request):
 
 @pytest.fixture
 def connect(db_connection):
-    """Factory for extra non-autocommit connections (two-connection races).
-
-    Every connection gets a statement_timeout so a locking regression fails
-    the suite loudly instead of hanging CI.
-    """
-    conns: list[psycopg.Connection] = []
-    info = db_connection.info
-
-    def _connect(statement_timeout_ms: int = 10000) -> psycopg.Connection:
-        conn = psycopg.connect(
-            host=info.host,
-            port=info.port,
-            dbname=info.dbname,
-            user=info.user,
-            password=info.password,
-        )
-        conn.execute(f"SET statement_timeout = {statement_timeout_ms}")
-        conn.commit()
-        conns.append(conn)
-        return conn
-
-    yield _connect
-
-    for conn in conns:
-        try:
-            conn.rollback()
-            conn.close()
-        except Exception:
-            pass
+    """Factory for extra non-autocommit connections (two-connection races)."""
+    yield from connection_factory_for(db_connection)

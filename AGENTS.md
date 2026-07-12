@@ -10,7 +10,8 @@ git clone https://github.com/varunchopra/postkit.git
 cd postkit && make build
 
 # 2. Install on your database (PostgreSQL 14+)
-psql $DATABASE_URL -f dist/postkit.sql           # all modules
+psql $DATABASE_URL -f dist/postkit.sql           # the eight extension-free modules
+psql $DATABASE_URL -f dist/memory.sql            # agent memory (separate; requires pgvector)
 # Or individual:
 psql $DATABASE_URL -f dist/authn.sql             # users, sessions, tokens
 psql $DATABASE_URL -f dist/authz.sql             # permissions
@@ -57,6 +58,8 @@ Common operations by module. All require tenant context - call `{module}.set_ten
 
 **Leases:** [`acquire`](docs/lease/sql.md#leaseacquire) · [`renew`](docs/lease/sql.md#leaserenew) · [`verify`](docs/lease/sql.md#leaseverify) · [`release`](docs/lease/sql.md#leaserelease) - [full reference](docs/lease/sql.md)
 
+**Memory:** [`record`](docs/memory/sql.md#memoryrecord) · [`recall`](docs/memory/sql.md#memoryrecall) · [`consolidate`](docs/memory/sql.md#memoryconsolidate) · [`supersede`](docs/memory/sql.md#memorysupersede) - [full reference](docs/memory/sql.md)
+
 **Events:** [`emit`](docs/outbox/sql.md#outboxemit) · [`subscribe`](docs/outbox/sql.md#outboxsubscribe) · [`poll`](docs/outbox/sql.md#outboxpoll) · [`ack`](docs/outbox/sql.md#outboxack) - [full reference](docs/outbox/sql.md)
 
 **Liveness:** [`register`](docs/presence/sql.md#presenceregister) · [`heartbeat`](docs/presence/sql.md#presenceheartbeat) · [`sweep`](docs/presence/sql.md#presencesweep) · [`deregister`](docs/presence/sql.md#presencederegister) - [full reference](docs/presence/sql.md)
@@ -74,6 +77,7 @@ from postkit.authn import AuthnClient
 from postkit.authz import AuthzClient
 from postkit.config import ConfigClient
 from postkit.lease import LeaseClient
+from postkit.memory import MemoryClient
 from postkit.meter import MeterClient
 from postkit.outbox import OutboxClient
 from postkit.presence import PresenceClient
@@ -86,6 +90,7 @@ authn = AuthnClient(cursor, namespace="my-app")
 authz = AuthzClient(cursor, namespace="my-app")
 config = ConfigClient(cursor, namespace="my-app")
 lease = LeaseClient(cursor, namespace="my-app")
+memory = MemoryClient(cursor, namespace="my-app")
 meter = MeterClient(cursor, namespace="my-app")
 outbox = OutboxClient(cursor, namespace="my-app")
 presence = PresenceClient(cursor, namespace="my-app")
@@ -103,6 +108,8 @@ queue = QueueClient(cursor, namespace="my-app")
 **Metering:** [`allocate`](docs/meter/sdk.md#allocate) · [`reserve`](docs/meter/sdk.md#reserve) · [`commit`](docs/meter/sdk.md#commit) - [full reference](docs/meter/sdk.md)
 
 **Leases:** [`acquire`](docs/lease/sdk.md#acquire) · [`renew`](docs/lease/sdk.md#renew) · [`verify`](docs/lease/sdk.md#verify) · [`release`](docs/lease/sdk.md#release) - [full reference](docs/lease/sdk.md)
+
+**Memory:** [`record`](docs/memory/sdk.md#record) · [`recall`](docs/memory/sdk.md#recall) · [`consolidate`](docs/memory/sdk.md#consolidate) · [`supersede`](docs/memory/sdk.md#supersede) - [full reference](docs/memory/sdk.md)
 
 **Events:** [`emit`](docs/outbox/sdk.md#emit) · [`subscribe`](docs/outbox/sdk.md#subscribe) · [`poll`](docs/outbox/sdk.md#poll) · [`ack`](docs/outbox/sdk.md#ack) - [full reference](docs/outbox/sdk.md)
 
@@ -135,6 +142,7 @@ queue = QueueClient(cursor, namespace="my-app")
 | authz | `authz` | [sql.md](docs/authz/sql.md) | [sdk.md](docs/authz/sdk.md) | ReBAC permissions, hierarchies, cross-tenant sharing |
 | config | `config` | [sql.md](docs/config/sql.md) | [sdk.md](docs/config/sdk.md) | Versioned key-value, JSON schema validation |
 | lease | `lease` | [sql.md](docs/lease/sql.md) | [sdk.md](docs/lease/sdk.md) | TTL leases, fencing tokens, leader election |
+| memory | `memory` | [sql.md](docs/memory/sql.md) | [sdk.md](docs/memory/sdk.md) | Agent memory: episodes, distilled facts, recall (pgvector) |
 | meter | `meter` | [sql.md](docs/meter/sql.md) | [sdk.md](docs/meter/sdk.md) | Usage tracking, reservations, billing periods |
 | outbox | `outbox` | [sql.md](docs/outbox/sql.md) | [sdk.md](docs/outbox/sdk.md) | Transactional event feed, fan-out, durable cursors |
 | presence | `presence` | [sql.md](docs/presence/sql.md) | [sdk.md](docs/presence/sdk.md) | Heartbeat liveness, edge detection, alert hooks |
@@ -150,7 +158,7 @@ sdk/src/postkit/
   {module}/client.py        # Python SDK client (optional)
 sdk/tests/                  # Usage examples
 dist/
-  postkit.sql               # Combined SQL (all modules)
+  postkit.sql               # Combined SQL (the eight extension-free modules; excludes memory)
   {module}.sql              # Individual module SQL
 ```
 

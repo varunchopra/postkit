@@ -1,6 +1,7 @@
 .PHONY: all setup build test clean docs lint format
 
 PG_VERSION ?= 16
+PG_IMAGE ?= pgvector/pgvector:pg$(PG_VERSION)
 PG_CONTAINER ?= postkit-test
 PG_PORT ?= 5433
 DATABASE_URL ?= postgresql://postgres:postgres@localhost:$(PG_PORT)/postgres
@@ -13,6 +14,11 @@ NC = \033[0m
 all: build format lint docs test
 
 db:
+	@image=$$(docker inspect -f '{{.Config.Image}}' $(PG_CONTAINER) 2>/dev/null); \
+	if [ -n "$$image" ] && [ "$$image" != "$(PG_IMAGE)" ]; then \
+		echo "Recreating $(PG_CONTAINER): $$image is not $(PG_IMAGE)"; \
+		docker rm -f $(PG_CONTAINER) > /dev/null; \
+	fi
 	@nc -z localhost $(PG_PORT) 2>/dev/null || \
 		(docker start $(PG_CONTAINER) 2>/dev/null || make setup)
 
@@ -21,7 +27,7 @@ setup:
 	@docker run -d --name $(PG_CONTAINER) \
 		-e POSTGRES_PASSWORD=postgres \
 		-p $(PG_PORT):5432 \
-		postgres:$(PG_VERSION) \
+		$(PG_IMAGE) \
 		-c max_prepared_transactions=5 > /dev/null
 	@echo "Waiting for Postgres..."
 	@sleep 3
@@ -35,6 +41,7 @@ build:
 	@./scripts/build.sh authn > dist/authn.sql
 	@./scripts/build.sh config > dist/config.sql
 	@./scripts/build.sh lease > dist/lease.sql
+	@./scripts/build.sh memory > dist/memory.sql
 	@./scripts/build.sh meter > dist/meter.sql
 	@./scripts/build.sh outbox > dist/outbox.sql
 	@./scripts/build.sh presence > dist/presence.sql

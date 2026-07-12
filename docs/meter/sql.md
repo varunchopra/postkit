@@ -128,8 +128,6 @@ Raise unless row-level security applies to the current role.
 **Example:**
 ```sql
 SELECT meter.assert_rls_active();
-Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
-bypasses every policy and exercises none of the tenancy model.
 ```
 
 *Source: meter/src/functions/050_rls.sql:85*

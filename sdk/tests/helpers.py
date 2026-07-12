@@ -8,25 +8,100 @@ import pytest
 from tests.conftest import DATABASE_URL
 
 
-def db_connection_for(schema: str):
-    """Yield a session-scoped connection that installs and tears down a schema.
+def db_connection_for(*schemas: str):
+    """Yield an autocommit connection that installs and tears down schemas.
 
-    Each module's conftest wraps this in a ``@pytest.fixture(scope="session")``
-    to get a connection with the module's schema installed.  The schema name is
-    a build-time constant from our own conftest files, not user input.
+    Each conftest wraps this in a session- or module-scoped fixture to get a
+    connection with the schemas it needs installed.  The schema names are
+    build-time constants from our own conftest files, not user input.
     """
     conn = psycopg.connect(DATABASE_URL, autocommit=True)
-    conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+    for schema in schemas:
+        conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
 
-    dist_sql = Path(__file__).parent.parent.parent / "dist" / f"{schema}.sql"
-    if not dist_sql.exists():
-        pytest.fail(f"dist/{schema}.sql not found. Run 'make build' first.")
+    dist_dir = Path(__file__).parent.parent.parent / "dist"
+    for schema in schemas:
+        dist_sql = dist_dir / f"{schema}.sql"
+        if not dist_sql.exists():
+            pytest.fail(f"dist/{schema}.sql not found. Run 'make build' first.")
+        conn.execute(dist_sql.read_text())
 
-    conn.execute(dist_sql.read_text())
     yield conn
 
-    conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+    for schema in schemas:
+        conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
     conn.close()
+
+
+def connection_factory_for(db_connection):
+    """Yield a factory for extra non-autocommit connections to the same database.
+
+    Each conftest wraps this in a ``connect`` fixture for multi-connection
+    cases (races, worker transactions).  Every connection gets a
+    statement_timeout so a locking regression fails the suite loudly instead
+    of hanging CI; teardown rolls back and closes whatever the test left open.
+    """
+    conns: list[psycopg.Connection] = []
+    info = db_connection.info
+
+    def _connect(statement_timeout_ms: int = 10000) -> psycopg.Connection:
+        conn = psycopg.connect(
+            host=info.host,
+            port=info.port,
+            dbname=info.dbname,
+            user=info.user,
+            password=info.password,
+        )
+        conn.execute(f"SET statement_timeout = {statement_timeout_ms}")
+        conn.commit()
+        conns.append(conn)
+        return conn
+
+    yield _connect
+
+    for conn in conns:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+
+
+def require_pgvector():
+    """Skip the calling fixture or test when the server cannot install pgvector."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'"
+        ).fetchone()
+    if row is None:
+        pytest.skip("pgvector is not available on this server")
+
+
+def assert_global_row_delete_protected(db_connection, schema, table, *, seed=None):
+    """A forged 'global' tenant context cannot delete a module's global row(s).
+
+    Every module that seeds a namespace='global' row write-protects it with a
+    RESTRICTIVE policy pair. Postgres consults only USING on DELETE, so the
+    delete half is the load-bearing one; this drives it as a non-bypass role.
+    Lives here so each module's suite asserts it against its own installed
+    schema without the check drifting per copy.
+    """
+    if seed:
+        db_connection.execute(seed)
+    ensure_rls_role(db_connection, schema)
+    conn = connect_as_rls_user(db_connection, schema)
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT set_config('{schema}.tenant_id', 'global', true)")
+        cur.execute(f"DELETE FROM {table} WHERE namespace = 'global'")
+        deleted = cur.rowcount
+        conn.rollback()
+
+        cur.execute(f"SELECT count(*) FROM {table} WHERE namespace = 'global'")
+        assert deleted == 0
+        assert cur.fetchone()[0] >= 1
+    finally:
+        conn.close()
 
 
 def make_namespace(request) -> str:

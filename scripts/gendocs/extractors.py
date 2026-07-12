@@ -285,8 +285,9 @@ def extract_python_docs(client_path: Path, root: Path) -> ExtractionResult:
     all_public: list[str] = []
 
     for _, cls in inspect.getmembers(module, inspect.isclass):
-        # Only process classes defined in this module (not imported base classes)
-        if cls.__module__ != "_doc_module":
+        # Only process public classes defined in this module (not imported
+        # base classes or private helpers)
+        if cls.__module__ != "_doc_module" or cls.__name__.startswith("_"):
             continue
 
         for name, method in inspect.getmembers(cls, _is_public_method):
@@ -497,5 +498,24 @@ def _extract_examples(block: str) -> list[str]:
         r"--\s*@example\s+(.+?)(?=--\s*@|\n--\s*\n|\Z)", block, re.DOTALL
     ):
         example = re.sub(r"\n--\s*", "\n", match.group(1).strip())
-        examples.append(example.strip())
+        examples.append(_trim_trailing_prose(example.strip()))
     return examples
+
+
+def _trim_trailing_prose(example: str) -> str:
+    """Trim an example back to the longest line prefix that parses as SQL.
+
+    Doc comments often follow the example code with prose that has no
+    separating blank comment line, so the capture absorbs it and the prose
+    would render inside the ```sql fence. Examples with no parseable prefix
+    (plpgsql fragments, ellipses) are kept whole.
+    """
+    lines = example.split("\n")
+    for end in range(len(lines), 0, -1):
+        candidate = "\n".join(lines[:end]).rstrip()
+        try:
+            if pglast.parse_sql(candidate):
+                return candidate
+        except pglast.Error:
+            continue
+    return example

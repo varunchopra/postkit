@@ -8,6 +8,7 @@ API reference documentation for postkit modules.
 - [authz](authz/README.md)
 - [config](config/README.md)
 - [lease](lease/README.md)
+- [memory](memory/README.md)
 - [meter](meter/README.md)
 - [outbox](outbox/README.md)
 - [presence](presence/README.md)

@@ -9,6 +9,13 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 # Default: build all modules
 MODULE="${1:-all}"
 
+MODULES="authn authz config lease memory meter outbox presence queue"
+
+# memory runs CREATE EXTENSION IF NOT EXISTS vector at install, so it stays
+# out of the postkit.sql bundle to keep the bundle installable on stock
+# Postgres. It ships separately as memory.sql.
+BUNDLE_MODULES="authn authz config lease meter outbox presence queue"
+
 build_module() {
     local module="$1"
     local module_dir="$ROOT_DIR/$module"
@@ -91,6 +98,10 @@ build_all() {
 -- Install: psql \$DATABASE_URL -f postkit.sql
 -- License: Apache 2.0
 --
+-- Contains the extension-free modules: ${BUNDLE_MODULES// /, }.
+-- The memory module requires the pgvector extension and is not included;
+-- install it separately from memory.sql.
+--
 -- Generated file - do not edit directly. See */src/ for source.
 
 BEGIN;
@@ -98,7 +109,7 @@ BEGIN;
 HEADER
 
     # Build each module in order
-    for module in authn authz config lease meter outbox presence queue; do
+    for module in $BUNDLE_MODULES; do
         module_dir="$ROOT_DIR/$module"
         if [ -d "$module_dir/src" ] && [ "$(ls -A "$module_dir/src" 2>/dev/null)" ]; then
             echo ""
@@ -154,15 +165,16 @@ COMMIT;
 FOOTER
 }
 
-case "$MODULE" in
-    all)
-        build_all
-        ;;
-    authn|authz|config|lease|meter|outbox|presence|queue)
-        build_module "$MODULE"
-        ;;
-    *)
-        echo "Usage: $0 [all|authn|authz|config|lease|meter|outbox|presence|queue]" >&2
-        exit 1
-        ;;
-esac
+if [ "$MODULE" = "all" ]; then
+    build_all
+else
+    case " $MODULES " in
+        *" $MODULE "*)
+            build_module "$MODULE"
+            ;;
+        *)
+            echo "Usage: $0 [all|${MODULES// /|}]" >&2
+            exit 1
+            ;;
+    esac
+fi

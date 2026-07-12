@@ -831,8 +831,6 @@ Raise unless row-level security applies to the current role.
 **Example:**
 ```sql
 SELECT authn.assert_rls_active();
-Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
-bypasses every policy and exercises none of the tenancy model.
 ```
 
 *Source: authn/src/functions/080_rls.sql:52*

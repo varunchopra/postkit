@@ -21,6 +21,7 @@ Install the SQL schema on the user's database:
 
 ```bash
 psql $DATABASE_URL -f postkit/dist/postkit.sql
+# memory is separate and needs pgvector: psql $DATABASE_URL -f postkit/dist/memory.sql
 # Or individual modules: postkit/dist/authn.sql, postkit/dist/authz.sql, postkit/dist/config.sql, postkit/dist/meter.sql, postkit/dist/queue.sql
 ```
 

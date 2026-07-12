@@ -274,3 +274,10 @@ CREATE POLICY config_global_write_protection ON presence.config
     FOR ALL
     USING (TRUE)
     WITH CHECK (namespace != 'global');
+
+-- DELETE consults only USING, never WITH CHECK, so the write protection
+-- above cannot block deleting the global rows.
+CREATE POLICY config_global_delete_protection ON presence.config
+    AS RESTRICTIVE
+    FOR DELETE
+    USING (namespace != 'global');

@@ -4,7 +4,11 @@ import psycopg
 import pytest
 from postkit.queue import QueueClient, QueueError, QueueErrorCode
 
-from tests.helpers import connect_as_rls_user, ensure_rls_role
+from tests.helpers import (
+    assert_global_row_delete_protected,
+    connect_as_rls_user,
+    ensure_rls_role,
+)
 
 GUARDED_CALLS = [
     "SELECT * FROM queue.tick_timeouts(p_namespace := {ns})",
@@ -55,3 +59,7 @@ class TestAllNamespacesGuard:
 
         rls_conn.execute(call.format(ns="'rls_guard'"))
         rls_conn.rollback()
+
+
+def test_global_config_row_delete_protected(db_connection):
+    assert_global_row_delete_protected(db_connection, "queue", "queue.config")

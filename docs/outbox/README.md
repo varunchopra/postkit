@@ -13,8 +13,6 @@
 | [`horizon_blockers`](sdk.md#horizon_blockers) | Backends whose open write transactions pin the visibility horizon. |
 | [`lag`](sdk.md#lag) | Per-consumer backlog, plus the current visibility horizon. |
 | [`list_consumers`](sdk.md#list_consumers) | List consumer cursors in the namespace. |
-| [`load`](sdk.md#load) |  |
-| [`load`](sdk.md#load) |  |
 | [`poll`](sdk.md#poll) | Read the next events for a consumer. Does not advance the cursor. |
 | [`read_from`](sdk.md#read_from) | Read events after a position, for callers keeping their own cursor. |
 | [`replay`](sdk.md#replay) | Move an existing consumer's cursor to a chosen position. |

@@ -3,7 +3,11 @@
 import pytest
 from postkit.authz import AuthzClient, AuthzError, AuthzErrorCode
 
-from tests.helpers import connect_as_rls_user, ensure_rls_role
+from tests.helpers import (
+    assert_global_row_delete_protected,
+    connect_as_rls_user,
+    ensure_rls_role,
+)
 
 
 class TestAssertRlsActive:
@@ -24,3 +28,17 @@ class TestAssertRlsActive:
             conn.rollback()
         finally:
             conn.close()
+
+
+def test_global_hierarchy_row_delete_protected(db_connection):
+    assert_global_row_delete_protected(
+        db_connection,
+        "authz",
+        "authz.permission_hierarchy",
+        seed=(
+            "INSERT INTO authz.permission_hierarchy "
+            "(namespace, resource_type, permission, implies) "
+            "VALUES ('global', 'rls_probe_doc', 'owner', 'editor') "
+            "ON CONFLICT DO NOTHING"
+        ),
+    )

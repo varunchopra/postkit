@@ -13,7 +13,17 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TESTS_DIR = Path(__file__).resolve().parent
 
-MODULES = ["authn", "authz", "config", "lease", "meter", "outbox", "presence", "queue"]
+MODULES = [
+    "authn",
+    "authz",
+    "config",
+    "lease",
+    "memory",
+    "meter",
+    "outbox",
+    "presence",
+    "queue",
+]
 
 CODE_PATTERN = re.compile(r"HINT\s*=\s*'postkit:\w+:(VAL_\w+?)_INVALID_CHARS'")
 

@@ -12,6 +12,7 @@ Postgres-native application infrastructure: one SQL install replaces the separat
 | [authn](authn/) | `authn` | Authentication (users, sessions, tokens) |
 | [config](config/) | `config` | Versioned configuration (prompts, flags, secrets) |
 | [lease](lease/) | `lease` | TTL leases with fencing tokens (locks, leader election) |
+| [memory](memory/) | `memory` | Agent memory (episodes, facts, recall) |
 | [meter](meter/) | `meter` | Usage metering (quotas, reservations, ledger) |
 | [outbox](outbox/) | `outbox` | Transactional event feed (fan-out, durable cursors) |
 | [presence](presence/) | `presence` | Heartbeat liveness (edge detection, alert hooks) |
@@ -27,7 +28,15 @@ Requires PostgreSQL 14+ built with ICU support (the default in official packages
 curl -fsSL https://github.com/varunchopra/postkit/releases/latest/download/postkit.sql | psql -v ON_ERROR_STOP=1 "$DATABASE_URL"
 ```
 
-Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `lease.sql`, `meter.sql`, `outbox.sql`, `presence.sql`, `queue.sql`) are
+This installs the eight extension-free modules (authn, authz, config, lease, meter, outbox, presence, queue) and works on any stock PostgreSQL server.
+
+The memory module is not part of `postkit.sql`. It requires pgvector, a PostgreSQL extension that adds a vector column type for similarity search, so it ships separately. Install it on a server where pgvector is available:
+
+```bash
+curl -fsSL https://github.com/varunchopra/postkit/releases/latest/download/memory.sql | psql -v ON_ERROR_STOP=1 "$DATABASE_URL"
+```
+
+Individual modules (`authn.sql`, `authz.sql`, `config.sql`, `lease.sql`, `memory.sql`, `meter.sql`, `outbox.sql`, `presence.sql`, `queue.sql`) are
 attached to each [release](https://github.com/varunchopra/postkit/releases). To build from
 source instead, see [Development](#development).
 
@@ -97,6 +106,11 @@ deaths = presence.sweep()                 # from a cron: who went silent?
 queue.push("email", {"to": "alice@example.com", "subject": "Welcome"})
 job = queue.pull("email", worker_id="worker-1")
 queue.ack(job["id"])
+
+# memory: durable agent memory (pgvector)
+memory.set_dimension(1536)                 # once, after install
+memory.record("session-1", "user", "my apartment has hard water", keywords=["water"])
+hits = memory.recall(keywords=["water"])
 ```
 
 See [sdk/](sdk/) for details.

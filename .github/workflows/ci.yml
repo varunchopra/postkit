@@ -22,7 +22,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:${{ matrix.postgres }}
+        image: pgvector/pgvector:pg${{ matrix.postgres }}
         env:
           POSTGRES_PASSWORD: postgres
         options: >-
@@ -50,6 +50,53 @@ jobs:
           until docker exec ${{ job.services.postgres.id }} pg_isready -U postgres; do sleep 1; done
 
       - run: make build test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+  # The matrix runs on pgvector images, so this job is the only place the
+  # official postgres image is exercised: the bundle and the extension-free
+  # modules must install and pass without pgvector. The memory suites skip
+  # themselves when the server lacks the extension.
+  test-stock-postgres:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          python-version: "3.14"
+
+      # max_prepared_transactions needs a restart and service containers
+      # take no command args; without it the prepared-transaction tests skip
+      - name: Enable prepared transactions
+        run: |
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U postgres -c "ALTER SYSTEM SET max_prepared_transactions = 5"
+          docker restart ${{ job.services.postgres.id }}
+          until docker exec ${{ job.services.postgres.id }} pg_isready -U postgres; do sleep 1; done
+
+      - run: make build
+
+      - name: Install bundle
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f dist/postkit.sql
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - run: make test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 

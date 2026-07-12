@@ -149,8 +149,6 @@ Raise unless row-level security applies to the current role.
 **Example:**
 ```sql
 SELECT queue.assert_rls_active();
-Call from CI setup: a suite connecting as a superuser or BYPASSRLS role
-bypasses every policy and exercises none of the tenancy model.
 ```
 
 *Source: queue/src/functions/080_rls.sql:107*

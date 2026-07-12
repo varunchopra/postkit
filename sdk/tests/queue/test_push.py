@@ -16,9 +16,7 @@ class TestPushNotify:
     """queue.channel_name(namespace, queue) is the channel to LISTEN on for
     push wake-ups; two different (namespace, queue) pairs never share one."""
 
-    def test_distinct_pairs_get_distinct_channels(
-        self, db_connection
-    ):
+    def test_distinct_pairs_get_distinct_channels(self, db_connection):
         cur = db_connection.cursor()
         cur.execute(
             "SELECT queue.channel_name('acme', 'corp/jobs'),"
