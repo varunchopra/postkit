@@ -388,3 +388,79 @@ class TestSubjectRelationWithNestedTeams:
         # Both can read
         assert authz.check(("user", "alice"), "read", ("repo", "api")) is True
         assert authz.check(("user", "bob"), "read", ("repo", "api")) is True
+
+
+@pytest.fixture
+def nested_userset(authz):
+    """infra#admin is a member of platform; carol is an admin of infra and alice
+    a plain member; platform can read doc:1. Only carol should reach doc:1."""
+    authz.grant(
+        "member",
+        resource=("team", "platform"),
+        subject=("team", "infra"),
+        subject_relation="admin",
+    )
+    authz.grant("admin", resource=("team", "infra"), subject=("user", "carol"))
+    authz.grant("member", resource=("team", "infra"), subject=("user", "alice"))
+    authz.grant("read", resource=("doc", "1"), subject=("team", "platform"))
+    return authz
+
+
+class TestUsersetNestedMembership:
+    """A membership edge qualified by subject_relation admits only the child
+    group's members who hold that relation, across every read path."""
+
+    def test_check_admits_only_the_qualified_relation(self, nested_userset):
+        assert nested_userset.check(("user", "carol"), "read", ("doc", "1")) is True
+        assert nested_userset.check(("user", "alice"), "read", ("doc", "1")) is False
+
+    def test_subject_to_resource_paths_admit_only_qualified(self, nested_userset):
+        assert nested_userset.list_resources(("user", "carol"), "doc", "read") == ["1"]
+        assert nested_userset.list_resources(("user", "alice"), "doc", "read") == []
+        assert nested_userset.filter_authorized(
+            ("user", "carol"), "doc", "read", ["1"]
+        ) == ["1"]
+        assert (
+            nested_userset.filter_authorized(("user", "alice"), "doc", "read", ["1"])
+            == []
+        )
+
+    def test_resource_to_subject_paths_return_only_qualified(self, nested_userset):
+        assert nested_userset.list_subjects("read", ("doc", "1")) == [("user", "carol")]
+        assert nested_userset.count_subjects("read", ("doc", "1")) == 1
+
+    def test_group_named_as_subject_is_not_a_qualified_member(self, nested_userset):
+        assert nested_userset.check(("team", "infra"), "read", ("doc", "1")) is False
+
+    def test_member_of_a_group_admin_is_not_listed(self, authz):
+        """A grant to eng#admin reaches leads, a direct admin of eng, but not
+        leads' members: they do not nest through the admin edge. list_subjects
+        must agree with check that bob has no access."""
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            subject_relation="admin",
+        )
+        authz.grant("admin", resource=("team", "eng"), subject=("team", "leads"))
+        authz.grant("member", resource=("team", "leads"), subject=("user", "bob"))
+
+        assert authz.check(("user", "bob"), "read", ("doc", "1")) is False
+        assert ("user", "bob") not in authz.list_subjects("read", ("doc", "1"))
+
+
+class TestUsersetDirectGrant:
+    """A grant to team#admin applies to the team's admins, not to the team named
+    directly as a subject."""
+
+    def test_grant_does_not_apply_to_the_group_itself(self, authz):
+        authz.grant("admin", resource=("team", "eng"), subject=("user", "carol"))
+        authz.grant(
+            "write",
+            resource=("repo", "api"),
+            subject=("team", "eng"),
+            subject_relation="admin",
+        )
+
+        assert authz.check(("user", "carol"), "write", ("repo", "api")) is True
+        assert authz.check(("team", "eng"), "write", ("repo", "api")) is False

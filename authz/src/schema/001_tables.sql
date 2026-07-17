@@ -119,6 +119,7 @@ CREATE POLICY tuples_recipient_visibility ON authz.tuples
     USING (
         subject_type = current_setting('authz.viewer_type', TRUE)
         AND subject_id = current_setting('authz.viewer_id', TRUE)
+        AND subject_relation IS NULL
     );
 
 -- Cross-namespace leave: Subjects can delete/leave grants where they are the subject.
@@ -129,6 +130,7 @@ CREATE POLICY tuples_recipient_can_leave ON authz.tuples
     USING (
         subject_type = current_setting('authz.viewer_type', TRUE)
         AND subject_id = current_setting('authz.viewer_id', TRUE)
+        AND subject_relation IS NULL
     );
 
 -- Index for efficient cross-namespace recipient queries

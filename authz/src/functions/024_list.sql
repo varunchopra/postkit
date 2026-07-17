@@ -50,6 +50,7 @@ granted_resources AS (
         t.namespace = p_namespace
         AND t.subject_type = p_subject_type
         AND t.subject_id = p_subject_id
+        AND t.subject_relation IS NULL
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
     UNION
@@ -141,12 +142,15 @@ CREATE OR REPLACE FUNCTION authz.list_subjects (p_resource_type text, p_resource
 -- If a grant specifies subject_relation='admin', we find subjects who are admins
 -- of that group, not just members.
 -- Example: (repo, api, viewer, team, eng, admin) means "admins of team:eng can view repo:api"
+-- A subject reached through a non-member edge is a grantee, not a group to
+-- descend into; expandable stops the recursion there.
 expanded_subjects AS (
     -- Direct grantees on the resource or ancestors
     SELECT
         t.subject_type,
         t.subject_id,
         t.subject_relation,
+        true AS expandable,
         1 AS depth
     FROM
         authz.tuples t
@@ -162,7 +166,8 @@ expanded_subjects AS (
     SELECT
         t.subject_type,
         t.subject_id,
-        t.relation AS subject_relation,
+        t.subject_relation,
+        COALESCE(es.subject_relation, 'member') = 'member' AS expandable,
         es.depth + 1
     FROM
         expanded_subjects es
@@ -173,7 +178,8 @@ expanded_subjects AS (
             AND (t.expires_at IS NULL
                 OR t.expires_at > now())
     WHERE
-        es.depth < authz._max_group_depth()
+        es.expandable
+        AND es.depth < authz._max_group_depth()
 ),
 -- Find leaf subjects (subjects that are not groups with members)
 -- A subject is a leaf if there are no tuples with it as the resource
@@ -242,6 +248,7 @@ AS $$
             t.subject_type,
             t.subject_id,
             t.subject_relation,
+            true AS expandable,
             1 AS depth
         FROM authz.tuples t
         JOIN implied_by ib ON t.relation = ib.permission
@@ -254,7 +261,8 @@ AS $$
         SELECT
             t.subject_type,
             t.subject_id,
-            t.relation AS subject_relation,
+            t.subject_relation,
+            COALESCE(es.subject_relation, 'member') = 'member' AS expandable,
             es.depth + 1
         FROM expanded_subjects es
         JOIN authz.tuples t ON t.namespace = p_namespace
@@ -262,7 +270,7 @@ AS $$
             AND t.resource_id = es.subject_id
             AND t.relation = COALESCE(es.subject_relation, 'member')
             AND (t.expires_at IS NULL OR t.expires_at > now())
-        WHERE es.depth < authz._max_group_depth()
+        WHERE es.expandable AND es.depth < authz._max_group_depth()
     ),
     -- Find leaf subjects (not groups with members)
     leaf_subjects AS (
@@ -336,6 +344,7 @@ accessible AS (
         t.namespace = p_namespace
         AND t.subject_type = p_subject_type
         AND t.subject_id = p_subject_id
+        AND t.subject_relation IS NULL
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
     UNION

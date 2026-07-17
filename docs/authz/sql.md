@@ -157,7 +157,7 @@ SELECT * FROM authz.explain_text('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain_text('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/025_explain.sql:203*
+*Source: authz/src/functions/025_explain.sql:206*
 
 ---
 
@@ -400,7 +400,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/024_list.sql:214*
+*Source: authz/src/functions/024_list.sql:220*
 
 ---
 
@@ -427,7 +427,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/024_list.sql:297*
+*Source: authz/src/functions/024_list.sql:305*
 
 ---
 
@@ -484,7 +484,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/024_list.sql:111*
+*Source: authz/src/functions/024_list.sql:112*
 
 ---
 
@@ -637,7 +637,7 @@ SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/023_check.sql:99*
+*Source: authz/src/functions/023_check.sql:100*
 
 ---
 
@@ -663,7 +663,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:157*
+*Source: authz/src/functions/023_check.sql:158*
 
 ---
 
@@ -689,7 +689,7 @@ Check if a subject has any of the specified permissions
 SELECT authz.check_any('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:128*
+*Source: authz/src/functions/023_check.sql:129*
 
 ---
 

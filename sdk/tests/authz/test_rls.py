@@ -328,6 +328,50 @@ class TestAuthzRowLevelSecurity:
         )
         assert len(superuser_cursor.fetchall()) == 1
 
+    def test_viewer_group_does_not_see_or_leave_userset_share(
+        self, rls_connection, db_connection
+    ):
+        """A viewer set to a group sees and can leave a share made to the group
+        itself, but not a userset share scoped to a sub-relation (eng#admin):
+        that share is not the group's to see or revoke."""
+        superuser_cursor = db_connection.cursor()
+        org_a = AuthzClient(superuser_cursor, "org-a")
+        org_a.grant("read", resource=("doc", "direct"), subject=("team", "eng"))
+        org_a.grant(
+            "read",
+            resource=("doc", "userset"),
+            subject=("team", "eng"),
+            subject_relation="admin",
+        )
+
+        cursor = rls_connection.cursor()
+        org_b = AuthzClient(cursor, "org-b")
+        org_b.set_viewer(("team", "eng"))
+
+        cursor.execute(
+            """
+            SELECT resource_id FROM authz.tuples
+            WHERE namespace = 'org-a' AND subject_type = 'team' AND subject_id = 'eng'
+            """
+        )
+        assert {r[0] for r in cursor.fetchall()} == {"direct"}
+
+        cursor.execute(
+            """
+            DELETE FROM authz.tuples
+            WHERE namespace = 'org-a' AND subject_type = 'team' AND subject_id = 'eng'
+            """
+        )
+        rls_connection.commit()
+
+        superuser_cursor.execute(
+            """
+            SELECT resource_id FROM authz.tuples
+            WHERE namespace = 'org-a' AND subject_type = 'team' AND subject_id = 'eng'
+            """
+        )
+        assert {r[0] for r in superuser_cursor.fetchall()} == {"userset"}
+
     def test_recipient_policies_match_across_normalization(
         self, rls_connection, db_connection
     ):

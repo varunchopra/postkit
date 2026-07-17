@@ -27,6 +27,7 @@ AS $$
         WHERE namespace = p_namespace
           AND subject_type = p_subject_type
           AND subject_id = p_subject_id
+          AND subject_relation IS NULL
           AND (expires_at IS NULL OR expires_at > now())
 
         UNION
@@ -43,6 +44,7 @@ AS $$
           AND t.subject_type = sm.group_type
           AND t.subject_id = sm.group_id
           AND t.relation = 'member'
+          AND (t.subject_relation IS NULL OR t.subject_relation = sm.membership_relation)
           AND (t.expires_at IS NULL OR t.expires_at > now())
         WHERE sm.depth < authz._max_group_depth()
     )

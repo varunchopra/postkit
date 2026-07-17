@@ -42,6 +42,7 @@ AS $$
         WHERE t.namespace = p_namespace
           AND t.subject_type = p_subject_type
           AND t.subject_id = p_subject_id
+          AND t.subject_relation IS NULL
           AND (t.expires_at IS NULL OR t.expires_at > now())
 
         UNION
