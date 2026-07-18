@@ -44,6 +44,11 @@ BEGIN
     -- policy denies direct access; parent-routed queries are unaffected.
     EXECUTE format('ALTER TABLE meter.%I ENABLE ROW LEVEL SECURITY', v_name);
     EXECUTE format('ALTER TABLE meter.%I FORCE ROW LEVEL SECURITY', v_name);
+    EXECUTE format(
+        'CREATE TRIGGER ledger_no_truncate BEFORE TRUNCATE ON meter.%I '
+        'FOR EACH STATEMENT EXECUTE FUNCTION meter._enforce_ledger_immutability()',
+        v_name
+    );
 
     RETURN v_name;
 END;
