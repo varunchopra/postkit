@@ -470,7 +470,7 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, false if not found
 
-*Source: queue/src/functions/050_schedules.sql:202*
+*Source: queue/src/functions/050_schedules.sql:204*
 
 ---
 
@@ -488,7 +488,7 @@ Get a schedule by name.
 
 **Returns:** Schedule row, or empty if not found
 
-*Source: queue/src/functions/050_schedules.sql:109*
+*Source: queue/src/functions/050_schedules.sql:111*
 
 ---
 
@@ -509,7 +509,7 @@ List schedules with optional filters and cursor pagination.
 
 **Returns:** Schedule rows ordered by name
 
-*Source: queue/src/functions/050_schedules.sql:157*
+*Source: queue/src/functions/050_schedules.sql:159*
 
 ---
 
@@ -527,7 +527,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, false if already paused or not found
 
-*Source: queue/src/functions/050_schedules.sql:229*
+*Source: queue/src/functions/050_schedules.sql:231*
 
 ---
 
@@ -545,7 +545,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, false if already active or not found
 
-*Source: queue/src/functions/050_schedules.sql:260*
+*Source: queue/src/functions/050_schedules.sql:262*
 
 ---
 

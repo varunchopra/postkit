@@ -2,6 +2,9 @@
 
 from datetime import datetime, timezone
 
+import psycopg
+import pytest
+
 
 class TestCronParseField:
     """Test internal _cron_parse_field function."""
@@ -30,6 +33,13 @@ class TestCronParseField:
         cursor, _ = raw_cursor
         cursor.execute("SELECT queue._cron_parse_field('1-10/3', 0, 59)")
         assert cursor.fetchone()[0] == [1, 4, 7, 10]
+
+    def test_zero_step_rejected_defensively(self, raw_cursor):
+        """The internal parser rejects zero even when validation is bypassed."""
+        cursor, _ = raw_cursor
+        with pytest.raises(psycopg.Error) as exc_info:
+            cursor.execute("SELECT queue._cron_parse_field('*/0', 0, 59)")
+        assert exc_info.value.diag.message_hint == "postkit:queue:VAL_CRON_STEP_ZERO"
 
     def test_list(self, raw_cursor):
         cursor, _ = raw_cursor

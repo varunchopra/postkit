@@ -210,11 +210,18 @@ RETURNS void AS $$
 DECLARE
     v_parts text[];
     v_field text;
+    v_step_text text;
     v_field_pattern text := '^(\*|[0-9]+(-[0-9]+)?)(\/[0-9]+)?$|^([0-9]+(-[0-9]+)?,)*[0-9]+(-[0-9]+)?$';
 BEGIN
     IF p_value IS NULL THEN
         -- NULL is OK when using every_interval instead
         RETURN;
+    END IF;
+
+    IF length(p_value) > 256 THEN
+        RAISE EXCEPTION 'Cron expression cannot exceed 256 characters'
+            USING ERRCODE = 'string_data_right_truncation',
+                  HINT = 'postkit:queue:VAL_CRON_TOO_LONG';
     END IF;
 
     IF trim(p_value) = '' THEN
@@ -240,7 +247,29 @@ BEGIN
                 USING ERRCODE = 'invalid_parameter_value',
                       HINT = 'postkit:queue:VAL_CRON_INVALID';
         END IF;
+
+        v_step_text := substring(v_field from '/([0-9]+)$');
+        IF v_step_text IS NOT NULL AND v_step_text::numeric < 1 THEN
+            RAISE EXCEPTION 'Cron step must be at least 1: %', v_field
+                USING ERRCODE = 'invalid_parameter_value',
+                      HINT = 'postkit:queue:VAL_CRON_STEP_ZERO';
+        END IF;
     END LOOP;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue._validate_schedule_interval
+-- @brief Validate that a recurring schedule interval is positive.
+-- @param p_value Schedule interval to validate (NULL is allowed for cron schedules)
+CREATE OR REPLACE FUNCTION queue._validate_schedule_interval(p_value interval)
+RETURNS void AS $$
+BEGIN
+    IF p_value IS NOT NULL AND p_value <= interval '0' THEN
+        RAISE EXCEPTION 'Schedule interval must be positive'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_INTERVAL_NOT_POSITIVE';
+    END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
 

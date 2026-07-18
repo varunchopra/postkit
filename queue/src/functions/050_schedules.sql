@@ -58,6 +58,8 @@ BEGIN
                   HINT = 'postkit:queue:BIZ_SCHEDULE_REQUIRES_SCHEDULE';
     END IF;
 
+    PERFORM queue._validate_schedule_interval(p_every_interval);
+
     -- Validate cron expression if provided
     IF p_cron_expression IS NOT NULL THEN
         PERFORM queue._validate_cron_expression(p_cron_expression);
@@ -280,6 +282,8 @@ BEGIN
     IF NOT FOUND THEN
         RETURN false;
     END IF;
+
+    PERFORM queue._validate_schedule_interval(v_schedule.every_interval);
 
     -- Recalculate next_run_at from now
     IF v_schedule.cron_expression IS NOT NULL THEN

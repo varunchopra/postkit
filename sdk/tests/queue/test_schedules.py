@@ -121,6 +121,76 @@ class TestCreateSchedule:
             exc_info.value.error_code == QueueErrorCode.BIZ_SCHEDULE_REQUIRES_SCHEDULE
         )
 
+    @pytest.mark.parametrize(
+        "expression", ["*/0 * * * *", "*/00 * * * *", "1-5/0 * * * *"]
+    )
+    def test_create_rejects_zero_cron_step(self, queue, expression):
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.create_schedule(
+                "zero_step", "tasks", {"a": 1}, cron_expression=expression
+            )
+        assert exc_info.value.error_code == QueueErrorCode.VAL_CRON_STEP_ZERO
+
+    def test_cron_length_boundary(self, queue):
+        expression = " " * 247 + "* * * * *"
+        assert len(expression) == 256
+        queue.create_schedule(
+            "max_cron_length", "tasks", {"a": 1}, cron_expression=expression
+        )
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.create_schedule(
+                "oversized_cron",
+                "tasks",
+                {"a": 1},
+                cron_expression=" " + expression,
+            )
+        assert exc_info.value.error_code == QueueErrorCode.VAL_CRON_TOO_LONG
+
+    @pytest.mark.parametrize("expression", [" " * 257, "*/1" * 86])
+    def test_oversized_cron_rejected_before_normalization(self, queue, expression):
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.create_schedule(
+                "oversized_cron", "tasks", {"a": 1}, cron_expression=expression
+            )
+        assert exc_info.value.error_code == QueueErrorCode.VAL_CRON_TOO_LONG
+
+    @pytest.mark.parametrize(
+        ("left", "right"),
+        [
+            ("0 9 * * 0", "0 9 * * 7"),
+            ("0 9 * * 5-7", "0 9 * * 5,6,0"),
+            ("0 9 * * 0,7", "0 9 * * 0"),
+            ("0 0 15 * 0-7", "0 0 * * *"),
+        ],
+    )
+    def test_equivalent_weekday_forms_have_same_next_run(self, queue, left, right):
+        queue.create_schedule("left", "tasks", {"a": 1}, cron_expression=left)
+        queue.create_schedule("right", "tasks", {"a": 1}, cron_expression=right)
+
+        assert queue.get_schedule("left")["next_run_at"] == queue.get_schedule(
+            "right"
+        )["next_run_at"]
+
+    @pytest.mark.parametrize(
+        "interval", [timedelta(0), timedelta(seconds=-1), timedelta(days=-1)]
+    )
+    def test_create_rejects_non_positive_interval(self, queue, interval):
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.create_schedule(
+                "bad_interval", "tasks", {"a": 1}, every_interval=interval
+            )
+        assert exc_info.value.error_code == QueueErrorCode.VAL_INTERVAL_NOT_POSITIVE
+
+    @pytest.mark.parametrize(
+        "interval", [timedelta(microseconds=1), timedelta(days=365)]
+    )
+    def test_create_accepts_positive_interval_boundaries(self, queue, interval):
+        queue.create_schedule(
+            "positive_interval", "tasks", {"a": 1}, every_interval=interval
+        )
+        assert queue.get_schedule("positive_interval") is not None
+
 
 class TestGetSchedule:
     """Test schedule retrieval by name."""
@@ -361,3 +431,22 @@ class TestPauseResumeSchedule:
         """Resuming a nonexistent schedule returns False."""
         result = queue.resume_schedule("ghost")
         assert result is False
+
+    @pytest.mark.parametrize("interval", [timedelta(0), timedelta(seconds=-1)])
+    def test_resume_rejects_corrupt_non_positive_interval(self, queue, interval):
+        queue.create_schedule(
+            "corrupt_interval",
+            "tasks",
+            {"a": 1},
+            every_interval=timedelta(hours=1),
+        )
+        queue.pause_schedule("corrupt_interval")
+        queue.cursor.execute(
+            "UPDATE queue.schedules SET every_interval = %s "
+            "WHERE namespace = %s AND name = 'corrupt_interval'",
+            (interval, queue.namespace),
+        )
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            queue.resume_schedule("corrupt_interval")
+        assert exc_info.value.error_code == QueueErrorCode.VAL_INTERVAL_NOT_POSITIVE

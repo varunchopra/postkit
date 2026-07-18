@@ -36,6 +36,12 @@ BEGIN
             v_step := 1;
         END IF;
 
+        IF v_step < 1 THEN
+            RAISE EXCEPTION 'Cron step must be at least 1: %', v_term
+                USING ERRCODE = 'invalid_parameter_value',
+                      HINT = 'postkit:queue:VAL_CRON_STEP_ZERO';
+        END IF;
+
         IF v_base = '*' THEN
             -- Wildcard: generate from min to max with step
             FOR v_val IN SELECT generate_series(p_min, p_max, v_step)
@@ -121,7 +127,16 @@ BEGIN
     v_hours := queue._cron_parse_field(v_fields[2], 0, 23);
     v_days_of_month := queue._cron_parse_field(v_fields[3], 1, 31);
     v_months := queue._cron_parse_field(v_fields[4], 1, 12);
-    v_days_of_week := queue._cron_parse_field(v_fields[5], 0, 6);
+    v_days_of_week := queue._cron_parse_field(v_fields[5], 0, 7);
+
+    SELECT array_agg(dow ORDER BY dow)
+    INTO v_days_of_week
+    FROM (
+        SELECT DISTINCT CASE WHEN value = 7 THEN 0 ELSE value END AS dow
+        FROM unnest(v_days_of_week) AS parsed(value)
+    ) normalized;
+
+    v_days_of_week := COALESCE(v_days_of_week, '{}');
 
     -- Detect whether day-of-month and day-of-week are restricted (not '*').
     -- POSIX: if both are restricted, a day matches if EITHER is satisfied.
