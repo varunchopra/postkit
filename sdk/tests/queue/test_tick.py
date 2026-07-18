@@ -143,6 +143,68 @@ class TestTickSchedules:
         names = sorted(r["schedule_name"] for r in results)
         assert names == ["batch_a", "batch_b", "batch_c"]
 
+    def test_broken_schedule_does_not_block_other_due_schedules(self, queue):
+        self._make_due_schedule(queue, "broken", cron_expression="0 * * * *")
+        self._make_due_schedule(queue, "healthy", every_interval=timedelta(hours=1))
+        queue.cursor.execute(
+            "UPDATE queue.schedules "
+            "SET cron_timezone = 'Not/A_Timezone', "
+            "next_run_at = now() - interval '2 minutes' "
+            "WHERE namespace = %s AND name = 'broken'",
+            (queue.namespace,),
+        )
+
+        results = queue.tick_schedules()
+
+        assert [result["schedule_name"] for result in results] == ["healthy"]
+        broken = queue.get_schedule("broken")
+        assert broken["last_error"]
+        assert broken["consecutive_failures"] == 1
+        assert broken["is_active"] is True
+        assert broken["next_run_at"] > datetime.now(timezone.utc)
+        assert queue.get_schedule("healthy")["run_count"] == 1
+
+    def test_success_clears_prior_schedule_failure(self, queue):
+        self._make_due_schedule(queue, "recovered", every_interval=timedelta(hours=1))
+        queue.cursor.execute(
+            "UPDATE queue.schedules "
+            "SET last_error = 'old failure', consecutive_failures = 3 "
+            "WHERE namespace = %s AND name = 'recovered'",
+            (queue.namespace,),
+        )
+
+        queue.tick_schedules()
+
+        schedule = queue.get_schedule("recovered")
+        assert schedule["last_error"] is None
+        assert schedule["consecutive_failures"] == 0
+
+    def test_schedule_is_quarantined_after_ten_consecutive_failures(self, queue):
+        self._make_due_schedule(queue, "poison", cron_expression="0 * * * *")
+        queue.cursor.execute(
+            "UPDATE queue.schedules SET cron_timezone = 'Not/A_Timezone' "
+            "WHERE namespace = %s AND name = 'poison'",
+            (queue.namespace,),
+        )
+
+        for _ in range(10):
+            queue.cursor.execute(
+                "UPDATE queue.schedules "
+                "SET next_run_at = now() - interval '1 minute' "
+                "WHERE namespace = %s AND name = 'poison'",
+                (queue.namespace,),
+            )
+            assert queue.tick_schedules() == []
+
+        schedule = queue.get_schedule("poison")
+        assert schedule["consecutive_failures"] == 10
+        assert schedule["is_active"] is False
+        queue.cursor.execute(
+            "SELECT count(*) FROM queue.jobs WHERE namespace = %s AND queue = 'tasks'",
+            (queue.namespace,),
+        )
+        assert queue.cursor.fetchone()[0] == 0
+
     def test_tick_respects_limit(self, queue):
         """Tick limit caps the number of schedules processed."""
         for name in ["limit_a", "limit_b", "limit_c"]:

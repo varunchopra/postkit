@@ -44,64 +44,72 @@ BEGIN
         LIMIT p_limit
         FOR UPDATE SKIP LOCKED
     LOOP
-        -- Insert job directly (skip queue.push overhead since inputs were
-        -- validated at schedule creation time)
-        INSERT INTO queue.jobs (
-            namespace, queue, payload, priority, max_attempts, tags,
-            actor_id, request_id, on_behalf_of, reason
-        )
-        VALUES (
-            v_schedule.namespace,
-            v_schedule.queue,
-            v_schedule.payload,
-            v_schedule.priority,
-            v_schedule.max_attempts,
-            v_schedule.tags,
-            v_actor.actor_id,
-            v_actor.request_id,
-            v_actor.on_behalf_of,
-            v_actor.reason
-        )
-        RETURNING id INTO v_job_id;
-
-        -- Calculate next run time
-        IF v_schedule.cron_expression IS NOT NULL THEN
-            v_next := queue._cron_next_run(
-                v_schedule.cron_expression,
-                v_schedule.cron_timezone,
-                now()
-            );
-        ELSE
-            v_next := now() + v_schedule.every_interval;
-        END IF;
-
-        -- Update schedule state
-        UPDATE queue.schedules
-        SET last_run_at = now(),
-            last_job_id = v_job_id,
-            next_run_at = v_next,
-            run_count = queue.schedules.run_count + 1,
-            updated_at = now()
-        WHERE id = v_schedule.id;
-
-        -- Notify listeners
-        v_config := queue._get_config(v_schedule.namespace);
-        PERFORM queue._notify_if_enabled(
-            v_config,
-            v_schedule.namespace,
-            v_schedule.queue,
-            jsonb_build_object(
-                'id', v_job_id,
-                'queue', v_schedule.queue,
-                'schedule', v_schedule.name
+        BEGIN
+            -- Insert job directly (skip queue.push overhead since inputs were
+            -- validated at schedule creation time)
+            INSERT INTO queue.jobs (
+                namespace, queue, payload, priority, max_attempts, tags,
+                actor_id, request_id, on_behalf_of, reason
             )
-        );
+            VALUES (
+                v_schedule.namespace,
+                v_schedule.queue,
+                v_schedule.payload,
+                v_schedule.priority,
+                v_schedule.max_attempts,
+                v_schedule.tags,
+                v_actor.actor_id,
+                v_actor.request_id,
+                v_actor.on_behalf_of,
+                v_actor.reason
+            )
+            RETURNING id INTO v_job_id;
 
-        -- Return result row
-        schedule_name := v_schedule.name;
-        job_id := v_job_id;
-        next_run_at := v_next;
-        RETURN NEXT;
+            IF v_schedule.cron_expression IS NOT NULL THEN
+                v_next := queue._cron_next_run(
+                    v_schedule.cron_expression,
+                    v_schedule.cron_timezone,
+                    now()
+                );
+            ELSE
+                v_next := now() + v_schedule.every_interval;
+            END IF;
+
+            UPDATE queue.schedules
+            SET last_run_at = now(),
+                last_job_id = v_job_id,
+                next_run_at = v_next,
+                run_count = queue.schedules.run_count + 1,
+                last_error = NULL,
+                consecutive_failures = 0,
+                updated_at = now()
+            WHERE id = v_schedule.id;
+
+            v_config := queue._get_config(v_schedule.namespace);
+            PERFORM queue._notify_if_enabled(
+                v_config,
+                v_schedule.namespace,
+                v_schedule.queue,
+                jsonb_build_object(
+                    'id', v_job_id,
+                    'queue', v_schedule.queue,
+                    'schedule', v_schedule.name
+                )
+            );
+
+            schedule_name := v_schedule.name;
+            job_id := v_job_id;
+            next_run_at := v_next;
+            RETURN NEXT;
+        EXCEPTION WHEN OTHERS THEN
+            UPDATE queue.schedules
+            SET last_error = SQLERRM,
+                consecutive_failures = queue.schedules.consecutive_failures + 1,
+                next_run_at = clock_timestamp() + interval '1 minute',
+                is_active = (queue.schedules.consecutive_failures + 1 < 10),
+                updated_at = clock_timestamp()
+            WHERE id = v_schedule.id;
+        END;
     END LOOP;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

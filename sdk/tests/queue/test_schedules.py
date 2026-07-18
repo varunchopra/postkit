@@ -168,9 +168,10 @@ class TestCreateSchedule:
         queue.create_schedule("left", "tasks", {"a": 1}, cron_expression=left)
         queue.create_schedule("right", "tasks", {"a": 1}, cron_expression=right)
 
-        assert queue.get_schedule("left")["next_run_at"] == queue.get_schedule(
-            "right"
-        )["next_run_at"]
+        assert (
+            queue.get_schedule("left")["next_run_at"]
+            == queue.get_schedule("right")["next_run_at"]
+        )
 
     @pytest.mark.parametrize(
         "interval", [timedelta(0), timedelta(seconds=-1), timedelta(days=-1)]
@@ -220,6 +221,8 @@ class TestGetSchedule:
         assert schedule["is_active"] is True
         assert schedule["run_count"] == 0
         assert schedule["tags"] == ["alerts"]
+        assert schedule["last_error"] is None
+        assert schedule["consecutive_failures"] == 0
 
     def test_get_nonexistent_returns_none(self, queue):
         """Returns None for a schedule that does not exist."""
@@ -243,6 +246,8 @@ class TestListSchedules:
         schedules = queue.list_schedules()
         names = [s["name"] for s in schedules]
         assert names == ["alpha", "bravo", "charlie"]
+        assert all(s["last_error"] is None for s in schedules)
+        assert all(s["consecutive_failures"] == 0 for s in schedules)
 
     def test_list_filter_by_queue(self, queue):
         """Filter schedules by target queue name."""

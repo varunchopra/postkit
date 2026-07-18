@@ -128,6 +128,8 @@ RETURNS TABLE(
     last_job_id bigint,
     next_run_at timestamptz,
     run_count bigint,
+    last_error text,
+    consecutive_failures int,
     created_at timestamptz,
     updated_at timestamptz
 ) AS $$
@@ -140,7 +142,8 @@ BEGIN
     SELECT s.id, s.name, s.queue, s.payload, s.priority, s.max_attempts, s.tags,
            s.cron_expression, s.cron_timezone, s.every_interval,
            s.is_active, s.last_run_at, s.last_job_id, s.next_run_at,
-           s.run_count, s.created_at, s.updated_at
+           s.run_count, s.last_error, s.consecutive_failures,
+           s.created_at, s.updated_at
     FROM queue.schedules s
     WHERE s.namespace = p_namespace
       AND s.name = p_name;
@@ -172,6 +175,8 @@ RETURNS TABLE(
     next_run_at timestamptz,
     last_run_at timestamptz,
     run_count bigint,
+    last_error text,
+    consecutive_failures int,
     created_at timestamptz
 ) AS $$
 BEGIN
@@ -184,7 +189,8 @@ BEGIN
 
     RETURN QUERY
     SELECT s.name, s.queue, s.cron_expression, s.every_interval,
-           s.is_active, s.next_run_at, s.last_run_at, s.run_count, s.created_at
+           s.is_active, s.next_run_at, s.last_run_at, s.run_count,
+           s.last_error, s.consecutive_failures, s.created_at
     FROM queue.schedules s
     WHERE s.namespace = p_namespace
       AND (p_queue IS NULL OR s.queue = p_queue)

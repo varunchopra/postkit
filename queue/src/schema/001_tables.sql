@@ -187,6 +187,8 @@ CREATE TABLE queue.schedules (
     last_job_id bigint,
     next_run_at timestamptz,
     run_count bigint NOT NULL DEFAULT 0,
+    last_error text,
+    consecutive_failures int NOT NULL DEFAULT 0,
 
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),

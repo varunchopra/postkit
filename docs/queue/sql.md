@@ -470,14 +470,14 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, false if not found
 
-*Source: queue/src/functions/050_schedules.sql:204*
+*Source: queue/src/functions/050_schedules.sql:210*
 
 ---
 
 ### queue.get_schedule
 
 ```sql
-queue.get_schedule(p_namespace: text, p_name: text) -> table(id: int8, name: text, queue: text, payload: jsonb, priority: int4, max_attempts: int4, tags: text[], cron_expression: text, cron_timezone: text, every_interval: interval, is_active: bool, last_run_at: timestamptz, last_job_id: int8, next_run_at: timestamptz, run_count: int8, created_at: timestamptz, updated_at: timestamptz)
+queue.get_schedule(p_namespace: text, p_name: text) -> table(id: int8, name: text, queue: text, payload: jsonb, priority: int4, max_attempts: int4, tags: text[], cron_expression: text, cron_timezone: text, every_interval: interval, is_active: bool, last_run_at: timestamptz, last_job_id: int8, next_run_at: timestamptz, run_count: int8, last_error: text, consecutive_failures: int4, created_at: timestamptz, updated_at: timestamptz)
 ```
 
 Get a schedule by name.
@@ -495,7 +495,7 @@ Get a schedule by name.
 ### queue.list_schedules
 
 ```sql
-queue.list_schedules(p_namespace: text, p_queue: text, p_is_active: bool, p_limit: int4, p_cursor: text) -> table(name: text, queue: text, cron_expression: text, every_interval: interval, is_active: bool, next_run_at: timestamptz, last_run_at: timestamptz, run_count: int8, created_at: timestamptz)
+queue.list_schedules(p_namespace: text, p_queue: text, p_is_active: bool, p_limit: int4, p_cursor: text) -> table(name: text, queue: text, cron_expression: text, every_interval: interval, is_active: bool, next_run_at: timestamptz, last_run_at: timestamptz, run_count: int8, last_error: text, consecutive_failures: int4, created_at: timestamptz)
 ```
 
 List schedules with optional filters and cursor pagination.
@@ -509,7 +509,7 @@ List schedules with optional filters and cursor pagination.
 
 **Returns:** Schedule rows ordered by name
 
-*Source: queue/src/functions/050_schedules.sql:159*
+*Source: queue/src/functions/050_schedules.sql:162*
 
 ---
 
@@ -527,7 +527,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, false if already paused or not found
 
-*Source: queue/src/functions/050_schedules.sql:231*
+*Source: queue/src/functions/050_schedules.sql:237*
 
 ---
 
@@ -545,7 +545,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, false if already active or not found
 
-*Source: queue/src/functions/050_schedules.sql:262*
+*Source: queue/src/functions/050_schedules.sql:268*
 
 ---
 
@@ -581,7 +581,7 @@ Reclaim running jobs whose visibility timeout has expired.
 
 **Returns:** Rows of (job_id, queue, stuck_duration) for each reclaimed job
 
-*Source: queue/src/functions/055_tick.sql:124*
+*Source: queue/src/functions/055_tick.sql:132*
 
 ---
 
