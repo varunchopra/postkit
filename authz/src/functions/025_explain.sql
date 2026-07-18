@@ -58,6 +58,7 @@ BEGIN
     -- Find all groups the subject belongs to (including via nested teams)
     -- and check if any of those groups have the permission on the resource
     -- Depth limit of 50 prevents runaway recursion on malformed data
+    -- This copies authz._expand_subject_memberships; a predicate change here must land there too.
     FOR v_group IN WITH RECURSIVE subject_memberships AS (
         -- Direct memberships: subject is member of group
         SELECT

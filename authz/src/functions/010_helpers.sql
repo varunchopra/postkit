@@ -10,6 +10,7 @@
 -- The reserved 'parent' relation is resource hierarchy, not membership, so it is
 -- excluded here; otherwise a grant to a child would flow up to its parent. A grant
 -- to a userset '#parent' is consequently unsatisfiable.
+-- authz.explain inlines this same walk; a predicate change here must land there too.
 -- @example If user:alice is in team:infra, and team:infra is in team:platform,
 -- @example returns both (team, infra, member) and (team, platform, member).
 CREATE OR REPLACE FUNCTION authz._expand_subject_memberships(

@@ -157,7 +157,7 @@ SELECT * FROM authz.explain_text('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain_text('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/025_explain.sql:207*
+*Source: authz/src/functions/025_explain.sql:208*
 
 ---
 
