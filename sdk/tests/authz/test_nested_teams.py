@@ -432,10 +432,10 @@ class TestUsersetNestedMembership:
     def test_group_named_as_subject_is_not_a_qualified_member(self, nested_userset):
         assert nested_userset.check(("team", "infra"), "read", ("doc", "1")) is False
 
-    def test_member_of_a_group_admin_is_not_listed(self, authz):
-        """A grant to eng#admin reaches leads, a direct admin of eng, but not
-        leads' members: they do not nest through the admin edge. list_subjects
-        must agree with check that bob has no access."""
+    def test_group_admin_is_listed_but_its_members_are_not(self, authz):
+        """leads is a direct admin of eng, so eng#admin reaches it; leads is a
+        grantee even though it has members, and those members do not nest through
+        the admin edge. list_subjects returns leads exactly, not bob."""
         authz.grant(
             "read",
             resource=("doc", "1"),
@@ -445,8 +445,24 @@ class TestUsersetNestedMembership:
         authz.grant("admin", resource=("team", "eng"), subject=("team", "leads"))
         authz.grant("member", resource=("team", "leads"), subject=("user", "bob"))
 
+        assert authz.check(("team", "leads"), "read", ("doc", "1")) is True
         assert authz.check(("user", "bob"), "read", ("doc", "1")) is False
-        assert ("user", "bob") not in authz.list_subjects("read", ("doc", "1"))
+        assert authz.list_subjects("read", ("doc", "1")) == [("team", "leads")]
+
+    def test_userset_member_grant_expands_nested_members_to_leaves(self, authz):
+        """A userset grant to eng#member follows member edges transitively down to
+        leaf principals: dave, a member of a member of eng, is listed."""
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            subject_relation="member",
+        )
+        authz.grant("member", resource=("team", "eng"), subject=("team", "sub"))
+        authz.grant("member", resource=("team", "sub"), subject=("user", "dave"))
+
+        assert authz.check(("user", "dave"), "read", ("doc", "1")) is True
+        assert authz.list_subjects("read", ("doc", "1")) == [("user", "dave")]
 
 
 class TestUsersetDirectGrant:
@@ -464,3 +480,76 @@ class TestUsersetDirectGrant:
 
         assert authz.check(("user", "carol"), "write", ("repo", "api")) is True
         assert authz.check(("team", "eng"), "write", ("repo", "api")) is False
+
+
+class TestListSubjectsAgreesWithCheck:
+    """list_subjects returns exactly the leaf principals check admits, including
+    the relation-holder and group-versus-leaf cases that check already resolves."""
+
+    def test_plain_grant_lists_every_relation_holder(self, authz):
+        authz.grant("admin", resource=("team", "eng"), subject=("user", "carol"))
+        authz.grant("member", resource=("team", "eng"), subject=("user", "alice"))
+        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
+
+        assert authz.check(("user", "carol"), "read", ("doc", "1")) is True
+        assert authz.check(("user", "alice"), "read", ("doc", "1")) is True
+        assert set(authz.list_subjects("read", ("doc", "1"))) == {
+            ("user", "carol"),
+            ("user", "alice"),
+        }
+        assert authz.count_subjects("read", ("doc", "1")) == 2
+
+    def test_userset_grant_does_not_list_the_group(self, authz):
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "eng"),
+            subject_relation="admin",
+        )
+        authz.grant("admin", resource=("team", "eng"), subject=("user", "carol"))
+
+        assert authz.check(("team", "eng"), "read", ("doc", "1")) is False
+        assert authz.list_subjects("read", ("doc", "1")) == [("user", "carol")]
+        assert authz.count_subjects("read", ("doc", "1")) == 1
+
+    def test_group_with_only_expired_members_is_still_listed(
+        self, authz, db_connection
+    ):
+        """A plain grant makes the group itself a grantee; when its only member
+        edge is expired, check still admits the group, so the member-existence
+        probe must ignore expired edges and list the group."""
+        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
+        cursor = db_connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO authz.tuples
+                (namespace, resource_type, resource_id, relation, subject_type, subject_id, expires_at)
+            VALUES (%s, 'team', 'eng', 'member', 'user', 'alice', now() - interval '1 hour')
+            """,
+            (authz.namespace,),
+        )
+
+        assert authz.check(("team", "eng"), "read", ("doc", "1")) is True
+        assert authz.list_subjects("read", ("doc", "1")) == [("team", "eng")]
+
+    def test_subject_on_member_and_non_member_paths_is_emitted(self, authz):
+        """shared is a member of g1 (expandable) and a direct admin of g2
+        (terminal). It is a grantee via the admin path while its members inherit
+        via the member path; the per-row emit rule must list both."""
+        authz.grant("read", resource=("doc", "1"), subject=("team", "g1"))
+        authz.grant("member", resource=("team", "g1"), subject=("team", "shared"))
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("team", "g2"),
+            subject_relation="admin",
+        )
+        authz.grant("admin", resource=("team", "g2"), subject=("team", "shared"))
+        authz.grant("member", resource=("team", "shared"), subject=("user", "m"))
+
+        assert authz.check(("team", "shared"), "read", ("doc", "1")) is True
+        assert authz.check(("user", "m"), "read", ("doc", "1")) is True
+        assert set(authz.list_subjects("read", ("doc", "1"))) == {
+            ("team", "shared"),
+            ("user", "m"),
+        }

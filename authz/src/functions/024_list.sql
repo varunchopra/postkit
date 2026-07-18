@@ -97,12 +97,98 @@ $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
+-- @function authz._grantee_leaves
+-- @brief Leaf subjects with a permission on a resource, expanded from its grants.
+-- @param p_resource_type The resource type
+-- @param p_resource_id The resource ID
+-- @param p_permission The permission to resolve
+-- @param p_namespace Namespace (default: 'default')
+-- @returns (subject_type, subject_id) for each leaf principal with the permission
+-- Shared by list_subjects and count_subjects. Mirrors check: a plain grant (null
+-- qualifier) reaches subjects of any relation, a userset grant reaches only its
+-- qualified relation, and membership nests only through member edges, so a subject
+-- reached through a non-member edge is a grantee whose own members do not inherit.
+-- Only a null-qualifier row is a grantee; a userset qualifier names a group to
+-- descend into, not a subject with access.
+CREATE OR REPLACE FUNCTION authz._grantee_leaves (p_resource_type text, p_resource_id text, p_permission text, p_namespace text DEFAULT 'default')
+    RETURNS TABLE (
+        subject_type text,
+        subject_id text
+    )
+    AS $$
+    WITH RECURSIVE
+    resource_chain AS (
+        SELECT * FROM authz._expand_resource_ancestors(p_resource_type, p_resource_id, p_namespace)
+    ),
+    implied_by AS (
+        SELECT p_permission AS permission
+        UNION
+        SELECT h.permission
+        FROM implied_by ib
+        JOIN authz.permission_hierarchy h ON h.namespace IN ('global', p_namespace)
+            AND h.resource_type = p_resource_type
+            AND h.implies = ib.permission
+    ),
+    expanded_subjects AS (
+        -- Direct grantees on the resource or its ancestors
+        SELECT
+            t.subject_type,
+            t.subject_id,
+            t.subject_relation,
+            true AS expandable,
+            1 AS depth
+        FROM authz.tuples t
+        JOIN implied_by ib ON t.relation = ib.permission
+        JOIN resource_chain rc ON t.resource_type = rc.resource_type
+            AND t.resource_id = rc.resource_id
+        WHERE t.namespace = p_namespace
+            AND (t.expires_at IS NULL OR t.expires_at > now())
+        UNION
+        -- Descend: a null qualifier follows any relation, a userset qualifier its
+        -- own; only member edges nest, so a non-member hop is a terminal grantee.
+        SELECT
+            t.subject_type,
+            t.subject_id,
+            t.subject_relation,
+            t.relation = 'member' AS expandable,
+            es.depth + 1
+        FROM expanded_subjects es
+        JOIN authz.tuples t ON t.namespace = p_namespace
+            AND t.resource_type = es.subject_type
+            AND t.resource_id = es.subject_id
+            AND (es.subject_relation IS NULL OR t.relation = es.subject_relation)
+            AND (t.expires_at IS NULL OR t.expires_at > now())
+        WHERE es.expandable AND es.depth < authz._max_group_depth()
+    )
+    -- A grantee is a null-qualifier row. Expand a group to its members only when
+    -- it was reached to be expanded (a member hop, or the grant itself); a group
+    -- reached through a non-member edge is a terminal grantee, emitted as-is even
+    -- when it has members. The rule is per row, before the distinct, so a
+    -- member-path row for a subject cannot mask a non-expandable one.
+    SELECT DISTINCT es.subject_type, es.subject_id
+    FROM expanded_subjects es
+    WHERE es.subject_relation IS NULL
+        AND (NOT es.expandable
+             OR NOT EXISTS (
+                SELECT 1 FROM authz.tuples t
+                WHERE t.namespace = p_namespace
+                    AND t.resource_type = es.subject_type
+                    AND t.resource_id = es.subject_id
+                    AND t.relation = 'member'
+                    AND (t.expires_at IS NULL OR t.expires_at > now())
+             ));
+$$
+LANGUAGE sql
+STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
+
 -- @function authz.list_subjects
 -- @brief List all subjects who can access a resource ("Who can read this doc?")
 -- @param p_subject_type Optional filter to only return subjects of this type (e.g., 'user')
 -- @param p_cursor_type Subject type from last result for pagination (NULL for first page)
 -- @param p_cursor_id Subject ID from last result for pagination (NULL for first page)
--- @returns Subject (type, id) pairs with access (expands team memberships to leaf subjects)
+-- @returns The (type, id) of every subject check would admit, expanded to leaves
+--   (a plainly granted group contributes its admins and other relation holders,
+--   not only its members)
 -- @example -- First page
 -- @example SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default');
 -- @example -- Filter to only users
@@ -115,96 +201,13 @@ CREATE OR REPLACE FUNCTION authz.list_subjects (p_resource_type text, p_resource
         subject_id text
     )
     AS $$
-    WITH RECURSIVE
-    -- Find resource and all ancestor resources (via parent relations)
-    resource_chain AS (
-        SELECT * FROM authz._expand_resource_ancestors(p_resource_type, p_resource_id, p_namespace)
-    ),
-    -- Find permissions that imply the requested permission.
-    -- Check BOTH global (app-wide defaults) AND tenant namespace (org customizations).
-    implied_by AS (
-        SELECT
-            p_permission AS permission
-        UNION
-        SELECT
-            h.permission
-        FROM
-            implied_by ib
-            JOIN authz.permission_hierarchy h ON h.namespace IN ('global', p_namespace)
-                AND h.resource_type = p_resource_type
-                AND h.implies = ib.permission
-),
--- Expand from grantees down to leaf subjects
--- Start with subjects that have grants on the resource or ancestors,
--- then recursively expand groups to find all members.
---
--- USERSET FEATURE: The COALESCE(es.subject_relation, 'member') handles usersets.
--- If a grant specifies subject_relation='admin', we find subjects who are admins
--- of that group, not just members.
--- Example: (repo, api, viewer, team, eng, admin) means "admins of team:eng can view repo:api"
--- A subject reached through a non-member edge is a grantee, not a group to
--- descend into; expandable stops the recursion there.
-expanded_subjects AS (
-    -- Direct grantees on the resource or ancestors
-    SELECT
-        t.subject_type,
-        t.subject_id,
-        t.subject_relation,
-        true AS expandable,
-        1 AS depth
-    FROM
-        authz.tuples t
-    JOIN implied_by ib ON t.relation = ib.permission
-    JOIN resource_chain rc ON t.resource_type = rc.resource_type
-        AND t.resource_id = rc.resource_id
-    WHERE
-        t.namespace = p_namespace
-        AND (t.expires_at IS NULL
-            OR t.expires_at > now())
-    UNION
-    -- Recursively find members of groups
-    SELECT
-        t.subject_type,
-        t.subject_id,
-        t.subject_relation,
-        COALESCE(es.subject_relation, 'member') = 'member' AS expandable,
-        es.depth + 1
-    FROM
-        expanded_subjects es
-        JOIN authz.tuples t ON t.namespace = p_namespace
-            AND t.resource_type = es.subject_type
-            AND t.resource_id = es.subject_id
-            AND t.relation = COALESCE(es.subject_relation, 'member')
-            AND (t.expires_at IS NULL
-                OR t.expires_at > now())
-    WHERE
-        es.expandable
-        AND es.depth < authz._max_group_depth()
-),
--- Find leaf subjects (subjects that are not groups with members)
--- A subject is a leaf if there are no tuples with it as the resource
-leaf_subjects AS (
-    SELECT DISTINCT es.subject_type, es.subject_id
-    FROM expanded_subjects es
-    WHERE NOT EXISTS (
-        SELECT 1 FROM authz.tuples t
-        WHERE t.namespace = p_namespace
-          AND t.resource_type = es.subject_type
-          AND t.resource_id = es.subject_id
-          AND t.relation = 'member'
-    )
-)
-SELECT
-    ls.subject_type,
-    ls.subject_id
-FROM
-    leaf_subjects ls
-WHERE (p_subject_type IS NULL OR ls.subject_type = p_subject_type)
-  AND ((p_cursor_type IS NULL AND p_cursor_id IS NULL)
-       OR (ls.subject_type, ls.subject_id) > (p_cursor_type, p_cursor_id))
-ORDER BY
-    ls.subject_type, ls.subject_id
-LIMIT p_limit;
+    SELECT g.subject_type, g.subject_id
+    FROM authz._grantee_leaves(p_resource_type, p_resource_id, p_permission, p_namespace) g
+    WHERE (p_subject_type IS NULL OR g.subject_type = p_subject_type)
+      AND ((p_cursor_type IS NULL AND p_cursor_id IS NULL)
+           OR (g.subject_type, g.subject_id) > (p_cursor_type, p_cursor_id))
+    ORDER BY g.subject_type, g.subject_id
+    LIMIT p_limit;
 $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
@@ -226,68 +229,9 @@ CREATE OR REPLACE FUNCTION authz.count_subjects(
 )
 RETURNS bigint
 AS $$
-    WITH RECURSIVE
-    -- Find resource and all ancestor resources (via parent relations)
-    resource_chain AS (
-        SELECT * FROM authz._expand_resource_ancestors(p_resource_type, p_resource_id, p_namespace)
-    ),
-    -- Find permissions that imply the requested permission
-    implied_by AS (
-        SELECT p_permission AS permission
-        UNION
-        SELECT h.permission
-        FROM implied_by ib
-        JOIN authz.permission_hierarchy h ON h.namespace IN ('global', p_namespace)
-            AND h.resource_type = p_resource_type
-            AND h.implies = ib.permission
-    ),
-    -- Expand from grantees down to leaf subjects
-    expanded_subjects AS (
-        -- Direct grantees on the resource or ancestors
-        SELECT
-            t.subject_type,
-            t.subject_id,
-            t.subject_relation,
-            true AS expandable,
-            1 AS depth
-        FROM authz.tuples t
-        JOIN implied_by ib ON t.relation = ib.permission
-        JOIN resource_chain rc ON t.resource_type = rc.resource_type
-            AND t.resource_id = rc.resource_id
-        WHERE t.namespace = p_namespace
-            AND (t.expires_at IS NULL OR t.expires_at > now())
-        UNION
-        -- Recursively find members of groups
-        SELECT
-            t.subject_type,
-            t.subject_id,
-            t.subject_relation,
-            COALESCE(es.subject_relation, 'member') = 'member' AS expandable,
-            es.depth + 1
-        FROM expanded_subjects es
-        JOIN authz.tuples t ON t.namespace = p_namespace
-            AND t.resource_type = es.subject_type
-            AND t.resource_id = es.subject_id
-            AND t.relation = COALESCE(es.subject_relation, 'member')
-            AND (t.expires_at IS NULL OR t.expires_at > now())
-        WHERE es.expandable AND es.depth < authz._max_group_depth()
-    ),
-    -- Find leaf subjects (not groups with members)
-    leaf_subjects AS (
-        SELECT DISTINCT es.subject_type, es.subject_id
-        FROM expanded_subjects es
-        WHERE NOT EXISTS (
-            SELECT 1 FROM authz.tuples t
-            WHERE t.namespace = p_namespace
-              AND t.resource_type = es.subject_type
-              AND t.resource_id = es.subject_id
-              AND t.relation = 'member'
-        )
-    )
-    -- Count directly without ORDER BY or materialization
     SELECT COUNT(*)
-    FROM leaf_subjects ls
-    WHERE p_subject_type IS NULL OR ls.subject_type = p_subject_type;
+    FROM authz._grantee_leaves(p_resource_type, p_resource_id, p_permission, p_namespace) g
+    WHERE p_subject_type IS NULL OR g.subject_type = p_subject_type;
 $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

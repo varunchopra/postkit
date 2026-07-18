@@ -400,7 +400,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/024_list.sql:220*
+*Source: authz/src/functions/024_list.sql:223*
 
 ---
 
@@ -427,7 +427,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/024_list.sql:305*
+*Source: authz/src/functions/024_list.sql:249*
 
 ---
 
@@ -472,7 +472,7 @@ List all subjects who can access a resource ("Who can read this doc?")
 - `p_cursor_type`: Subject type from last result for pagination (NULL for first page)
 - `p_cursor_id`: Subject ID from last result for pagination (NULL for first page)
 
-**Returns:** Subject (type, id) pairs with access (expands team memberships to leaf subjects)
+**Returns:** The (type, id) of every subject check would admit, expanded to leaves (a plainly granted group contributes its admins and other relation holders, not only its members)
 
 **Example:**
 ```sql
@@ -484,7 +484,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/024_list.sql:112*
+*Source: authz/src/functions/024_list.sql:198*
 
 ---
 
