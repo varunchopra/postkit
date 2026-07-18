@@ -83,7 +83,7 @@ Get namespace-wide outbox statistics.
 **Returns:** Dict with total_events, total_topics, total_consumers, and
 max_lag_events counts
 
-*Source: sdk/src/postkit/outbox/client.py:343*
+*Source: sdk/src/postkit/outbox/client.py:344*
 
 ---
 
@@ -122,7 +122,7 @@ Database-global, like the horizon itself. Seeing other sessions requires pg_read
 pid, datname, xact_age, state, application_name, query,
 is_horizon
 
-*Source: sdk/src/postkit/outbox/client.py:368*
+*Source: sdk/src/postkit/outbox/client.py:369*
 
 ---
 
@@ -140,7 +140,7 @@ Per-consumer backlog, plus the current visibility horizon.
 **Returns:** One dict per consumer: position_xid, position_id, lag_events,
 lag_time, horizon
 
-*Source: sdk/src/postkit/outbox/client.py:329*
+*Source: sdk/src/postkit/outbox/client.py:330*
 
 ---
 
@@ -157,7 +157,7 @@ List consumer cursors in the namespace.
 
 **Returns:** List of cursor row dicts
 
-*Source: sdk/src/postkit/outbox/client.py:355*
+*Source: sdk/src/postkit/outbox/client.py:356*
 
 ---
 
@@ -277,8 +277,8 @@ Delete old events. Retention has no default; pass it explicitly.
 
 **Parameters:**
 - `older_than`: Delete events older than this (required, positive)
-- `topic`: Topic filter (None = all topics in the namespace)
-- `limit`: Maximum events to delete per topic per call
+- `topic`: Topic filter (None scans all topics in the namespace)
+- `limit`: Maximum direct event deletions across all topics; this does not bound topic discovery.
 
 **Returns:** One dict per topic touched, with the deleted count
 

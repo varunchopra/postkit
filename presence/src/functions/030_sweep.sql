@@ -47,6 +47,7 @@ DECLARE
     v_group record;
     v_config presence.config;
     v_cutoff timestamptz;
+    v_candidate_now timestamptz;
     v_entity presence.entities;
     v_now timestamptz;
     v_flap record;
@@ -62,7 +63,7 @@ BEGIN
             USING ERRCODE = 'insufficient_privilege',
                   HINT = 'postkit:presence:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
     END IF;
-    PERFORM presence._validate_positive_int(p_limit, 'limit');
+    PERFORM presence._validate_limit(p_limit, 'limit', 1000);
 
     v_remaining := p_limit;
 
@@ -75,7 +76,8 @@ BEGIN
     LOOP
         EXIT WHEN v_remaining <= 0;
         v_config := presence._get_config(v_group.ns, v_group.kind);
-        v_cutoff := clock_timestamp() - v_config.dead_after;
+        v_candidate_now := clock_timestamp();
+        v_cutoff := v_candidate_now - v_config.dead_after;
 
         FOR v_entity IN
             SELECT e.*
@@ -86,7 +88,7 @@ BEGIN
               AND (
                   (e.timeout_override IS NULL AND e.last_seen < v_cutoff)
                   OR (e.timeout_override IS NOT NULL
-                      AND e.last_seen < clock_timestamp() - e.timeout_override)
+                      AND e.last_seen < v_candidate_now - e.timeout_override)
               )
             ORDER BY e.last_seen
             FOR UPDATE SKIP LOCKED
@@ -155,6 +157,7 @@ BEGIN
 
         EXIT WHEN v_remaining <= 0;
 
+        v_candidate_now := clock_timestamp();
         FOR v_entity IN
             SELECT e.*
             FROM presence.entities e
@@ -162,7 +165,7 @@ BEGIN
               AND e.kind = v_group.kind
               AND e.status = 'dead'
               AND e.hook_suppressed
-              AND e.flap_window_started < clock_timestamp() - v_config.flap_window
+              AND e.flap_window_started < v_candidate_now - v_config.flap_window
             FOR UPDATE SKIP LOCKED
             LIMIT v_remaining
         LOOP

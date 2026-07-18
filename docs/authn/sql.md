@@ -679,7 +679,7 @@ Clear login attempts to unlock a user (admin function)
 SELECT authn.clear_attempts('alice@example.com'); -- Unlock user
 ```
 
-*Source: authn/src/functions/050_lockout.sql:138*
+*Source: authn/src/functions/050_lockout.sql:135*
 
 ---
 
@@ -758,7 +758,7 @@ Delete expired sessions, tokens, refresh tokens, API keys, impersonation records
 
 **Parameters:**
 - `p_namespace`: Namespace to clean up
-- `p_batch_size`: Max rows to delete per table per iteration (default 10000, prevents long locks)
+- `p_batch_size`: Maximum direct rows deleted per call; cascades may delete additional physical rows
 
 **Returns:** sessions_deleted, tokens_deleted, refresh_tokens_deleted, api_keys_deleted, impersonations_deleted, attempts_deleted
 
@@ -769,7 +769,7 @@ SELECT * FROM authn.cleanup_expired('default');
 SELECT * FROM authn.cleanup_expired('default', 5000); -- smaller batches
 ```
 
-*Source: authn/src/functions/060_maintenance.sql:22*
+*Source: authn/src/functions/060_maintenance.sql:18*
 
 ---
 
@@ -782,7 +782,7 @@ authn.cleanup_expired_operator_sessions(p_batch_size: int4) -> int8
 Delete ended or expired operator impersonation sessions (run once per deployment via cron)
 
 **Parameters:**
-- `p_batch_size`: Max rows to delete per iteration (default 10000, prevents long locks)
+- `p_batch_size`: Maximum direct rows deleted per call
 
 **Returns:** Number of rows deleted
 
@@ -795,7 +795,7 @@ GRANT USAGE ON SCHEMA authn TO maintenance_role;
 GRANT EXECUTE ON FUNCTION authn.cleanup_expired_operator_sessions TO maintenance_role;
 ```
 
-*Source: authn/src/functions/060_maintenance.sql:327*
+*Source: authn/src/functions/060_maintenance.sql:415*
 
 ---
 
@@ -814,7 +814,7 @@ Get namespace statistics for monitoring dashboards
 SELECT * FROM authn.get_stats('default');
 ```
 
-*Source: authn/src/functions/060_maintenance.sql:397*
+*Source: authn/src/functions/060_maintenance.sql:489*
 
 ---
 
@@ -922,7 +922,7 @@ Query operator audit events
 SELECT * FROM authn.get_operator_audit_events(100, NULL, NULL, 'customer_ns');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:658*
+*Source: authn/src/functions/085_operator_impersonation.sql:661*
 
 ---
 
@@ -966,7 +966,7 @@ List all active operator impersonations (platform admin view)
 SELECT * FROM authn.list_active_operator_impersonations(100);
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:596*
+*Source: authn/src/functions/085_operator_impersonation.sql:598*
 
 ---
 
@@ -990,7 +990,7 @@ List impersonations performed by an operator
 SELECT * FROM authn.list_operator_impersonations_by_operator(operator_id, 'platform');
 ```
 
-*Source: authn/src/functions/085_operator_impersonation.sql:538*
+*Source: authn/src/functions/085_operator_impersonation.sql:539*
 
 ---
 
@@ -1446,7 +1446,7 @@ Count users, optionally filtered by an email substring
 SELECT authn.count_users('default', 'acme');
 ```
 
-*Source: authn/src/functions/010_users.sql:358*
+*Source: authn/src/functions/010_users.sql:355*
 
 ---
 
@@ -1548,7 +1548,7 @@ Atomically get existing user or create new one (for SSO flows)
 SELECT * FROM authn.get_or_create_user('alice@example.com', NULL, 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:436*
+*Source: authn/src/functions/010_users.sql:434*
 
 ---
 
@@ -1605,7 +1605,7 @@ Get multiple users by ID in a single query
 SELECT * FROM authn.get_users_batch(ARRAY['uuid1', 'uuid2']::uuid[], 'default');
 ```
 
-*Source: authn/src/functions/010_users.sql:388*
+*Source: authn/src/functions/010_users.sql:385*
 
 ---
 

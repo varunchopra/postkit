@@ -1,4 +1,4 @@
-.PHONY: all setup build test clean docs lint format
+.PHONY: all setup build test test-scale clean docs lint format
 
 PG_VERSION ?= 16
 PG_IMAGE ?= pgvector/pgvector:pg$(PG_VERSION)
@@ -11,7 +11,7 @@ RED = \033[0;31m
 GREEN = \033[0;32m
 NC = \033[0m
 
-all: build format lint docs test
+all: build format lint docs test test-scale
 
 db:
 	@image=$$(docker inspect -f '{{.Config.Image}}' $(PG_CONTAINER) 2>/dev/null); \
@@ -52,10 +52,13 @@ test: db build
 ifdef TEST
 	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly $(TEST)
 else
-	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly -n auto --dist loadgroup --ignore=tests/integration
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly -n auto --dist loadgroup -m "not scale" --ignore=tests/integration
 	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly tests/integration
 	@cd scripts && uv run --with pglast --with pytest pytest gendocs/
 endif
+
+test-scale: db build
+	@DATABASE_URL=$(DATABASE_URL) $(PYTEST) -v -p randomly -n auto --dist loadgroup -m scale --ignore=tests/integration
 
 docs:
 	@cd scripts && uv run --with pglast --with 'psycopg[binary]' --with jsonschema python -m gendocs.cli

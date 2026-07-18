@@ -8,9 +8,10 @@ from tests.outbox.test_horizon import ack_event, emit, poll_ids, subscribe
 CURSOR_LOST = "postkit:outbox:BIZ_CURSOR_LOST"
 
 
-def trim(cursor, namespace, older_than, topic=None):
+def trim(cursor, namespace, older_than, topic=None, limit=10000):
     cursor.execute(
-        "SELECT * FROM outbox.trim(%s, %s, %s)", (older_than, namespace, topic)
+        "SELECT * FROM outbox.trim(%s, %s, %s, %s)",
+        (older_than, namespace, topic, limit),
     )
     return cursor.fetchall()
 

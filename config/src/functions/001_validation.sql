@@ -101,3 +101,30 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = config, pg_temp;
+
+CREATE OR REPLACE FUNCTION config._validate_limit(p_value int, p_name text, p_max int)
+RETURNS void AS $$
+BEGIN
+    IF p_value IS NULL OR p_value <= 0 THEN
+        RAISE EXCEPTION '% must be a positive integer', p_name
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_NOT_POSITIVE';
+    END IF;
+    IF p_value > p_max THEN
+        RAISE EXCEPTION '% (%) exceeds maximum of %', p_name, p_value, p_max
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_LIMIT_TOO_LARGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = config, pg_temp;
+
+CREATE OR REPLACE FUNCTION config._validate_batch_size(p_size int, p_name text, p_max int DEFAULT 1000)
+RETURNS void AS $$
+BEGIN
+    IF p_size > p_max THEN
+        RAISE EXCEPTION '% contains % items; maximum is %', p_name, p_size, p_max
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:config:VAL_BATCH_TOO_LARGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = config, pg_temp;

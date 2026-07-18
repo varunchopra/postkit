@@ -195,12 +195,7 @@ RETURNS TABLE (
 )
 AS $$
 BEGIN
-    IF p_limit IS NULL OR p_limit < 1 THEN
-        p_limit := 100;
-    END IF;
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM config._validate_limit(p_limit, 'limit', 1000);
 
     IF p_prefix IS NOT NULL THEN
         RETURN QUERY

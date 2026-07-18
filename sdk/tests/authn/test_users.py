@@ -1,7 +1,7 @@
 """Tests for user management functions."""
 
 import pytest
-from postkit.authn import AuthnError
+from postkit.authn import AuthnError, AuthnValidationError
 from postkit.base import UniqueViolationError
 
 
@@ -214,6 +214,10 @@ class TestDeleteUser:
 
 
 class TestListUsers:
+    def test_rejects_null_limit(self, authn):
+        with pytest.raises(AuthnValidationError):
+            authn.list_users(limit=None)
+
     def test_lists_users_with_total(self, authn):
         authn.create_user("alice@example.com", "hash")
         authn.create_user("bob@example.com", "hash")
@@ -257,15 +261,9 @@ class TestListUsers:
         assert [u["email"] for u in page2] == ["user2@example.com", "user3@example.com"]
         assert {u["user_id"] for u in page1}.isdisjoint(u["user_id"] for u in page2)
 
-    def test_clamps_limit_to_maximum(self, authn):
-        """Limits above 1000 are clamped rather than erroring."""
-        for i in range(3):
-            authn.create_user(f"limituser{i}@example.com", "hash")
-
-        users, total = authn.list_users(limit=5000)
-
-        assert len(users) == 3
-        assert total == 3
+    def test_rejects_limit_above_maximum(self, authn):
+        with pytest.raises(AuthnValidationError, match="exceeds maximum of 1000"):
+            authn.list_users(limit=5000)
 
     def test_search_filters_by_email_substring(self, authn):
         authn.create_user("alice@acme.com", "hash")

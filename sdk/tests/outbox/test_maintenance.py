@@ -1,5 +1,8 @@
 """Trim boundary rules, stats, and lag; the sparse-id and prefix cases."""
 
+import time
+from datetime import timedelta
+
 import psycopg
 import pytest
 
@@ -8,6 +11,56 @@ from tests.outbox.test_lost_cursor import trim
 
 
 class TestTrimRules:
+    def test_budget_stops_before_next_topic_without_skipping_it(self, public_outbox):
+        client, conn = public_outbox
+        for topic in ("a-full-budget", "b-next"):
+            client.subscribe(topic, "test", from_="start")
+        for i in range(2):
+            client.emit("a-full-budget", "test.event", {"i": i})
+        client.emit("b-next", "test.event", {})
+        conn.commit()
+
+        deadline = time.monotonic() + 10
+        while True:
+            a_events = client.poll("a-full-budget", "test")
+            b_events = client.poll("b-next", "test")
+            if len(a_events) == 2 and len(b_events) == 1:
+                break
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        client.ack("a-full-budget", "test", a_events[-1]["xid"], a_events[-1]["id"])
+        client.ack("b-next", "test", b_events[-1]["xid"], b_events[-1]["id"])
+        time.sleep(0.01)
+
+        assert client.trim(timedelta(microseconds=1), limit=2) == [
+            {"namespace": client.namespace, "topic": "a-full-budget", "deleted": 2}
+        ]
+        assert client.trim(timedelta(microseconds=1), limit=2) == [
+            {"namespace": client.namespace, "topic": "b-next", "deleted": 1}
+        ]
+
+    def test_trim_reaches_topic_after_many_protected_topics(self, public_outbox):
+        client, conn = public_outbox
+        for i in range(100):
+            client.emit(f"a-{i:03d}", "test.event", {})
+        client.subscribe("z-target", "test", from_="start")
+        client.emit("z-target", "test.event", {})
+        conn.commit()
+
+        deadline = time.monotonic() + 10
+        while True:
+            events = client.poll("z-target", "test")
+            if events:
+                break
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        client.ack("z-target", "test", events[-1]["xid"], events[-1]["id"])
+        time.sleep(0.01)
+
+        assert client.trim(timedelta(microseconds=1), limit=1000) == [
+            {"namespace": client.namespace, "topic": "z-target", "deleted": 1}
+        ]
+
     def test_retention_required_and_positive(self, test_helpers):
         for bad in (None, "-1 day", "0 seconds"):
             with pytest.raises(psycopg.errors.InvalidParameterValue) as exc_info:

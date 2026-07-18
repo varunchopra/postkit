@@ -497,6 +497,7 @@ SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     PERFORM authn._validate_namespace(p_target_namespace);
+    PERFORM authn._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT
@@ -559,6 +560,7 @@ SET search_path = pg_catalog, authn
 AS $$
 BEGIN
     PERFORM authn._validate_namespace(p_operator_namespace);
+    PERFORM authn._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT
@@ -616,6 +618,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, authn
 AS $$
 BEGIN
+    PERFORM authn._validate_limit(p_limit, 'limit', 1000);
     RETURN QUERY
     SELECT
         ois.id AS impersonation_id,
@@ -683,6 +686,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, authn
 AS $$
 BEGIN
+    PERFORM authn._validate_limit(p_limit, 'limit', 1000);
     RETURN QUERY
     SELECT
         oae.id AS event_id,

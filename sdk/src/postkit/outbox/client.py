@@ -314,8 +314,9 @@ class OutboxClient(BaseClient):
 
         Args:
             older_than: Delete events older than this (required, positive)
-            topic: Topic filter (None = all topics in the namespace)
-            limit: Maximum events to delete per topic per call
+            topic: Topic filter (None scans all topics in the namespace)
+            limit: Maximum direct event deletions across all topics; this does
+                not bound topic discovery.
 
         Returns:
             One dict per topic touched, with the deleted count

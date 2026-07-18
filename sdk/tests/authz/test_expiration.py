@@ -149,8 +149,7 @@ class TestExpiringPermissions:
             expires_at=requested,
         )
         authz.cursor.execute(
-            "UPDATE authz.tuples SET expires_at = %s "
-            "WHERE id = %s",
+            "UPDATE authz.tuples SET expires_at = %s WHERE id = %s",
             (existing_expiry, tuple_id),
         )
 

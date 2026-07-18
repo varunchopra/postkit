@@ -4,12 +4,14 @@
 -- @brief Delete old events, keeping deletions a contiguous (xid, id) prefix.
 -- @param p_older_than Delete events older than this interval (required)
 -- @param p_namespace Tenant namespace (NULL = all namespaces, requires RLS bypass)
--- @param p_topic Topic filter (NULL = all topics)
--- @param p_limit Maximum events to delete per topic per call
+-- @param p_topic Topic filter; NULL scans all matching topics
+-- @param p_limit Maximum direct event deletions across all topics
 -- @returns One row per topic touched: (namespace, topic, deleted count)
 -- @example SELECT * FROM outbox.trim('30 days', 'default');
 --
 -- Call from cron or a maintenance loop; nothing runs on its own.
+-- The deletion limit does not bound topic discovery. Concurrent callers
+-- cooperate through FOR UPDATE SKIP LOCKED.
 -- p_older_than has no default on purpose: event retention is a deployment
 -- policy decision. It precedes p_namespace because a parameter with a
 -- default cannot come before one without, and the all-namespaces mode
@@ -64,6 +66,7 @@ DECLARE
     v_deleted int;
     v_new_xid xid8;
     v_new_id bigint;
+    v_remaining int;
 BEGIN
     IF p_older_than IS NULL OR p_older_than <= interval '0 seconds' THEN
         RAISE EXCEPTION 'Trim interval must be a positive interval'
@@ -82,7 +85,8 @@ BEGIN
     IF p_topic IS NOT NULL THEN
         PERFORM outbox._validate_topic(p_topic);
     END IF;
-    PERFORM outbox._validate_positive_int(p_limit, 'limit');
+    PERFORM outbox._validate_limit(p_limit, 'limit', 10000);
+    v_remaining := p_limit;
 
     FOR v_topic IN
         SELECT t.*
@@ -92,6 +96,8 @@ BEGIN
         ORDER BY t.namespace, t.topic
         FOR UPDATE SKIP LOCKED
     LOOP
+        EXIT WHEN v_remaining <= 0;
+
         v_config := outbox._get_config(v_topic.namespace, v_topic.topic);
 
         -- Boundary candidate 1: the newest event older than the cutoff.
@@ -172,7 +178,7 @@ BEGIN
             WHERE e.namespace = v_topic.namespace AND e.topic = v_topic.topic
               AND (e.xid, e.id) <= (v_boundary_xid, v_boundary_id)
             ORDER BY e.xid, e.id
-            LIMIT p_limit
+            LIMIT v_remaining
         ),
         removed AS (
             DELETE FROM outbox.events e
@@ -201,6 +207,7 @@ BEGIN
         namespace := v_topic.namespace;
         topic := v_topic.topic;
         deleted := v_deleted;
+        v_remaining := v_remaining - v_deleted;
         RETURN NEXT;
     END LOOP;
 END;

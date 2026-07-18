@@ -423,7 +423,7 @@ Get org-level usage totals across all users
 SELECT * FROM meter.get_namespace_usage('2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:218*
+*Source: meter/src/functions/020_query.sql:216*
 
 ---
 
@@ -448,7 +448,7 @@ Get aggregated usage (consumption only) for a user
 SELECT * FROM meter.get_usage('alice', '2025-01-01', '2025-02-01');
 ```
 
-*Source: meter/src/functions/020_query.sql:176*
+*Source: meter/src/functions/020_query.sql:174*
 
 ---
 

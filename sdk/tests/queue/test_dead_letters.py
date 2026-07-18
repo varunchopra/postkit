@@ -214,12 +214,9 @@ class TestRetryDeadLetters:
 
         assert set(pulled) == retried_ids
 
-    def test_clamps_limit_to_1000(self, queue):
-        """Limits above 1000 are silently clamped, not rejected."""
-        self._make_dead_letters(queue, count=2)
-        # Should succeed without error despite exceeding 1000.
-        results = queue.retry_dead_letters("tasks", limit=5000)
-        assert len(results) == 2
+    def test_rejects_limit_above_1000(self, queue):
+        with pytest.raises(QueueValidationError, match="exceeds maximum of 1000"):
+            queue.retry_dead_letters("tasks", limit=5000)
 
     def test_captures_caller_actor_context(self, queue):
         """Bulk retry captures the caller's actor context on all new jobs."""

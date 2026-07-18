@@ -183,9 +183,7 @@ BEGIN
     PERFORM queue._validate_namespace(p_namespace);
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM queue._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT s.name, s.queue, s.cron_expression, s.every_interval,

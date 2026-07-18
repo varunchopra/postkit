@@ -61,7 +61,7 @@ BEGIN
                   HINT = 'postkit:memory:VAL_RECALL_NO_QUERY';
     END IF;
 
-    PERFORM memory._validate_positive_int(p_k, 'k');
+    PERFORM memory._validate_limit(p_k, 'k', 1000);
 
     v_dim := memory._embedding_dim();
     IF p_query_embedding IS NOT NULL

@@ -170,6 +170,7 @@ BEGIN
             USING ERRCODE = 'null_value_not_allowed',
                   HINT = 'postkit:presence:VAL_ENTITIES_NULL';
     END IF;
+    PERFORM presence._validate_batch_size(cardinality(p_entities), 'entities');
 
     -- Warn if namespace mismatch with RLS context
     PERFORM presence._warn_namespace_mismatch(p_namespace);

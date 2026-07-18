@@ -40,7 +40,7 @@ BEGIN
     PERFORM outbox._validate_namespace(p_namespace);
     PERFORM outbox._validate_topic(p_topic);
     PERFORM outbox._validate_consumer(p_consumer);
-    PERFORM outbox._validate_positive_int(p_limit, 'limit');
+    PERFORM outbox._validate_limit(p_limit, 'limit', 1000);
 
     -- Warn if namespace mismatch with RLS context
     PERFORM outbox._warn_namespace_mismatch(p_namespace);
@@ -184,7 +184,7 @@ BEGIN
     PERFORM outbox._validate_namespace(p_namespace);
     PERFORM outbox._validate_topic(p_topic);
     PERFORM outbox._validate_position(p_xid, p_id);
-    PERFORM outbox._validate_positive_int(p_limit, 'limit');
+    PERFORM outbox._validate_limit(p_limit, 'limit', 1000);
 
     -- Warn if namespace mismatch with RLS context
     PERFORM outbox._warn_namespace_mismatch(p_namespace);

@@ -142,9 +142,7 @@ RETURNS TABLE(
 BEGIN
     PERFORM meter._warn_namespace_mismatch(p_namespace);
 
-    IF p_limit > 10000 THEN
-        p_limit := 10000;
-    END IF;
+    PERFORM meter._validate_limit(p_limit, 'limit', 10000);
 
     RETURN QUERY
     SELECT

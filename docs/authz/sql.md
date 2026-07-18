@@ -400,7 +400,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/024_list.sql:226*
+*Source: authz/src/functions/024_list.sql:228*
 
 ---
 
@@ -427,7 +427,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/024_list.sql:252*
+*Source: authz/src/functions/024_list.sql:254*
 
 ---
 
@@ -442,7 +442,7 @@ List all resources a subject can access ("What can Alice read?")
 **Parameters:**
 - `p_subject_type`: The subject type (e.g., 'user', 'api_key', 'service')
 - `p_subject_id`: The subject ID
-- `p_limit`: Pagination limit. For >1000 resources, use filter_authorized() instead.
+- `p_limit`: Maximum returned rows; graph traversal occurs before pagination
 - `p_cursor`: Pass last resource_id from previous page to get next page
 
 **Returns:** Resource IDs the subject can access (via direct grant, team membership, or folder inheritance)
@@ -484,7 +484,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/024_list.sql:201*
+*Source: authz/src/functions/024_list.sql:203*
 
 ---
 
@@ -663,7 +663,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:158*
+*Source: authz/src/functions/023_check.sql:159*
 
 ---
 

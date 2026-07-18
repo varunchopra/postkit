@@ -113,10 +113,7 @@ BEGIN
     PERFORM authn._validate_namespace(p_namespace);
     PERFORM authn._warn_namespace_mismatch(p_namespace);
 
-    -- Clamp limit
-    IF p_limit > 100 THEN
-        p_limit := 100;
-    END IF;
+    PERFORM authn._validate_limit(p_limit, 'limit', 100);
 
     RETURN QUERY
     SELECT
@@ -157,4 +154,3 @@ BEGIN
     RETURN v_count;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
-

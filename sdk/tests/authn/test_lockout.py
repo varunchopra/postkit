@@ -2,6 +2,9 @@
 
 from datetime import timedelta
 
+import pytest
+from postkit.authn import AuthnValidationError
+
 
 class TestRecordLoginAttempt:
     def test_records_successful_attempt(self, authn):
@@ -114,13 +117,9 @@ class TestGetRecentAttempts:
         attempts = authn.get_recent_attempts("alice@example.com", limit=3)
         assert len(attempts) == 3
 
-    def test_clamps_limit_to_100(self, authn):
-        """SQL clamps limit to 100 to prevent excessive row fetches."""
-        for _ in range(105):
-            authn.record_login_attempt("alice@example.com", False)
-
-        attempts = authn.get_recent_attempts("alice@example.com", limit=200)
-        assert len(attempts) == 100
+    def test_rejects_limit_above_100(self, authn):
+        with pytest.raises(AuthnValidationError, match="exceeds maximum of 100"):
+            authn.get_recent_attempts("alice@example.com", limit=200)
 
 
 class TestClearAttempts:

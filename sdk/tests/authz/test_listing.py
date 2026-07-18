@@ -1,13 +1,3 @@
-"""
-Listing and filtering tests for postkit/authz.
-
-Tests for:
-- filter_authorized: batch filtering of resources
-- Pagination: cursor-based pagination for list operations
-- list_subjects / list_resources: listing operations
-"""
-
-
 class TestFilterAuthorized:
     """Test the filter_authorized function for batch filtering."""
 
@@ -78,6 +68,17 @@ class TestFilterAuthorized:
 
 class TestPagination:
     """Test cursor-based pagination for list operations."""
+
+    def test_list_resources_default_is_bounded(self, authz):
+        """The SDK default must not pass SQL NULL and disable pagination."""
+        for i in range(101):
+            authz.grant(
+                "read", resource=("doc", f"doc-{i:03d}"), subject=("user", "alice")
+            )
+
+        page = authz.list_resources(("user", "alice"), "doc", "read")
+
+        assert len(page) == 100
 
     def test_list_resources_pagination(self, authz):
         """list_resources supports cursor-based pagination."""

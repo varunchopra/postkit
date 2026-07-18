@@ -3,8 +3,7 @@
 from datetime import timedelta
 
 import pytest
-from postkit.errors import QueueErrorCode
-from postkit.queue import QueueValidationError
+from postkit.queue import QueueErrorCode, QueueValidationError
 
 
 class TestPull:
@@ -163,6 +162,52 @@ class TestPullAny:
 
 class TestVisibilityTimeout:
     """Test visibility timeout behavior."""
+
+    @staticmethod
+    def _pull(queue, method, timeout):
+        if method == "pull":
+            return queue.pull("tasks", visibility_timeout=timeout)
+        if method == "pull_batch":
+            jobs = queue.pull_batch("tasks", visibility_timeout=timeout)
+            return jobs[0] if jobs else None
+        return queue.pull_any(["tasks"], visibility_timeout=timeout)
+
+    @pytest.mark.parametrize("method", ["pull", "pull_batch", "pull_any"])
+    def test_null_override_uses_valid_config_default(self, queue, method):
+        job_id = queue.push("tasks", {"ok": True})
+
+        job = self._pull(queue, method, None)
+
+        assert job is not None
+        assert job["id"] == job_id
+        assert job["attempts"] == 1
+        assert job["visibility_timeout_at"] > job["locked_at"]
+
+    @pytest.mark.parametrize("method", ["pull", "pull_batch", "pull_any"])
+    @pytest.mark.parametrize("timeout", [timedelta(0), timedelta(seconds=-1)])
+    def test_non_positive_timeout_is_atomic(self, queue, method, timeout):
+        job_id = queue.push("tasks", {"task": 1})
+
+        with pytest.raises(QueueValidationError) as exc_info:
+            self._pull(queue, method, timeout)
+
+        assert exc_info.value.sqlstate == "22023"
+        assert exc_info.value.error_code == QueueErrorCode.VAL_INTERVAL_NOT_POSITIVE
+
+        stats = queue.get_stats()
+        assert stats["pending"] == 1
+        assert stats["running"] == 0
+        assert queue.release_jobs("anonymous") == 0
+        assert queue.extend_visibility(job_id, timedelta(minutes=1)) is False
+        assert queue.tick_timeouts() == []
+
+        job = self._pull(queue, method, timedelta(minutes=1))
+        assert job is not None
+        assert job["id"] == job_id
+        assert job["attempts"] == 1
+        assert job["locked_by"] == "anonymous"
+        assert job["locked_at"] is not None
+        assert job["visibility_timeout_at"] > job["locked_at"]
 
     def test_extend_visibility_success(self, queue):
         """extend_visibility returns True for running job."""

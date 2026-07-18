@@ -215,6 +215,7 @@ BEGIN
                   HINT = 'postkit:authz:BIZ_BULK_PARENT_RELATION';
     END IF;
     -- Validate subject_ids array (consistent with write_tuple behavior)
+    PERFORM authz._validate_batch_size(cardinality(p_subject_ids), 'subject_ids');
     PERFORM authz._validate_id_array(p_subject_ids, 'subject_ids');
 INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id)
 SELECT

@@ -368,6 +368,7 @@ RETURNS TABLE(
 AS $$
 BEGIN
     PERFORM authn._validate_namespace(p_namespace);
+    PERFORM authn._validate_limit(p_limit, 'limit', 1000);
     PERFORM authn._warn_namespace_mismatch(p_namespace);
 
     RETURN QUERY

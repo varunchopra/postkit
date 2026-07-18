@@ -135,6 +135,7 @@ CREATE OR REPLACE FUNCTION authz.check_any(
     p_namespace text DEFAULT 'default'
 ) RETURNS boolean AS $$
 BEGIN
+    PERFORM authz._validate_batch_size(cardinality(p_permissions), 'permissions');
     PERFORM authz._warn_namespace_mismatch(p_namespace);
     RETURN EXISTS (
         SELECT 1 FROM authz._get_permissions(
@@ -164,6 +165,7 @@ CREATE OR REPLACE FUNCTION authz.check_all(
     p_namespace text DEFAULT 'default'
 ) RETURNS boolean AS $$
 BEGIN
+    PERFORM authz._validate_batch_size(cardinality(p_permissions), 'permissions');
     PERFORM authz._warn_namespace_mismatch(p_namespace);
     -- Compare distinct counts on both sides so duplicate entries in
     -- p_permissions do not inflate the requirement.

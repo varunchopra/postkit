@@ -208,8 +208,8 @@ Delete old events, keeping deletions a contiguous (xid, id) prefix.
 **Parameters:**
 - `p_older_than`: Delete events older than this interval (required)
 - `p_namespace`: Tenant namespace (NULL = all namespaces, requires RLS bypass)
-- `p_topic`: Topic filter (NULL = all topics)
-- `p_limit`: Maximum events to delete per topic per call
+- `p_topic`: Topic filter; NULL scans all matching topics
+- `p_limit`: Maximum direct event deletions across all topics
 
 **Returns:** One row per topic touched: (namespace, topic, deleted count)
 
@@ -218,7 +218,7 @@ Delete old events, keeping deletions a contiguous (xid, id) prefix.
 SELECT * FROM outbox.trim('30 days', 'default');
 ```
 
-*Source: outbox/src/functions/050_maintenance.sql:44*
+*Source: outbox/src/functions/050_maintenance.sql:46*
 
 ---
 

@@ -157,6 +157,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = meter, pg_temp;
 
+CREATE OR REPLACE FUNCTION meter._validate_limit(p_value int, p_name text, p_max int)
+RETURNS void AS $$
+BEGIN
+    PERFORM meter._validate_positive(p_value, p_name);
+    IF p_value > p_max THEN
+        RAISE EXCEPTION '% (%) exceeds maximum of %', p_name, p_value, p_max
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_LIMIT_TOO_LARGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = meter, pg_temp;
+
 
 -- @function meter._warn_namespace_mismatch
 -- @brief Warns if namespace doesn't match RLS tenant context

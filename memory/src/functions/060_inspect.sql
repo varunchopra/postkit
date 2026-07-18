@@ -73,7 +73,7 @@ RETURNS TABLE (
 BEGIN
     PERFORM memory._validate_namespace(p_namespace);
     PERFORM memory._warn_namespace_mismatch(p_namespace);
-    PERFORM memory._validate_positive_int(p_limit, 'limit');
+    PERFORM memory._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT e.id, e.session_id, e.role, e.content, e.embed_model, e.keywords,
@@ -128,7 +128,7 @@ RETURNS TABLE (
 BEGIN
     PERFORM memory._validate_namespace(p_namespace);
     PERFORM memory._warn_namespace_mismatch(p_namespace);
-    PERFORM memory._validate_positive_int(p_limit, 'limit');
+    PERFORM memory._validate_limit(p_limit, 'limit', 1000);
     IF p_kind IS NOT NULL THEN
         PERFORM memory._validate_kind(p_kind);
     END IF;

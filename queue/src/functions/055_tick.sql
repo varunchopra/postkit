@@ -25,6 +25,7 @@ DECLARE
     v_config queue.config;
     v_actor record;
 BEGIN
+    PERFORM queue._validate_limit(p_limit, 'limit', 1000);
     IF p_namespace IS NULL AND NOT queue._rls_bypassed() THEN
         RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
             USING ERRCODE = 'insufficient_privilege',
@@ -141,6 +142,7 @@ RETURNS TABLE(
 DECLARE
     v_job record;
 BEGIN
+    PERFORM queue._validate_limit(p_limit, 'limit', 1000);
     IF p_namespace IS NULL AND NOT queue._rls_bypassed() THEN
         RAISE EXCEPTION 'All-namespaces mode requires a role that bypasses RLS; pass an explicit namespace or run as a BYPASSRLS role'
             USING ERRCODE = 'insufficient_privilege',

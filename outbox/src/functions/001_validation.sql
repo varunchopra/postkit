@@ -199,6 +199,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = outbox, pg_temp;
 
+CREATE OR REPLACE FUNCTION outbox._validate_limit(p_value int, p_name text, p_max int)
+RETURNS void AS $$
+BEGIN
+    PERFORM outbox._validate_positive_int(p_value, p_name);
+    IF p_value > p_max THEN
+        RAISE EXCEPTION '% (%) exceeds maximum of %', p_name, p_value, p_max
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:outbox:VAL_LIMIT_TOO_LARGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = outbox, pg_temp;
+
 
 -- @function outbox._validate_position
 -- @brief Validate a cursor position pair.

@@ -329,10 +329,7 @@ BEGIN
     PERFORM authn._validate_namespace(p_namespace);
     PERFORM authn._warn_namespace_mismatch(p_namespace);
 
-    -- Clamp limit
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM authn._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT
@@ -400,6 +397,7 @@ RETURNS TABLE(
 AS $$
 BEGIN
     PERFORM authn._validate_namespace(p_namespace);
+    PERFORM authn._validate_batch_size(cardinality(p_user_ids), 'user_ids');
     PERFORM authn._warn_namespace_mismatch(p_namespace);
 
     RETURN QUERY
@@ -485,4 +483,3 @@ BEGIN
     RETURN QUERY SELECT v_user_id, false, (v_disabled_at IS NOT NULL);
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = authn, pg_temp;
-

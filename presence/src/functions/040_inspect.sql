@@ -130,7 +130,7 @@ BEGIN
     IF p_entity IS NOT NULL THEN
         PERFORM presence._validate_entity_id(p_entity);
     END IF;
-    PERFORM presence._validate_positive_int(p_limit, 'limit');
+    PERFORM presence._validate_limit(p_limit, 'limit', 1000);
     PERFORM presence._warn_namespace_mismatch(p_namespace);
 
     RETURN QUERY

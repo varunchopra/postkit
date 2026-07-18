@@ -1,5 +1,7 @@
 """Shared test utilities and data used across all SDK test modules."""
 
+import hashlib
+import re
 from pathlib import Path
 
 import psycopg
@@ -105,12 +107,14 @@ def assert_global_row_delete_protected(db_connection, schema, table, *, seed=Non
 
 
 def make_namespace(request) -> str:
-    """Generate a unique namespace from test name.
+    """Generate a readable, stable, unique namespace from the full test node ID.
 
     Used by all module conftest files for per-test namespace isolation.
     """
-    namespace = request.node.name.replace("[", "_").replace("]", "_").replace("-", "_")
-    return "t_" + namespace.lower()[:50]
+    node_id = request.node.nodeid
+    readable = re.sub(r"[^a-z0-9_]+", "_", request.node.name.lower()).strip("_")
+    suffix = hashlib.sha256(node_id.encode()).hexdigest()[:10]
+    return f"t_{(readable or 'test')[:37]}_{suffix}"
 
 
 def channel_name(cursor, schema: str, namespace: str, name: str) -> str:

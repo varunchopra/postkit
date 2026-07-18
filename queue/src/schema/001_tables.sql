@@ -207,6 +207,10 @@ CREATE TABLE queue.schedules (
 CREATE INDEX schedules_next_run_idx ON queue.schedules (namespace, next_run_at)
     WHERE is_active = true;
 
+-- The namespace-leading index cannot serve ordered all-namespace ticks.
+CREATE INDEX schedules_global_next_run_idx ON queue.schedules (next_run_at)
+    WHERE is_active = true;
+
 -- =============================================================================
 -- CONFIG TABLE
 -- =============================================================================
@@ -224,7 +228,8 @@ CREATE TABLE queue.config (
 
     -- Same range _validate_max_attempts enforces on push/create_schedule
     -- arguments; this table is written directly, so the bound lives here too.
-    CONSTRAINT config_max_attempts_range CHECK (default_max_attempts BETWEEN 1 AND 30)
+    CONSTRAINT config_max_attempts_range CHECK (default_max_attempts BETWEEN 1 AND 30),
+    CONSTRAINT config_visibility_timeout_positive CHECK (default_visibility_timeout > interval '0')
 );
 
 -- Global defaults (read by all, write-protected via RLS)

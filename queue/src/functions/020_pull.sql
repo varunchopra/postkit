@@ -31,6 +31,7 @@ BEGIN
     -- Get config for defaults
     v_config := queue._get_config(p_namespace);
     v_timeout := COALESCE(p_visibility_timeout, v_config.default_visibility_timeout);
+    PERFORM queue._validate_schedule_interval(v_timeout);
 
     -- Pull one job with SKIP LOCKED
     RETURN QUERY
@@ -85,7 +86,7 @@ BEGIN
     -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
     PERFORM queue._validate_queue_name(p_queue);
-    PERFORM queue._validate_positive_int(p_limit, 'limit');
+    PERFORM queue._validate_limit(p_limit, 'limit', 1000);
 
     -- Warn if namespace mismatch with RLS context
     PERFORM queue._warn_namespace_mismatch(p_namespace);
@@ -93,6 +94,7 @@ BEGIN
     -- Get config for defaults
     v_config := queue._get_config(p_namespace);
     v_timeout := COALESCE(p_visibility_timeout, v_config.default_visibility_timeout);
+    PERFORM queue._validate_schedule_interval(v_timeout);
 
     -- Pull multiple jobs with SKIP LOCKED
     RETURN QUERY
@@ -150,6 +152,7 @@ BEGIN
     IF p_queues IS NULL OR array_length(p_queues, 1) IS NULL THEN
         RETURN;
     END IF;
+    PERFORM queue._validate_batch_size(cardinality(p_queues), 'queues');
 
     -- Validate each queue name
     FOREACH v_queue IN ARRAY p_queues LOOP
@@ -162,6 +165,7 @@ BEGIN
     -- Get config for defaults
     v_config := queue._get_config(p_namespace);
     v_timeout := COALESCE(p_visibility_timeout, v_config.default_visibility_timeout);
+    PERFORM queue._validate_schedule_interval(v_timeout);
 
     -- Lock-and-claim pattern mirrors pull() but differs structurally: ANY(array)
     -- with array_position ordering vs single-queue filter. If pull() gains

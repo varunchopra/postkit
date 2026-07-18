@@ -50,7 +50,7 @@ Clean up expired sessions, tokens, impersonation records, and old login attempts
 Everything deleted belongs to this client's namespace. Operator impersonation sessions are cross-namespace and are cleaned by cleanup_expired_operator_sessions instead.
 
 **Parameters:**
-- `batch_size`: Max rows to delete per table per iteration (default 10000). Smaller values reduce lock contention but require more iterations.
+- `batch_size`: Maximum direct rows deleted per call; cascades may delete additional physical rows.
 
 **Returns:** Dict with counts: sessions_deleted, tokens_deleted, refresh_tokens_deleted,
 api_keys_deleted, impersonations_deleted, attempts_deleted
@@ -70,7 +70,7 @@ Clean up ended or expired operator impersonation sessions, all namespaces.
 Platform-scope maintenance: operator impersonation sessions span namespaces, so schedule this once per deployment rather than per tenant. This client's namespace does not scope the deletion.
 
 **Parameters:**
-- `batch_size`: Max rows to delete per iteration (default 10000).
+- `batch_size`: Maximum direct rows deleted per call.
 
 **Returns:** Number of rows deleted.
 

@@ -55,7 +55,7 @@ Cancel a pending job by deleting it.
 
 **Returns:** True if cancelled, false if job not found or not pending
 
-*Source: queue/src/functions/030_ack.sql:306*
+*Source: queue/src/functions/030_ack.sql:307*
 
 ---
 
@@ -75,7 +75,7 @@ Move job to dead letter queue (permanent failure).
 
 **Returns:** True if moved to DLQ, false if job settled, missing, or owned by another worker
 
-*Source: queue/src/functions/030_ack.sql:249*
+*Source: queue/src/functions/030_ack.sql:250*
 
 ---
 
@@ -96,7 +96,7 @@ Return job to queue for retry (temporary failure).
 
 **Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ)
 
-*Source: queue/src/functions/030_ack.sql:147*
+*Source: queue/src/functions/030_ack.sql:148*
 
 ---
 
@@ -114,7 +114,7 @@ Delete all pending jobs from a queue.
 
 **Returns:** Count of deleted jobs
 
-*Source: queue/src/functions/030_ack.sql:393*
+*Source: queue/src/functions/030_ack.sql:394*
 
 ---
 
@@ -132,7 +132,7 @@ Release all jobs held by a worker, returning them to pending.
 
 **Returns:** Count of jobs released
 
-*Source: queue/src/functions/030_ack.sql:347*
+*Source: queue/src/functions/030_ack.sql:348*
 
 ---
 
@@ -229,7 +229,7 @@ Delete old un-retried dead letters.
 
 **Returns:** Count of deleted dead letters
 
-*Source: queue/src/functions/060_dead_letters.sql:215*
+*Source: queue/src/functions/060_dead_letters.sql:213*
 
 ---
 
@@ -313,7 +313,7 @@ Extend the visibility timeout of a running job.
 
 **Returns:** True if extended, false if job not found or not running
 
-*Source: queue/src/functions/020_pull.sql:204*
+*Source: queue/src/functions/020_pull.sql:208*
 
 ---
 
@@ -353,7 +353,7 @@ Pull one job from multiple queues (priority order).
 
 **Returns:** Job record from first queue with available job, or NULL
 
-*Source: queue/src/functions/020_pull.sql:135*
+*Source: queue/src/functions/020_pull.sql:137*
 
 ---
 
@@ -374,7 +374,7 @@ Pull multiple jobs from a queue.
 
 **Returns:** Set of job records
 
-*Source: queue/src/functions/020_pull.sql:73*
+*Source: queue/src/functions/020_pull.sql:74*
 
 ---
 
@@ -470,7 +470,7 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, false if not found
 
-*Source: queue/src/functions/050_schedules.sql:210*
+*Source: queue/src/functions/050_schedules.sql:208*
 
 ---
 
@@ -527,7 +527,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, false if already paused or not found
 
-*Source: queue/src/functions/050_schedules.sql:237*
+*Source: queue/src/functions/050_schedules.sql:235*
 
 ---
 
@@ -545,7 +545,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, false if already active or not found
 
-*Source: queue/src/functions/050_schedules.sql:268*
+*Source: queue/src/functions/050_schedules.sql:266*
 
 ---
 
@@ -581,7 +581,7 @@ Reclaim running jobs whose visibility timeout has expired.
 
 **Returns:** Rows of (job_id, queue, stuck_duration) for each reclaimed job
 
-*Source: queue/src/functions/055_tick.sql:132*
+*Source: queue/src/functions/055_tick.sql:133*
 
 ---
 

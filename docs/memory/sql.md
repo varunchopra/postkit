@@ -21,7 +21,7 @@ Apply a distillation batch: insert facts and entities, link edges, mark episodes
 
 **Returns:** node_ids (inserted or matched, in fact order) and skipped (true on replay)
 
-*Source: memory/src/functions/030_consolidate.sql:70*
+*Source: memory/src/functions/030_consolidate.sql:71*
 
 ---
 

@@ -88,6 +88,7 @@ BEGIN
     IF p_job_ids IS NULL OR array_length(p_job_ids, 1) IS NULL THEN
         RETURN 0;
     END IF;
+    PERFORM queue._validate_batch_size(cardinality(p_job_ids), 'job_ids');
 
     -- Warn if namespace mismatch with RLS context
     PERFORM queue._warn_namespace_mismatch(p_namespace);

@@ -146,6 +146,7 @@ BEGIN
     IF p_payloads IS NULL OR array_length(p_payloads, 1) IS NULL THEN
         RETURN ARRAY[]::bigint[];
     END IF;
+    PERFORM queue._validate_batch_size(cardinality(p_payloads), 'payloads');
 
     -- Reject NULL elements (each payload must be non-null jsonb)
     IF EXISTS (SELECT 1 FROM unnest(p_payloads) AS p WHERE p IS NULL) THEN

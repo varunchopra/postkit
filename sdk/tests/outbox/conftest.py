@@ -51,3 +51,15 @@ def test_helpers(db_connection, request):
 def connect(db_connection):
     """Factory for extra non-autocommit connections (multi-connection cases)."""
     yield from connection_factory_for(db_connection)
+
+
+@pytest.fixture
+def public_outbox(db_connection, connect, request):
+    namespace = make_namespace(request)
+    conn = connect()
+    client = OutboxClient(conn.cursor(), namespace)
+    yield client, conn
+    conn.rollback()
+    cursor = db_connection.cursor()
+    cleanup_namespace(cursor, namespace)
+    cursor.close()

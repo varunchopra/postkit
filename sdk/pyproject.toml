@@ -61,3 +61,6 @@ packages = ["src/postkit"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "scale: public-API large-fixture correctness and catastrophic-regression guards",
+]

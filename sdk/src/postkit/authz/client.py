@@ -435,7 +435,7 @@ class AuthzClient(BaseClient):
         resource: Entity,
         *,
         subject_type: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         cursor: Entity | None = None,
     ) -> list[Entity]:
         """
@@ -467,7 +467,7 @@ class AuthzClient(BaseClient):
                 resource_id,
                 permission,
                 self.namespace,
-                limit if limit is not None else 100,
+                limit,
                 subject_type,
                 cursor_type,
                 cursor_id,
@@ -514,7 +514,7 @@ class AuthzClient(BaseClient):
         resource_type: str,
         permission: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         cursor: str | None = None,
     ) -> list[str]:
         """
@@ -524,7 +524,9 @@ class AuthzClient(BaseClient):
             subject: The subject as (type, id) tuple (e.g., ("user", "alice"))
             resource_type: The resource type to list
             permission: The permission to check
-            limit: Maximum number of results (optional)
+            limit: Maximum returned results; traversal precedes pagination. For
+                large application-owned candidate sets, page them through
+                filter_authorized().
             cursor: Pagination cursor (optional)
 
         Returns:
@@ -544,7 +546,7 @@ class AuthzClient(BaseClient):
                 resource_type,
                 permission,
                 self.namespace,
-                limit if limit is not None else 100,
+                limit,
                 cursor,
             ),
         )

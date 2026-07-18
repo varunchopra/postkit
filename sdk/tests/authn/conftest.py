@@ -4,13 +4,18 @@ import pytest
 from postkit.authn import AuthnClient
 
 from tests.authn.helpers import AuthnTestHelpers, cleanup_namespace
-from tests.helpers import db_connection_for, make_namespace
+from tests.helpers import connection_factory_for, db_connection_for, make_namespace
 
 
 @pytest.fixture(scope="session")
 def db_connection():
     """Session-scoped database connection with the authn schema installed."""
     yield from db_connection_for("authn")
+
+
+@pytest.fixture
+def connect(db_connection):
+    yield from connection_factory_for(db_connection)
 
 
 @pytest.fixture

@@ -1,8 +1,10 @@
 """RLS tenant isolation across the outbox surface, as a non-superuser role."""
 
+import time
 from datetime import timedelta
 
 import pytest
+from postkit.outbox import OutboxClient
 
 from tests.helpers import connect_as_rls_user, ensure_rls_role
 from tests.outbox.helpers import cleanup_namespace
@@ -42,6 +44,34 @@ def victim(db_connection, request):
 
 
 class TestCrossTenantIsolation:
+    def test_trim_works_for_matching_non_bypass_tenant(self, db_connection, rls_cursor):
+        rls_cursor.connection.autocommit = False
+        try:
+            client = OutboxClient(rls_cursor, "tenant_b")
+            client.subscribe("trim-test", "test", from_="start")
+            client.emit("trim-test", "old.event", {})
+            rls_cursor.connection.commit()
+
+            deadline = time.monotonic() + 10
+            while True:
+                events = client.poll("trim-test", "test")
+                if events:
+                    break
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+            client.ack("trim-test", "test", events[-1]["xid"], events[-1]["id"])
+            time.sleep(0.01)
+            assert client.trim(timedelta(microseconds=1), topic="trim-test") == [
+                {"namespace": "tenant_b", "topic": "trim-test", "deleted": 1}
+            ]
+            rls_cursor.connection.commit()
+        finally:
+            rls_cursor.connection.rollback()
+            rls_cursor.connection.autocommit = True
+        owner = db_connection.cursor()
+        cleanup_namespace(owner, "tenant_b")
+        owner.close()
+
     def test_no_context_fails_closed(self, rls_cursor, victim):
         rls_cursor.execute("SELECT COUNT(*) FROM outbox.events")
         assert rls_cursor.fetchone()[0] == 0

@@ -140,9 +140,7 @@ BEGIN
     PERFORM queue._validate_queue_name(p_queue);
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM queue._validate_limit(p_limit, 'limit', 1000);
 
     -- Capture actor context once for all retries.
     SELECT * INTO v_actor FROM queue._get_actor_context();

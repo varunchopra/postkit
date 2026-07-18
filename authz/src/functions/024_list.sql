@@ -4,7 +4,7 @@
 -- @brief List all resources a subject can access ("What can Alice read?")
 -- @param p_subject_type The subject type (e.g., 'user', 'api_key', 'service')
 -- @param p_subject_id The subject ID
--- @param p_limit Pagination limit. For >1000 resources, use filter_authorized() instead.
+-- @param p_limit Maximum returned rows; graph traversal occurs before pagination
 -- @param p_cursor Pass last resource_id from previous page to get next page
 -- @returns Resource IDs the subject can access (via direct grant, team membership,
 --   or folder inheritance)
@@ -71,28 +71,30 @@ granted_resources AS (
             OR t.expires_at > now())
 ),
 -- Expand to include descendants of granted resources, filter to requested type
-accessible_resources AS (
-    -- Direct grants on the requested type
-    SELECT gr.resource_id FROM granted_resources gr
-    WHERE gr.resource_type = p_resource_type
-    UNION
-    -- Descendants of any granted resource that match requested type
-    SELECT d.resource_id
+accessible_resources(resource_type, resource_id, depth) AS (
+    SELECT gr.resource_type, gr.resource_id COLLATE authz.canonical, 0
     FROM granted_resources gr
-    CROSS JOIN LATERAL authz._expand_resource_descendants(
-        gr.resource_type, gr.resource_id, p_namespace
-    ) d
-    WHERE d.resource_type = p_resource_type
+    UNION
+    SELECT child.resource_type, child.resource_id, ar.depth + 1
+    FROM accessible_resources ar
+    JOIN authz.tuples child
+      ON child.namespace = p_namespace
+     AND child.relation = 'parent'
+     AND child.subject_type = ar.resource_type
+     AND child.subject_id = ar.resource_id
+     AND (child.expires_at IS NULL OR child.expires_at > now())
+    WHERE ar.depth < authz._max_resource_depth()
 )
 SELECT
     ar.resource_id
 FROM
     accessible_resources ar
-WHERE (p_cursor IS NULL
-    OR ar.resource_id > p_cursor)
+WHERE ar.resource_type = p_resource_type
+  AND (p_cursor IS NULL OR ar.resource_id > p_cursor COLLATE authz.canonical)
+GROUP BY ar.resource_id
 ORDER BY
-    ar.resource_id
-LIMIT p_limit;
+    ar.resource_id COLLATE authz.canonical
+LIMIT authz._validated_limit(p_limit, 'limit', 1000);
 $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
@@ -210,7 +212,7 @@ CREATE OR REPLACE FUNCTION authz.list_subjects (p_resource_type text, p_resource
       AND ((p_cursor_type IS NULL AND p_cursor_id IS NULL)
            OR (g.subject_type, g.subject_id) > (p_cursor_type, p_cursor_id))
     ORDER BY g.subject_type, g.subject_id
-    LIMIT p_limit;
+    LIMIT authz._validated_limit(p_limit, 'limit', 1000);
 $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
@@ -252,6 +254,11 @@ STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 CREATE OR REPLACE FUNCTION authz.filter_authorized (p_subject_type text, p_subject_id text, p_resource_type text, p_permission text, p_resource_ids text[], p_namespace text DEFAULT 'default')
     RETURNS text[]
     AS $$
+BEGIN
+    PERFORM authz._validate_batch_size(cardinality(p_resource_ids), 'resource_ids');
+    PERFORM authz._warn_namespace_mismatch(p_namespace);
+
+    RETURN (
     -- Note: RECURSIVE keyword required for implied_by CTE below;
     -- subject_memberships itself is not recursive (delegates to helper function)
     WITH RECURSIVE subject_memberships AS (
@@ -318,7 +325,8 @@ SELECT
         FROM
             accessible
         ORDER BY
-            resource_id);
+            resource_id));
+END;
 $$
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;

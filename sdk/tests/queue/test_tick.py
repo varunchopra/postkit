@@ -2,6 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from postkit.queue import QueueValidationError
+
 
 class TestTickSchedules:
     """Test tick_schedules job creation and state advancement."""
@@ -20,6 +23,11 @@ class TestTickSchedules:
             "WHERE namespace = %s AND name = %s",
             (queue.namespace, name),
         )
+
+    @pytest.mark.parametrize("limit", [None, 0, -1])
+    def test_tick_rejects_non_positive_or_null_limit(self, queue, limit):
+        with pytest.raises(QueueValidationError):
+            queue.tick_schedules(limit=limit)
 
     def test_tick_creates_job_from_interval_schedule(self, queue):
         """Tick creates a job for a due interval schedule."""

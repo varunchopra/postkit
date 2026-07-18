@@ -3,8 +3,14 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from postkit.memory import MemoryValidationError
 
 EMBED = "test-model"
+
+
+def test_recall_rejects_excessive_result_limit(memory):
+    with pytest.raises(MemoryValidationError):
+        memory.recall(keywords=["anything"], k=1001)
 
 
 class TestVectorRecall:

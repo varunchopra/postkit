@@ -164,6 +164,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
 
+CREATE OR REPLACE FUNCTION queue._validate_limit(p_value int, p_name text, p_max int)
+RETURNS void AS $$
+BEGIN
+    PERFORM queue._validate_positive_int(p_value, p_name);
+    IF p_value > p_max THEN
+        RAISE EXCEPTION '% (%) exceeds maximum of %', p_name, p_value, p_max
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_LIMIT_TOO_LARGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
+CREATE OR REPLACE FUNCTION queue._validate_batch_size(p_size int, p_name text, p_max int DEFAULT 1000)
+RETURNS void AS $$
+BEGIN
+    IF p_size > p_max THEN
+        RAISE EXCEPTION '% contains % items; maximum is %', p_name, p_size, p_max
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_BATCH_TOO_LARGE';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
 
 -- @function queue._validate_schedule_name
 -- @brief Validate schedule name format.

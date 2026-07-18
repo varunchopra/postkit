@@ -109,6 +109,7 @@ BEGIN
             authz._validate_identifier (p_subject_relation, 'subject_relation');
     END IF;
     -- Validate resource_ids array
+    PERFORM authz._validate_batch_size(cardinality(p_resource_ids), 'resource_ids');
     PERFORM authz._validate_id_array(p_resource_ids, 'resource_ids');
     -- Reject relations that require cycle detection (must use write_tuple instead)
     IF p_relation = 'member' AND p_subject_type != 'user' THEN

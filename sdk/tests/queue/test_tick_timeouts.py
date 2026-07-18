@@ -2,6 +2,9 @@
 
 from datetime import timedelta
 
+import pytest
+from postkit.queue import QueueValidationError
+
 
 class TestTickTimeouts:
     """Test tick_timeouts reclaims stuck running jobs."""
@@ -19,6 +22,11 @@ class TestTickTimeouts:
             (queue.namespace, job["id"]),
         )
         return job
+
+    @pytest.mark.parametrize("limit", [None, 0, -1])
+    def test_tick_rejects_non_positive_or_null_limit(self, queue, limit):
+        with pytest.raises(QueueValidationError):
+            queue.tick_timeouts(limit=limit)
 
     def test_reclaims_expired_running_job(self, queue):
         """Timed-out running job is returned to pending."""

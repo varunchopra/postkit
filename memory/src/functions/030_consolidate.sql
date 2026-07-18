@@ -34,6 +34,7 @@ BEGIN
 
     v_config := memory._get_config(p_namespace);
     v_limit := COALESCE(p_batch_size, v_config.consolidation_batch_size);
+    PERFORM memory._validate_limit(v_limit, 'batch_size', 1000);
 
     RETURN QUERY
     SELECT e.id, e.session_id, e.role, e.content, e.occurred_at
@@ -97,6 +98,14 @@ DECLARE
 BEGIN
     PERFORM memory._validate_namespace(p_namespace);
     PERFORM memory._warn_namespace_mismatch(p_namespace);
+
+    IF p_facts IS NOT NULL AND jsonb_typeof(p_facts) = 'array' THEN
+        PERFORM memory._validate_batch_size(jsonb_array_length(p_facts), 'facts');
+    END IF;
+    IF p_edges IS NOT NULL AND jsonb_typeof(p_edges) = 'array' THEN
+        PERFORM memory._validate_batch_size(jsonb_array_length(p_edges), 'edges');
+    END IF;
+    PERFORM memory._validate_batch_size(cardinality(p_source_episodes), 'source_episodes');
 
     -- M3: a replay with a seen key is a no-op.
     IF p_idempotency_key IS NOT NULL AND EXISTS (

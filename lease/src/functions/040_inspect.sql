@@ -115,7 +115,7 @@ BEGIN
     IF p_name IS NOT NULL THEN
         PERFORM lease._validate_lease_name(p_name);
     END IF;
-    PERFORM lease._validate_positive_int(p_limit, 'limit');
+    PERFORM lease._validate_limit(p_limit, 'limit', 1000);
     PERFORM lease._warn_namespace_mismatch(p_namespace);
 
     RETURN QUERY

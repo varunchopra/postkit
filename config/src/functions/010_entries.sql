@@ -172,6 +172,7 @@ RETURNS TABLE(
 AS $$
 BEGIN
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._validate_batch_size(cardinality(p_keys), 'keys');
     PERFORM config._warn_namespace_mismatch(p_namespace);
 
     RETURN QUERY
@@ -323,9 +324,7 @@ BEGIN
     PERFORM config._validate_namespace(p_namespace);
     PERFORM config._warn_namespace_mismatch(p_namespace);
 
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM config._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT e.key, e.value, e.version, e.created_at
@@ -362,9 +361,7 @@ BEGIN
     PERFORM config._validate_namespace(p_namespace);
     PERFORM config._warn_namespace_mismatch(p_namespace);
 
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM config._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT e.version, e.value, e.is_active, e.created_at, e.created_by
@@ -577,9 +574,7 @@ BEGIN
     PERFORM config._validate_namespace(p_namespace);
     PERFORM config._warn_namespace_mismatch(p_namespace);
 
-    IF p_limit > 1000 THEN
-        p_limit := 1000;
-    END IF;
+    PERFORM config._validate_limit(p_limit, 'limit', 1000);
 
     RETURN QUERY
     SELECT e.key, e.value, e.version, e.created_at

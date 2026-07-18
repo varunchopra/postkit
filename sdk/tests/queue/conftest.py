@@ -3,7 +3,7 @@
 import pytest
 from postkit.queue import QueueClient
 
-from tests.helpers import db_connection_for, make_namespace
+from tests.helpers import connection_factory_for, db_connection_for, make_namespace
 from tests.queue.helpers import QueueTestHelpers, cleanup_namespace
 
 
@@ -11,6 +11,11 @@ from tests.queue.helpers import QueueTestHelpers, cleanup_namespace
 def db_connection():
     """Session-scoped database connection with the queue schema installed."""
     yield from db_connection_for("queue")
+
+
+@pytest.fixture
+def connect(db_connection):
+    yield from connection_factory_for(db_connection)
 
 
 @pytest.fixture
