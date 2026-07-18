@@ -7,6 +7,9 @@
 -- @param p_namespace Namespace (default: 'default')
 -- @returns Table of (group_type, group_id, membership_relation)
 -- Given a subject, returns all groups it belongs to, including nested groups.
+-- The reserved 'parent' relation is resource hierarchy, not membership, so it is
+-- excluded here; otherwise a grant to a child would flow up to its parent. A grant
+-- to a userset '#parent' is consequently unsatisfiable.
 -- @example If user:alice is in team:infra, and team:infra is in team:platform,
 -- @example returns both (team, infra, member) and (team, platform, member).
 CREATE OR REPLACE FUNCTION authz._expand_subject_memberships(
@@ -28,6 +31,7 @@ AS $$
           AND subject_type = p_subject_type
           AND subject_id = p_subject_id
           AND subject_relation IS NULL
+          AND relation != 'parent'
           AND (expires_at IS NULL OR expires_at > now())
 
         UNION

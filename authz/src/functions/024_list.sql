@@ -144,8 +144,10 @@ CREATE OR REPLACE FUNCTION authz._grantee_leaves (p_resource_type text, p_resour
         WHERE t.namespace = p_namespace
             AND (t.expires_at IS NULL OR t.expires_at > now())
         UNION
-        -- Descend: a null qualifier follows any relation, a userset qualifier its
-        -- own; only member edges nest, so a non-member hop is a terminal grantee.
+        -- Descend: a null qualifier follows any membership relation, a userset
+        -- qualifier its own; only member edges nest, so a non-member hop is a
+        -- terminal grantee. The reserved 'parent' relation is resource hierarchy,
+        -- excluded here to match _expand_subject_memberships (check's walk).
         SELECT
             t.subject_type,
             t.subject_id,
@@ -157,6 +159,7 @@ CREATE OR REPLACE FUNCTION authz._grantee_leaves (p_resource_type text, p_resour
             AND t.resource_type = es.subject_type
             AND t.resource_id = es.subject_id
             AND (es.subject_relation IS NULL OR t.relation = es.subject_relation)
+            AND t.relation != 'parent'
             AND (t.expires_at IS NULL OR t.expires_at > now())
         WHERE es.expandable AND es.depth < authz._max_group_depth()
     )

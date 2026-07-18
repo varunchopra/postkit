@@ -73,6 +73,7 @@ BEGIN
             AND subject_type = p_subject_type
             AND subject_id = p_subject_id
             AND subject_relation IS NULL
+            AND relation != 'parent'
             AND (expires_at IS NULL
                 OR expires_at > now())
         UNION

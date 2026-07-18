@@ -157,7 +157,7 @@ SELECT * FROM authz.explain_text('user', 'alice', 'read', 'doc', 'spec');
 SELECT * FROM authz.explain_text('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/025_explain.sql:206*
+*Source: authz/src/functions/025_explain.sql:207*
 
 ---
 
@@ -400,7 +400,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/024_list.sql:223*
+*Source: authz/src/functions/024_list.sql:226*
 
 ---
 
@@ -427,7 +427,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/024_list.sql:249*
+*Source: authz/src/functions/024_list.sql:252*
 
 ---
 
@@ -484,7 +484,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/024_list.sql:198*
+*Source: authz/src/functions/024_list.sql:201*
 
 ---
 

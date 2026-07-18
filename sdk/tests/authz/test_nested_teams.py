@@ -553,3 +553,23 @@ class TestListSubjectsAgreesWithCheck:
             ("team", "shared"),
             ("user", "m"),
         }
+
+
+class TestParentEdgeIsNotMembership:
+    """'parent' is the reserved resource-hierarchy relation, not a group
+    membership. A grant to a child must not flow up to its parent, while a grant
+    on a parent resource still flows down to its children."""
+
+    def test_child_grant_does_not_reach_parent(self, authz):
+        authz.grant("parent", resource=("team", "eng"), subject=("org", "acme"))
+        authz.grant("read", resource=("doc", "1"), subject=("team", "eng"))
+
+        assert authz.check(("org", "acme"), "read", ("doc", "1")) is False
+        assert authz.list_subjects("read", ("doc", "1")) == [("team", "eng")]
+        assert "NO ACCESS" in authz.explain(("org", "acme"), "read", ("doc", "1"))[0]
+
+    def test_resource_hierarchy_still_flows_down(self, authz):
+        authz.grant("parent", resource=("doc", "1"), subject=("folder", "root"))
+        authz.grant("read", resource=("folder", "root"), subject=("user", "alice"))
+
+        assert authz.check(("user", "alice"), "read", ("doc", "1")) is True
