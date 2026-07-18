@@ -799,7 +799,7 @@ Move a grant from one subject to another atomically.
 - `p_to_subject_id`: New holder's identifier
 - `p_namespace`: Tenant namespace
 
-**Returns:** True if the grant was transferred, false if the source had no active (non-expired) grant. Expiration is preserved: temporary grants remain temporary after transfer.
+**Returns:** True if the grant was transferred, false if the source had no active (non-expired) grant. A new target grant inherits the source expiry. If the target already has the grant, its existing expiry is preserved.
 
 **Example:**
 ```sql
@@ -807,7 +807,7 @@ Move a grant from one subject to another atomically.
 SELECT authz.transfer_tuple('org', '1', 'owner', 'user', 'alice', 'user', 'bob');
 ```
 
-*Source: authz/src/functions/022_transfer.sql:17*
+*Source: authz/src/functions/022_transfer.sql:18*
 
 ---
 
@@ -826,7 +826,7 @@ Simpler write_tuple when you don't need subject_relation
 SELECT authz.write('doc', 'spec', 'read', 'user', 'alice', 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:133*
+*Source: authz/src/functions/020_write.sql:160*
 
 ---
 
@@ -841,7 +841,7 @@ Grant a permission to a user or team on a resource
 **Parameters:**
 - `p_relation`: Use 'member' for team nesting, 'parent' for folder hierarchies, otherwise this is the permission being granted (e.g., 'read', 'admin')
 - `p_subject_relation`: Grants to a subset of a team. 'admin' means only team admins get this permission, not all members.
-- `p_expires_at`: Permission auto-revokes at this time. Useful for temporary access like contractor permissions or review periods.
+- `p_expires_at`: Permission auto-revokes at this time. Useful for temporary access like contractor permissions or review periods. On a re-grant, the existing expiry is preserved; use the expiration APIs to change it.
 
 **Returns:** Tuple ID (for tracking/debugging)
 
@@ -855,7 +855,7 @@ SELECT authz.write_tuple('team', 'platform', 'member', 'team', 'infra', NULL, 'd
 SELECT authz.write_tuple('repo', 'api', 'write', 'team', 'eng', 'admin', 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:18*
+*Source: authz/src/functions/020_write.sql:19*
 
 ---
 
@@ -879,6 +879,6 @@ SELECT authz.write_tuples_bulk('project', 'atlas', 'read', 'user',
 ARRAY['alice', 'bob', 'charlie'], 'default');
 ```
 
-*Source: authz/src/functions/020_write.sql:156*
+*Source: authz/src/functions/020_write.sql:183*
 
 ---

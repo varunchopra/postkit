@@ -36,6 +36,14 @@ class TestAuditCapture:
         assert event["relation"] == "read"
         assert event["subject"] == ("user", "alice")
 
+    def test_regrant_does_not_create_false_update_event(self, authz):
+        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+        events = authz.get_audit_events()
+        assert [event["event_type"] for event in events] == ["tuple_created"]
+
     def test_revoke_creates_audit_event(self, authz):
         """Revoking a permission creates a tuple_deleted event."""
         authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))

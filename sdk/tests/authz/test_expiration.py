@@ -132,21 +132,55 @@ class TestExpiringPermissions:
                 expires_at=past,
             )
         assert exc_info.value.error_code == AuthzErrorCode.VAL_EXPIRATION_FUTURE
+        authz.cursor.execute(
+            "SELECT count(*) FROM authz.tuples "
+            "WHERE namespace = %s AND resource_id = '1' AND subject_id = 'alice'",
+            (authz.namespace,),
+        )
+        assert authz.cursor.fetchone()[0] == 0
 
-    def test_update_expiration_via_grant(self, authz):
-        """Can extend or shorten expiration by granting again."""
+    def test_regrant_ignores_expired_requested_expiration(self, authz):
+        requested = datetime.now(timezone.utc) + timedelta(hours=1)
+        existing_expiry = datetime.now(timezone.utc) - timedelta(hours=1)
+        tuple_id = authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("user", "alice"),
+            expires_at=requested,
+        )
+        authz.cursor.execute(
+            "UPDATE authz.tuples SET expires_at = %s "
+            "WHERE id = %s",
+            (existing_expiry, tuple_id),
+        )
+
+        assert (
+            authz.grant(
+                "read",
+                resource=("doc", "1"),
+                subject=("user", "alice"),
+                expires_at=requested - timedelta(hours=2),
+            )
+            == tuple_id
+        )
+        authz.cursor.execute(
+            "SELECT expires_at FROM authz.tuples WHERE id = %s", (tuple_id,)
+        )
+        assert authz.cursor.fetchone()[0] == existing_expiry
+
+    def test_regrant_preserves_existing_expiration(self, authz):
+        """An explicit expiration on a re-grant does not replace the original."""
         original = datetime.now(timezone.utc) + timedelta(hours=1)
         extended = datetime.now(timezone.utc) + timedelta(days=7)
 
-        authz.grant(
+        tuple_id = authz.grant(
             "read",
             resource=("doc", "1"),
             subject=("user", "alice"),
             expires_at=original,
         )
 
-        # Extend by granting again
-        authz.grant(
+        regrant_id = authz.grant(
             "read",
             resource=("doc", "1"),
             subject=("user", "alice"),
@@ -154,8 +188,37 @@ class TestExpiringPermissions:
         )
 
         expiring = authz.list_expiring(within=timedelta(days=30))
+        assert regrant_id == tuple_id
         assert len(expiring) == 1
-        assert abs((expiring[0]["expires_at"] - extended).total_seconds()) < 1
+        assert abs((expiring[0]["expires_at"] - original).total_seconds()) < 1
+
+    def test_regrant_without_expiration_preserves_existing_expiration(self, authz):
+        original = datetime.now(timezone.utc) + timedelta(hours=1)
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("user", "alice"),
+            expires_at=original,
+        )
+
+        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+        expiring = authz.list_expiring(within=timedelta(days=1))
+        assert len(expiring) == 1
+        assert abs((expiring[0]["expires_at"] - original).total_seconds()) < 1
+
+    def test_regrant_cannot_add_expiration_to_permanent_grant(self, authz):
+        authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+        authz.grant(
+            "read",
+            resource=("doc", "1"),
+            subject=("user", "alice"),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+
+        assert authz.list_expiring(within=timedelta(days=1)) == []
+        assert authz.check(("user", "alice"), "read", ("doc", "1"))
 
     def test_hierarchy_with_expiration(self, authz):
         """Implied permissions work correctly with expiration."""

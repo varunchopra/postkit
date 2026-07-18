@@ -11,7 +11,8 @@
 -- @param p_to_subject_id New holder's identifier
 -- @param p_namespace Tenant namespace
 -- @returns True if the grant was transferred, false if the source had no active (non-expired) grant.
---   Expiration is preserved: temporary grants remain temporary after transfer.
+--   A new target grant inherits the source expiry. If the target already has
+--   the grant, its existing expiry is preserved.
 -- @example -- Transfer ownership from alice to bob
 -- @example SELECT authz.transfer_tuple('org', '1', 'owner', 'user', 'alice', 'user', 'bob');
 CREATE OR REPLACE FUNCTION authz.transfer_tuple(
@@ -70,13 +71,24 @@ BEGIN
         RETURN false;
     END IF;
 
+    -- An expired target is not an effective grant. Remove it so the transfer
+    -- creates a fresh target tuple with the source expiration.
+    DELETE FROM authz.tuples
+    WHERE namespace = p_namespace
+      AND resource_type = p_resource_type
+      AND resource_id = p_resource_id
+      AND relation = p_relation
+      AND subject_type = p_to_subject_type
+      AND subject_id = p_to_subject_id
+      AND subject_relation IS NULL
+      AND expires_at <= now();
+
     -- Delete by PK. The row is locked by our SELECT, so no concurrent
     -- session can modify or delete it between the check and this point.
     DELETE FROM authz.tuples WHERE id = v_source_id;
 
     -- Create the target grant. write_tuple handles input validation,
-    -- cycle detection (for member/parent relations), and upsert (if the
-    -- target already holds this grant, only expiration is updated).
+    -- cycle detection (for member/parent relations), and idempotent upsert.
     PERFORM authz.write_tuple(
         p_resource_type, p_resource_id, p_relation,
         p_to_subject_type, p_to_subject_id, NULL, p_namespace, v_expires_at

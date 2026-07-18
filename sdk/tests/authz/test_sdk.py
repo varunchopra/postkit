@@ -406,8 +406,8 @@ class TestTransferGrant:
         assert authz.check(("user", "bob"), "owner", ("org", "1"))
         assert authz.check(("user", "bob"), "member", ("org", "1"))
 
-    def test_transfer_replaces_target_expiration(self, authz, db_connection):
-        """When target already holds the same grant, transfer replaces its expiration."""
+    def test_transfer_preserves_existing_target_expiration(self, authz, db_connection):
+        """A transfer does not change the expiry of an existing target grant."""
         short = datetime.now(timezone.utc) + timedelta(hours=1)
         long_ = datetime.now(timezone.utc) + timedelta(days=30)
 
@@ -429,7 +429,6 @@ class TestTransferGrant:
         assert not authz.check(("user", "alice"), "owner", ("org", "1"))
         assert authz.check(("user", "bob"), "owner", ("org", "1"))
 
-        # Bob's 1-hour expiration must be replaced by alice's 30-day expiration.
         cursor = db_connection.cursor()
         cursor.execute(
             "SELECT expires_at FROM authz.tuples "
@@ -439,7 +438,43 @@ class TestTransferGrant:
         )
         row = cursor.fetchone()
         assert row is not None
-        assert abs((row[0] - long_).total_seconds()) < 1
+        assert abs((row[0] - short).total_seconds()) < 1
+
+    def test_transfer_replaces_expired_target_grant(self, authz, db_connection):
+        source_expiry = datetime.now(timezone.utc) + timedelta(days=30)
+        authz.grant(
+            "owner",
+            resource=("org", "1"),
+            subject=("user", "bob"),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        authz.grant(
+            "owner",
+            resource=("org", "1"),
+            subject=("user", "alice"),
+            expires_at=source_expiry,
+        )
+        db_connection.execute(
+            "UPDATE authz.tuples SET expires_at = now() - interval '1 hour' "
+            "WHERE namespace = %s AND resource_id = '1' AND subject_id = 'bob'",
+            (authz.namespace,),
+        )
+
+        assert authz.transfer_grant(
+            "owner",
+            resource=("org", "1"),
+            from_subject=("user", "alice"),
+            to_subject=("user", "bob"),
+        )
+
+        assert not authz.check(("user", "alice"), "owner", ("org", "1"))
+        assert authz.check(("user", "bob"), "owner", ("org", "1"))
+        row = db_connection.execute(
+            "SELECT expires_at FROM authz.tuples "
+            "WHERE namespace = %s AND resource_id = '1' AND subject_id = 'bob'",
+            (authz.namespace,),
+        ).fetchone()
+        assert abs((row[0] - source_expiry).total_seconds()) < 1
 
     def test_transfer_grant_rolls_back_revoke_on_grant_failure(self, authz):
         """If the grant step raises, the revoke is rolled back."""

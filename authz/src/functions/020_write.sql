@@ -7,7 +7,8 @@
 -- @param p_subject_relation Grants to a subset of a team. 'admin' means only team
 --   admins get this permission, not all members.
 -- @param p_expires_at Permission auto-revokes at this time. Useful for temporary
---   access like contractor permissions or review periods.
+--   access like contractor permissions or review periods. On a re-grant, the
+--   existing expiry is preserved; use the expiration APIs to change it.
 -- @returns Tuple ID (for tracking/debugging)
 -- @example -- Give alice read access to a doc
 -- @example SELECT authz.write_tuple('doc', 'spec', 'read', 'user', 'alice', NULL, 'default');
@@ -28,6 +29,7 @@ CREATE OR REPLACE FUNCTION authz.write_tuple(
 RETURNS bigint AS $$
 DECLARE
     v_tuple_id bigint;
+    v_conflict_retries int := 0;
 BEGIN
     -- Validate inputs
     PERFORM
@@ -46,13 +48,6 @@ BEGIN
         PERFORM
             authz._validate_identifier (p_subject_relation, 'subject_relation');
     END IF;
-    -- Validate expiration is in the future
-    IF p_expires_at IS NOT NULL AND p_expires_at <= now() THEN
-        RAISE EXCEPTION 'expires_at must be in the future'
-            USING ERRCODE = 'check_violation',
-                  HINT = 'postkit:authz:VAL_EXPIRATION_FUTURE';
-    END IF;
-
     -- Check for cycles when adding group-to-group membership
     IF p_relation = 'member' AND p_subject_type != 'user' THEN
         -- A group cannot be made a member of itself; catch that here, before
@@ -113,15 +108,47 @@ BEGIN
         END IF;
     END IF;
 
-    -- Insert or update the tuple
-    INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id, subject_relation, expires_at)
-        VALUES (p_namespace, p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, p_subject_relation, p_expires_at)
-    ON CONFLICT (namespace, resource_type, resource_id, relation, subject_type, subject_id, COALESCE(subject_relation, ''))
-        DO UPDATE SET
-            expires_at = EXCLUDED.expires_at
-        RETURNING id INTO v_tuple_id;
+    LOOP
+        v_tuple_id := NULL;
+        INSERT INTO authz.tuples (namespace, resource_type, resource_id, relation, subject_type, subject_id, subject_relation, expires_at)
+            VALUES (p_namespace, p_resource_type, p_resource_id, p_relation, p_subject_type, p_subject_id, p_subject_relation, p_expires_at)
+        ON CONFLICT (namespace, resource_type, resource_id, relation, subject_type, subject_id, COALESCE(subject_relation, ''))
+            DO NOTHING
+            RETURNING id INTO v_tuple_id;
 
-    RETURN v_tuple_id;
+        IF v_tuple_id IS NOT NULL THEN
+            IF p_expires_at IS NOT NULL AND p_expires_at <= now() THEN
+                RAISE EXCEPTION 'expires_at must be in the future'
+                    USING ERRCODE = 'check_violation',
+                          HINT = 'postkit:authz:VAL_EXPIRATION_FUTURE';
+            END IF;
+            RETURN v_tuple_id;
+        END IF;
+
+        -- This point lookup is the normal re-grant path. The row lock prevents
+        -- a revoke after it is found without creating a new tuple version or
+        -- firing update triggers.
+        SELECT t.id INTO v_tuple_id
+        FROM authz.tuples t
+        WHERE t.namespace = p_namespace
+          AND t.resource_type = p_resource_type
+          AND t.resource_id = p_resource_id
+          AND t.relation = p_relation
+          AND t.subject_type = p_subject_type
+          AND t.subject_id = p_subject_id
+          AND COALESCE(t.subject_relation, '') = COALESCE(p_subject_relation, '')
+        FOR KEY SHARE;
+
+        IF FOUND THEN
+            RETURN v_tuple_id;
+        END IF;
+
+        v_conflict_retries := v_conflict_retries + 1;
+        IF v_conflict_retries >= 3 THEN
+            RAISE EXCEPTION 'could not serialize access due to concurrent tuple change'
+                USING ERRCODE = '40001';
+        END IF;
+    END LOOP;
 END;
 $$
 LANGUAGE plpgsql SECURITY INVOKER

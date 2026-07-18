@@ -187,7 +187,8 @@ class AuthzClient(BaseClient):
             resource: The resource as (type, id) tuple (e.g., ("repo", "api"))
             subject: The subject as (type, id) tuple (e.g., ("team", "eng"))
             subject_relation: Optional relation on the subject (e.g., "admin" for team#admin)
-            expires_at: Optional expiration time for time-bound permissions
+            expires_at: Optional expiration for a new grant. Re-granting an existing
+                tuple preserves its expiry; use set_expiration() to change it.
 
         Returns:
             The tuple ID
@@ -744,9 +745,9 @@ class AuthzClient(BaseClient):
         """Transfer a grant from one subject to another.
 
         Deletes the grant from the current holder and creates it for the new
-        holder in a single SQL call.  Expiration is preserved: if the source
-        grant has an expiration, the transferred grant keeps it.  Expired
-        grants cannot be transferred (returns False, same as no grant).
+        holder in a single SQL call. A new target grant inherits the source
+        expiry. If the target already has the grant, its expiry is preserved.
+        Expired grants cannot be transferred (returns False, same as no grant).
 
         Args:
             permission: The permission to transfer

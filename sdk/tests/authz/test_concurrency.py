@@ -9,8 +9,11 @@ concurrent operations work correctly.
 import os
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import psycopg
+import pytest
+from postkit.authz import AuthzClient, AuthzError
 
 # Database connection from environment or default (matches Makefile)
 DATABASE_URL = os.environ.get(
@@ -567,3 +570,106 @@ class TestConcurrentIdempotency:
 
         # With lazy evaluation, we just verify the permission works
         assert checker.check(("user", "alice"), "read", ("doc", "1"))
+
+    def test_concurrent_regrant_and_revoke_are_consistent(self, make_authz):
+        namespace = "test_grant_revoke_race"
+        authz = make_authz(namespace)
+        original_expiry = datetime.now(timezone.utc) + timedelta(days=1)
+
+        for attempt in range(10):
+            resource = ("doc", str(attempt))
+            tuple_id = authz.grant(
+                "read",
+                resource=resource,
+                subject=("user", "alice"),
+                expires_at=original_expiry,
+            )
+            barrier = threading.Barrier(2)
+            result = {"errors": []}
+
+            def grant():
+                connection = psycopg.connect(DATABASE_URL, autocommit=True)
+                client = AuthzClient(connection.cursor(), namespace)
+                try:
+                    barrier.wait()
+                    result["grant_id"] = client.grant(
+                        "read",
+                        resource=resource,
+                        subject=("user", "alice"),
+                        expires_at=original_expiry,
+                    )
+                except Exception as exc:
+                    result["errors"].append(exc)
+                finally:
+                    connection.close()
+
+            def revoke():
+                connection = psycopg.connect(DATABASE_URL, autocommit=True)
+                client = AuthzClient(connection.cursor(), namespace)
+                try:
+                    barrier.wait()
+                    result["revoked"] = client.revoke(
+                        "read", resource=resource, subject=("user", "alice")
+                    )
+                except Exception as exc:
+                    result["errors"].append(exc)
+                finally:
+                    connection.close()
+
+            grant_thread = threading.Thread(target=grant)
+            revoke_thread = threading.Thread(target=revoke)
+            grant_thread.start()
+            revoke_thread.start()
+            grant_thread.join(3)
+            revoke_thread.join(3)
+
+            assert not grant_thread.is_alive()
+            assert not revoke_thread.is_alive()
+            assert not result["errors"]
+            assert result["revoked"] is True
+
+            permitted = authz.check(("user", "alice"), "read", resource)
+            if result["grant_id"] == tuple_id:
+                assert permitted is False
+            else:
+                assert permitted is True
+                expiring = [
+                    row
+                    for row in authz.list_expiring(within=timedelta(days=2))
+                    if row["resource"] == resource
+                ]
+                assert len(expiring) == 1
+                assert expiring[0]["expires_at"] == original_expiry
+
+        assert all(
+            event["event_type"] != "tuple_updated"
+            for event in authz.get_audit_events(limit=100)
+        )
+
+    def test_repeatable_read_conflict_fails_without_spinning(self, make_authz):
+        namespace = "test_regrant_repeatable_read"
+        authz = make_authz(namespace)
+        connection = psycopg.connect(DATABASE_URL)
+        try:
+            connection.rollback()
+            connection.execute("BEGIN ISOLATION LEVEL REPEATABLE READ")
+            client = AuthzClient(connection.cursor(), namespace)
+            connection.execute(
+                "SELECT count(*) FROM authz.tuples WHERE namespace = %s",
+                (namespace,),
+            )
+            authz.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+            connection.execute("SET LOCAL statement_timeout = '1s'")
+            started = time.monotonic()
+
+            with pytest.raises(AuthzError) as exc_info:
+                client.grant("read", resource=("doc", "1"), subject=("user", "alice"))
+
+            assert time.monotonic() - started < 1
+            assert exc_info.value.sqlstate == "40001"
+            assert isinstance(
+                exc_info.value.__cause__, psycopg.errors.SerializationFailure
+            )
+        finally:
+            connection.rollback()
+            connection.close()
