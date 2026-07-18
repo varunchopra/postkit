@@ -133,6 +133,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, authn;
 
+REVOKE ALL ON FUNCTION authn._log_operator_audit_event FROM PUBLIC;
+
 
 
 -- @function authn.start_operator_impersonation

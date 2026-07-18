@@ -2,8 +2,44 @@
 
 from datetime import datetime, timedelta, timezone
 
+import psycopg
 import pytest
 from postkit.authn import AuthnErrorCode, AuthnValidationError
+
+from tests.helpers import connect_as_rls_user, ensure_rls_role
+
+
+class TestOperatorAuditPermissions:
+    def test_internal_audit_logger_cannot_be_called_directly(
+        self, authn, db_connection
+    ):
+        ensure_rls_role(db_connection, "authn")
+        db_connection.execute(
+            "REVOKE ALL ON FUNCTION authn._log_operator_audit_event FROM authn_rls_user"
+        )
+        connection = connect_as_rls_user(db_connection, "authn", autocommit=True)
+
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                connection.execute(
+                    "SELECT authn._log_operator_audit_event("
+                    "%s, %s, gen_random_uuid(), %s, %s, "
+                    "gen_random_uuid(), %s, %s)",
+                    (
+                        "forged_event",
+                        authn.namespace,
+                        "attacker@example.com",
+                        authn.namespace,
+                        "victim@example.com",
+                        "forged audit record",
+                    ),
+                )
+        finally:
+            connection.close()
+            db_connection.execute(
+                "GRANT EXECUTE ON FUNCTION authn._log_operator_audit_event "
+                "TO authn_rls_user"
+            )
 
 
 class TestStartOperatorImpersonation:
