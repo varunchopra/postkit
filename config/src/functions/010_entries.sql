@@ -20,23 +20,20 @@ DECLARE
     v_next_version int;
     v_old_value jsonb;
 BEGIN
-    -- Validate inputs
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
 
-    -- Deactivate current and get old value in one operation
+    INSERT INTO config.version_counters (namespace, key, max_version)
+    VALUES (p_namespace, p_key, 1)
+    ON CONFLICT (namespace, key)
+    DO UPDATE SET max_version = config.version_counters.max_version + 1
+    RETURNING max_version INTO v_next_version;
+
     UPDATE config.entries
     SET is_active = false
     WHERE namespace = p_namespace AND key = p_key AND is_active = true
     RETURNING value INTO v_old_value;
 
-    -- Increment version counter (survives deletions) and get next version
-    INSERT INTO config.version_counters (namespace, key, max_version)
-    VALUES (p_namespace, p_key, 1)
-    ON CONFLICT (namespace, key) DO UPDATE SET max_version = version_counters.max_version + 1
-    RETURNING max_version INTO v_next_version;
-
-    -- Insert new version as active
     INSERT INTO config.entries (namespace, key, version, value, is_active, created_by)
     VALUES (
         p_namespace,
@@ -47,7 +44,6 @@ BEGIN
         nullif(current_setting('config.actor_id', true), '')
     );
 
-    -- Audit log
     PERFORM config._log_event(
         'entry_created', p_namespace, p_key, v_next_version,
         v_old_value, p_value
@@ -81,25 +77,22 @@ AS $$
 DECLARE
     v_existing_version int;
 BEGIN
-    -- Validate inputs
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._lock_key(p_namespace, p_key);
 
-    -- Check if key already exists (with lock to prevent race conditions)
     SELECT e.version INTO v_existing_version
     FROM config.entries e
     WHERE e.namespace = p_namespace
       AND e.key = p_key
       AND e.is_active = true
-    FOR UPDATE SKIP LOCKED;
+    FOR UPDATE;
 
-    -- If exists, return existing version without creating new one
     IF v_existing_version IS NOT NULL THEN
         RETURN QUERY SELECT v_existing_version, false;
         RETURN;
     END IF;
 
-    -- Does not exist, create it via set()
     RETURN QUERY SELECT config.set(p_key, p_value, p_namespace), true;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = config, pg_temp;
@@ -204,21 +197,20 @@ DECLARE
 BEGIN
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._lock_key(p_namespace, p_key);
 
-    -- Single query: get old active and target version values
-    SELECT
-        (SELECT value FROM config.entries
-         WHERE namespace = p_namespace AND key = p_key AND is_active = true),
-        (SELECT version FROM config.entries
-         WHERE namespace = p_namespace AND key = p_key AND is_active = true),
-        (SELECT value FROM config.entries
-         WHERE namespace = p_namespace AND key = p_key AND version = p_version)
-    INTO v_old_value, v_old_version, v_new_value;
+    SELECT value INTO v_new_value
+    FROM config.entries
+    WHERE namespace = p_namespace AND key = p_key AND version = p_version
+    FOR UPDATE;
 
-    -- Target version doesn't exist
-    IF v_new_value IS NULL THEN
+    IF NOT FOUND THEN
         RETURN false;
     END IF;
+
+    SELECT value, version INTO v_old_value, v_old_version
+    FROM config.entries
+    WHERE namespace = p_namespace AND key = p_key AND is_active = true;
 
     -- Deactivate current active version first, then activate target.
     -- Two separate UPDATEs because a single UPDATE that flips is_active
@@ -240,8 +232,12 @@ BEGIN
 
     GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
 
-    -- Audit log only if actually changed
-    IF v_old_version IS DISTINCT FROM p_version AND v_rows_updated > 0 THEN
+    IF v_rows_updated <> 1 THEN
+        RAISE EXCEPTION 'Config version disappeared during activation'
+            USING ERRCODE = 'serialization_failure';
+    END IF;
+
+    IF v_old_version IS DISTINCT FROM p_version THEN
         PERFORM config._log_event(
             'entry_activated', p_namespace, p_key, p_version,
             v_old_value, v_new_value
@@ -255,7 +251,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = config, pg_temp;
 
 -- @function config.rollback
 -- @brief Activate the previous version
--- @returns New active version number, or NULL if no previous version
+-- @returns New active version number, or NULL if no previous version remains
 -- @example SELECT config.rollback('prompts/support-bot');
 CREATE OR REPLACE FUNCTION config.rollback(
     p_key text,
@@ -269,8 +265,8 @@ DECLARE
 BEGIN
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._lock_key(p_namespace, p_key);
 
-    -- Get current active version
     SELECT version INTO v_current_version
     FROM config.entries
     WHERE namespace = p_namespace AND key = p_key AND is_active = true;
@@ -279,7 +275,6 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Get previous version
     SELECT version INTO v_previous_version
     FROM config.entries
     WHERE namespace = p_namespace AND key = p_key AND version < v_current_version
@@ -290,8 +285,9 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Activate previous
-    PERFORM config.activate(p_key, v_previous_version, p_namespace);
+    IF NOT config.activate(p_key, v_previous_version, p_namespace) THEN
+        RETURN NULL;
+    END IF;
 
     RETURN v_previous_version;
 END;
@@ -331,7 +327,7 @@ BEGIN
     FROM config.entries e
     WHERE e.namespace = p_namespace
       AND e.is_active = true
-      AND (p_prefix IS NULL OR e.key LIKE replace(p_prefix, '_', '\_') || '%' ESCAPE '\')
+      AND (p_prefix IS NULL OR e.key LIKE config._escape_like_prefix(p_prefix) || '%' ESCAPE '\')
       AND (p_cursor IS NULL OR e.key > p_cursor)
     ORDER BY e.key
     LIMIT p_limit;
@@ -389,8 +385,8 @@ DECLARE
 BEGIN
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._lock_key(p_namespace, p_key);
 
-    -- Get active value for audit
     SELECT value INTO v_active_value
     FROM config.entries
     WHERE namespace = p_namespace AND key = p_key AND is_active = true;
@@ -430,14 +426,14 @@ DECLARE
 BEGIN
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._lock_key(p_namespace, p_key);
 
-    -- Check if trying to delete active version
     SELECT is_active, value INTO v_is_active, v_old_value
     FROM config.entries
     WHERE namespace = p_namespace AND key = p_key AND version = p_version;
 
     IF v_is_active IS NULL THEN
-        RETURN false;  -- Version doesn't exist
+        RETURN false;
     END IF;
 
     IF v_is_active = true THEN
@@ -535,19 +531,17 @@ DECLARE
 BEGIN
     PERFORM config._validate_key(p_key);
     PERFORM config._validate_namespace(p_namespace);
+    PERFORM config._lock_key(p_namespace, p_key);
 
-    -- Lock row to prevent concurrent merge race conditions
     SELECT value INTO v_current
     FROM config.entries
     WHERE namespace = p_namespace AND key = p_key AND is_active = true
     FOR UPDATE;
 
     IF v_current IS NULL THEN
-        -- No existing value, just set
         RETURN config.set(p_key, p_changes, p_namespace);
     END IF;
 
-    -- Shallow merge
     v_merged := v_current || p_changes;
 
     RETURN config.set(p_key, v_merged, p_namespace);
@@ -582,7 +576,7 @@ BEGIN
     WHERE e.namespace = p_namespace
       AND e.is_active = true
       AND e.value @> p_contains
-      AND (p_prefix IS NULL OR e.key LIKE replace(p_prefix, '_', '\_') || '%' ESCAPE '\')
+      AND (p_prefix IS NULL OR e.key LIKE config._escape_like_prefix(p_prefix) || '%' ESCAPE '\')
     ORDER BY e.key
     LIMIT p_limit;
 END;

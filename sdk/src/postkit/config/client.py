@@ -315,7 +315,7 @@ class ConfigClient(BaseClient):
             key: Config key
 
         Returns:
-            New active version number, or None if no previous version
+            New active version number, or None if no previous version remains
         """
         return self._fetch_val(
             "SELECT config.rollback(%s, %s)",
@@ -425,7 +425,8 @@ class ConfigClient(BaseClient):
         """Delete old inactive versions, keeping N most recent per key.
 
         Args:
-            keep_versions: Number of inactive versions to keep per key (default 10)
+            keep_versions: Number of inactive versions to keep per key. Zero removes
+                all inactive versions. Defaults to 10.
 
         Returns:
             Count of versions deleted

@@ -307,10 +307,30 @@ class TestCleanupOldVersions:
         assert test_helpers.count_versions("prompts/bot") == 2
 
     def test_rejects_negative_keep_versions(self, config):
-        """cleanup_old_versions() rejects negative keep_versions."""
         with pytest.raises(ConfigValidationError) as exc_info:
             config.cleanup_old_versions(keep_versions=-1)
         assert exc_info.value.error_code == ConfigErrorCode.VAL_KEEP_VERSIONS_NEGATIVE
+
+    def test_rejects_null_without_changing_history(self, config):
+        config.set("prompts/bot", {"v": 1})
+        config.set("prompts/bot", {"v": 2})
+        before = config.history("prompts/bot")
+
+        with pytest.raises(ConfigValidationError) as exc_info:
+            config.cleanup_old_versions(keep_versions=None)
+
+        assert exc_info.value.sqlstate == "22004"
+        assert exc_info.value.error_code == ConfigErrorCode.VAL_KEEP_VERSIONS_NULL
+        assert config.history("prompts/bot") == before
+
+    def test_zero_removes_all_inactive_versions(self, config):
+        config.set("prompts/bot", {"v": 1})
+        config.set("prompts/bot", {"v": 2})
+
+        assert config.cleanup_old_versions(keep_versions=0) == 1
+        history = config.history("prompts/bot")
+        assert [row["version"] for row in history] == [2]
+        assert history[0]["is_active"] is True
 
 
 class TestAuditSecurityValidation:

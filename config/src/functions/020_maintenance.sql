@@ -2,7 +2,7 @@
 
 -- @function config.cleanup_old_versions
 -- @brief Delete old inactive versions, keeping N most recent per key
--- @param p_keep_versions Number of inactive versions to keep per key (default 10)
+-- @param p_keep_versions Number of inactive versions to keep per key; zero removes all inactive versions
 -- @returns Count of versions deleted
 -- @example SELECT config.cleanup_old_versions(5);
 CREATE OR REPLACE FUNCTION config.cleanup_old_versions(
@@ -15,6 +15,12 @@ DECLARE
     v_count int;
 BEGIN
     PERFORM config._validate_namespace(p_namespace);
+
+    IF p_keep_versions IS NULL THEN
+        RAISE EXCEPTION 'keep_versions cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:config:VAL_KEEP_VERSIONS_NULL';
+    END IF;
 
     IF p_keep_versions < 0 THEN
         RAISE EXCEPTION 'keep_versions must be non-negative'
@@ -29,8 +35,11 @@ BEGIN
         FROM config.entries
         WHERE namespace = p_namespace AND is_active = false
     )
-    DELETE FROM config.entries
-    WHERE id IN (SELECT id FROM inactive_ranked WHERE rn > p_keep_versions);
+    DELETE FROM config.entries e
+    USING inactive_ranked i
+    WHERE e.id = i.id
+      AND i.rn > p_keep_versions
+      AND e.is_active = false;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
     RETURN v_count;

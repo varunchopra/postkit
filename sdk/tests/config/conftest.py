@@ -4,13 +4,18 @@ import pytest
 from postkit.config import ConfigClient
 
 from tests.config.helpers import ConfigTestHelpers, cleanup_namespace
-from tests.helpers import db_connection_for, make_namespace
+from tests.helpers import connection_factory_for, db_connection_for, make_namespace
 
 
 @pytest.fixture(scope="session")
 def db_connection():
     """Session-scoped database connection with the config schema installed."""
     yield from db_connection_for("config")
+
+
+@pytest.fixture
+def connect(db_connection):
+    yield from connection_factory_for(db_connection)
 
 
 @pytest.fixture

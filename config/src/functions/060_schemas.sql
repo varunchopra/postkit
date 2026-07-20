@@ -201,7 +201,7 @@ BEGIN
         RETURN QUERY
         SELECT s.key_pattern, s.schema, s.description, s.created_at, s.updated_at
         FROM config.schemas s
-        WHERE s.key_pattern LIKE replace(p_prefix, '_', '\_') || '%' ESCAPE '\'
+        WHERE s.key_pattern LIKE config._escape_like_prefix(p_prefix) || '%' ESCAPE '\'
         ORDER BY s.key_pattern
         LIMIT p_limit;
     ELSE

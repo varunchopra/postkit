@@ -272,15 +272,19 @@ class TestSearch:
         assert results == []
 
     def test_prefix_underscores_escaped(self, config):
-        """search() escapes SQL underscore wildcard in prefix."""
         config.set("test_exact", {"enabled": True})
-        config.set("testXother", {"enabled": True})  # _ wildcard would match this
+        config.set("testXother", {"enabled": True})
 
-        # Underscore should be literal, not single-char wildcard
         results = config.search({"enabled": True}, prefix="test_")
         keys = [r["key"] for r in results]
         assert keys == ["test_exact"]
         assert "testXother" not in keys
+
+    def test_percent_and_backslash_prefixes_are_literal(self, config):
+        config.set("flags/alpha", {"enabled": True})
+
+        assert config.search({"enabled": True}, prefix="flags/%") == []
+        assert config.search({"enabled": True}, prefix="flags/\\") == []
 
     def test_search_respects_limit(self, config):
         """search returns at most limit entries."""
@@ -462,18 +466,33 @@ class TestListEntries:
         page2 = config.list_entries(limit=2, cursor=cursor)
         assert len(page2) == 1
 
-    def test_prefix_underscores_escaped(self, config):
-        """list_entries() escapes SQL underscore wildcard in prefix."""
-        # Underscore in SQL LIKE is a single-char wildcard
-        # Ensure it's treated as a literal underscore
-        config.set("test_exact", {"v": 1})
-        config.set("testXother", {"v": 2})  # Would match test_ as wildcard
+    def test_literal_prefix_pagination(self, config):
+        for key in ("flags/a", "flags/b", "flags/c", "prompts/a"):
+            config.set(key, {"key": key})
 
-        # Prefix with _ should only match literal underscore, not any char
+        first = config.list_entries(prefix="flags/", limit=2)
+        second = config.list_entries(prefix="flags/", limit=2, cursor=first[-1]["key"])
+
+        assert [row["key"] for row in first + second] == [
+            "flags/a",
+            "flags/b",
+            "flags/c",
+        ]
+
+    def test_prefix_underscores_escaped(self, config):
+        config.set("test_exact", {"v": 1})
+        config.set("testXother", {"v": 2})
+
         results = config.list_entries(prefix="test_")
         keys = [r["key"] for r in results]
         assert keys == ["test_exact"]
         assert "testXother" not in keys
+
+    def test_percent_and_backslash_prefixes_are_literal(self, config):
+        config.set("flags/alpha", {"enabled": True})
+
+        assert config.list_entries(prefix="flags/%") == []
+        assert config.list_entries(prefix="flags/\\") == []
 
 
 class TestHistory:

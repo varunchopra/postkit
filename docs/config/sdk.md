@@ -43,7 +43,7 @@ cleanup_old_versions(keep_versions: int = 10) -> int
 Delete old inactive versions, keeping N most recent per key.
 
 **Parameters:**
-- `keep_versions`: Number of inactive versions to keep per key (default 10)
+- `keep_versions`: Number of inactive versions to keep per key. Zero removes all inactive versions. Defaults to 10.
 
 **Returns:** Count of versions deleted
 
@@ -96,7 +96,7 @@ Delete a schema by its key pattern.
 Note:
     Requires admin connection that bypasses RLS.
 
-*Source: sdk/src/postkit/config/client.py:557*
+*Source: sdk/src/postkit/config/client.py:558*
 
 ---
 
@@ -178,7 +178,7 @@ if events:
     more = config.get_audit_events(limit=50, before=events[-1]["cursor"])
 ```
 
-*Source: sdk/src/postkit/config/client.py:442*
+*Source: sdk/src/postkit/config/client.py:443*
 
 ---
 
@@ -244,7 +244,7 @@ Matching precedence:
 Note:
     All connections (admin and tenant) can read schemas.
 
-*Source: sdk/src/postkit/config/client.py:538*
+*Source: sdk/src/postkit/config/client.py:539*
 
 ---
 
@@ -332,7 +332,7 @@ List all schemas, optionally filtered by prefix.
 **Returns:** List of dicts with 'key_pattern', 'schema', 'description',
 'created_at', 'updated_at'
 
-*Source: sdk/src/postkit/config/client.py:575*
+*Source: sdk/src/postkit/config/client.py:576*
 
 ---
 
@@ -375,7 +375,7 @@ Rollback to previous version.
 **Parameters:**
 - `key`: Config key
 
-**Returns:** New active version number, or None if no previous version
+**Returns:** New active version number, or None if no previous version remains
 
 *Source: sdk/src/postkit/config/client.py:311*
 
@@ -501,6 +501,6 @@ Use exact for items with unique structure:
 - `schema`: JSON Schema document (Draft 7)
 - `description`: Human-readable description
 
-*Source: sdk/src/postkit/config/client.py:478*
+*Source: sdk/src/postkit/config/client.py:479*
 
 ---
