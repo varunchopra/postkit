@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release"
+  short_description: "Prepare, verify, tag, and push a release"
+  default_prompt: "Use $release to publish version 0.10.0."
