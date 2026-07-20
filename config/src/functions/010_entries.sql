@@ -212,6 +212,10 @@ BEGIN
     FROM config.entries
     WHERE namespace = p_namespace AND key = p_key AND is_active = true;
 
+    IF v_old_version = p_version THEN
+        RETURN true;
+    END IF;
+
     -- Deactivate current active version first, then activate target.
     -- Two separate UPDATEs because a single UPDATE that flips is_active
     -- on two rows can violate entries_single_active_idx - PostgreSQL

@@ -334,16 +334,12 @@ class TestActivate:
         result = config.activate("prompts/bot", 999)
         assert result is False
 
-    def test_idempotent_activation(self, config, test_helpers):
-        """Activating already-active version is fine."""
+    def test_idempotent_activation(self, config):
         config.set("prompts/bot", {"v": 1})
         config.set("prompts/bot", {"v": 2})
 
-        # Activate v2 again (it's already active)
-        result = config.activate("prompts/bot", 2)
-
-        assert result is True
-        assert test_helpers.get_active_version("prompts/bot") == 2
+        assert config.activate("prompts/bot", 2) is True
+        assert config.get("prompts/bot")["version"] == 2
 
 
 class TestSetAfterActivate:
