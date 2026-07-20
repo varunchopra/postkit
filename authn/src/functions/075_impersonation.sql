@@ -372,6 +372,17 @@ BEGIN
     PERFORM authn._warn_namespace_mismatch(p_namespace);
 
     RETURN QUERY
+    -- Bound and order the history rows before joining so the tenant chronology
+    -- index can satisfy pagination without sorting the full history.
+    WITH candidates AS MATERIALIZED (
+        SELECT imp.*
+        FROM authn.impersonation_sessions imp
+        WHERE imp.namespace = p_namespace
+          AND (p_actor_id IS NULL OR imp.actor_id = p_actor_id)
+          AND (p_target_user_id IS NULL OR imp.target_user_id = p_target_user_id)
+        ORDER BY imp.started_at DESC
+        LIMIT p_limit
+    )
     SELECT
         imp.id AS impersonation_id,
         imp.actor_id,
@@ -383,15 +394,11 @@ BEGIN
         imp.expires_at,
         imp.ended_at,
         (imp.ended_at IS NULL AND imp.expires_at > now() AND actor.disabled_at IS NULL AND target.disabled_at IS NULL AND s.id IS NOT NULL AND s.revoked_at IS NULL) AS is_active
-    FROM authn.impersonation_sessions imp
+    FROM candidates imp
     JOIN authn.users actor ON actor.id = imp.actor_id AND actor.namespace = imp.namespace
     JOIN authn.users target ON target.id = imp.target_user_id AND target.namespace = imp.namespace
     LEFT JOIN authn.sessions s ON s.id = imp.impersonation_session_id
-    WHERE imp.namespace = p_namespace
-      AND (p_actor_id IS NULL OR imp.actor_id = p_actor_id)
-      AND (p_target_user_id IS NULL OR imp.target_user_id = p_target_user_id)
-    ORDER BY imp.started_at DESC
-    LIMIT p_limit;
+    ORDER BY imp.started_at DESC;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = authn, pg_temp;
 

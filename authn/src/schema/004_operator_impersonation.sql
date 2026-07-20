@@ -136,3 +136,6 @@ CREATE INDEX operator_audit_events_tenant_idx
 CREATE INDEX operator_audit_events_type_idx
     ON authn.operator_audit_events (event_type, occurred_at DESC);
 
+-- Unfiltered platform audit history in reverse chronological order
+CREATE INDEX operator_audit_events_time_idx
+    ON authn.operator_audit_events (occurred_at DESC);

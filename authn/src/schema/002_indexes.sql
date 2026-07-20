@@ -127,6 +127,10 @@ CREATE INDEX credentials_user_active_idx
 CREATE INDEX login_attempts_lockout_idx ON authn.login_attempts (namespace, email, attempted_at DESC)
     WHERE success = false;
 
+-- Login history includes both successful and failed attempts.
+CREATE INDEX login_attempts_history_idx
+    ON authn.login_attempts (namespace, email, attempted_at DESC);
+
 -- Cleanup queries - delete old attempts
 CREATE INDEX login_attempts_cleanup_idx ON authn.login_attempts (attempted_at);
 
@@ -182,6 +186,10 @@ CREATE INDEX impersonation_sessions_expired_idx
 CREATE INDEX impersonation_sessions_ended_idx
     ON authn.impersonation_sessions (namespace)
     WHERE ended_at IS NOT NULL;
+
+-- Full tenant history includes active and ended impersonations.
+CREATE INDEX impersonation_sessions_history_idx
+    ON authn.impersonation_sessions (namespace, started_at DESC);
 
 -- =============================================================================
 -- FK CASCADE DELETE INDEXES
