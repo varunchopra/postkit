@@ -18,13 +18,9 @@ CREATE OR REPLACE FUNCTION authz.list_resources (p_subject_type text, p_subject_
     )
     AS $$
     WITH RECURSIVE
-    -- Find all groups/entities subject belongs to (including nested)
-    -- Uses reusable helper function to avoid code duplication
     subject_memberships AS (
         SELECT * FROM authz._expand_subject_memberships(p_subject_type, p_subject_id, p_namespace)
     ),
--- Find permissions that imply the requested permission (reverse hierarchy lookup).
--- Check BOTH global (app-wide defaults) AND tenant namespace (org customizations).
 implied_by AS (
     SELECT
         p_permission AS permission
@@ -37,9 +33,7 @@ implied_by AS (
             AND h.resource_type = p_resource_type
             AND h.implies = ib.permission
 ),
--- Find ALL resources with grants (any type, for descendant expansion)
 granted_resources AS (
-    -- Direct grants to subject
     SELECT DISTINCT
         t.resource_type,
         t.resource_id
@@ -54,7 +48,6 @@ granted_resources AS (
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
     UNION
-    -- Grants via groups
     SELECT DISTINCT
         t.resource_type,
         t.resource_id
@@ -70,7 +63,6 @@ granted_resources AS (
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
 ),
--- Expand to include descendants of granted resources, filter to requested type
 accessible_resources(resource_type, resource_id, depth) AS (
     SELECT gr.resource_type, gr.resource_id COLLATE authz.canonical, 0
     FROM granted_resources gr
@@ -106,12 +98,8 @@ STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 -- @param p_permission The permission to resolve
 -- @param p_namespace Namespace (default: 'default')
 -- @returns (subject_type, subject_id) for each leaf principal with the permission
--- Shared by list_subjects and count_subjects. Mirrors check: a plain grant (null
--- qualifier) reaches subjects of any relation, a userset grant reaches only its
--- qualified relation, and membership nests only through member edges, so a subject
--- reached through a non-member edge is a grantee whose own members do not inherit.
--- Only a null-qualifier row is a grantee; a userset qualifier names a group to
--- descend into, not a subject with access.
+-- A null qualifier follows any relation, a userset qualifier follows only its
+-- named relation, and only member edges continue nested membership expansion.
 CREATE OR REPLACE FUNCTION authz._grantee_leaves (p_resource_type text, p_resource_id text, p_permission text, p_namespace text DEFAULT 'default')
     RETURNS TABLE (
         subject_type text,
@@ -131,57 +119,100 @@ CREATE OR REPLACE FUNCTION authz._grantee_leaves (p_resource_type text, p_resour
             AND h.resource_type = p_resource_type
             AND h.implies = ib.permission
     ),
-    expanded_subjects AS (
-        -- Direct grantees on the resource or its ancestors
+    -- Membership markers reuse each subject-expansion probe, avoiding both a
+    -- second probe per grantee and a scan of unrelated tenant memberships.
+    expanded_subjects(
+        subject_type,
+        subject_id,
+        subject_relation,
+        expandable,
+        depth,
+        membership_marker
+    ) AS (
         SELECT
             t.subject_type,
             t.subject_id,
             t.subject_relation,
             true AS expandable,
-            1 AS depth
+            1 AS depth,
+            false AS membership_marker
         FROM authz.tuples t
         JOIN implied_by ib ON t.relation = ib.permission
         JOIN resource_chain rc ON t.resource_type = rc.resource_type
             AND t.resource_id = rc.resource_id
         WHERE t.namespace = p_namespace
             AND (t.expires_at IS NULL OR t.expires_at > now())
+
         UNION
-        -- Descend: a null qualifier follows any membership relation, a userset
-        -- qualifier its own; only member edges nest, so a non-member hop is a
-        -- terminal grantee. The reserved 'parent' relation is resource hierarchy,
-        -- excluded here to match _expand_subject_memberships (check's walk).
+
         SELECT
-            t.subject_type,
-            t.subject_id,
-            t.subject_relation,
-            t.relation = 'member' AS expandable,
-            es.depth + 1
+            step.subject_type,
+            step.subject_id,
+            step.subject_relation,
+            step.expandable,
+            step.depth,
+            step.membership_marker
         FROM expanded_subjects es
-        JOIN authz.tuples t ON t.namespace = p_namespace
-            AND t.resource_type = es.subject_type
-            AND t.resource_id = es.subject_id
-            AND (es.subject_relation IS NULL OR t.relation = es.subject_relation)
-            AND t.relation != 'parent'
-            AND (t.expires_at IS NULL OR t.expires_at > now())
-        WHERE es.expandable AND es.depth < authz._max_group_depth()
+        CROSS JOIN LATERAL (
+            WITH children AS MATERIALIZED (
+                SELECT
+                    t.subject_type,
+                    t.subject_id,
+                    t.subject_relation,
+                    t.relation
+                FROM authz.tuples t
+                WHERE t.namespace = p_namespace
+                  AND t.resource_type = es.subject_type
+                  AND t.resource_id = es.subject_id
+                  AND (es.subject_relation IS NULL OR t.relation = es.subject_relation)
+                  AND t.relation != 'parent'
+                  AND (t.expires_at IS NULL OR t.expires_at > now())
+            )
+            SELECT
+                c.subject_type,
+                c.subject_id,
+                c.subject_relation,
+                c.relation = 'member' AS expandable,
+                es.depth + 1 AS depth,
+                false AS membership_marker
+            FROM children c
+            WHERE es.depth < authz._max_group_depth()
+
+            UNION ALL
+
+            SELECT
+                es.subject_type,
+                es.subject_id,
+                es.subject_relation,
+                false AS expandable,
+                es.depth,
+                true AS membership_marker
+            WHERE EXISTS (
+                SELECT 1 FROM children c WHERE c.relation = 'member'
+            )
+        ) step
+        WHERE es.expandable AND NOT es.membership_marker
+    ),
+    active_membership_containers AS MATERIALIZED (
+        SELECT DISTINCT
+            es.subject_type,
+            es.subject_id,
+            es.subject_relation,
+            es.depth
+        FROM expanded_subjects es
+        WHERE es.membership_marker
     )
-    -- A grantee is a null-qualifier row. Expand a group to its members only when
-    -- it was reached to be expanded (a member hop, or the grant itself); a group
-    -- reached through a non-member edge is a terminal grantee, emitted as-is even
-    -- when it has members. The rule is per row, before the distinct, so a
-    -- member-path row for a subject cannot mask a non-expandable one.
     SELECT DISTINCT es.subject_type, es.subject_id
     FROM expanded_subjects es
-    WHERE es.subject_relation IS NULL
-        AND (NOT es.expandable
-             OR NOT EXISTS (
-                SELECT 1 FROM authz.tuples t
-                WHERE t.namespace = p_namespace
-                    AND t.resource_type = es.subject_type
-                    AND t.resource_id = es.subject_id
-                    AND t.relation = 'member'
-                    AND (t.expires_at IS NULL OR t.expires_at > now())
-             ));
+    LEFT JOIN active_membership_containers mc
+      ON es.expandable
+     AND mc.subject_type = es.subject_type
+     AND mc.subject_id = es.subject_id
+     AND mc.subject_relation IS NOT DISTINCT FROM es.subject_relation
+     AND mc.depth = es.depth
+    WHERE NOT es.membership_marker
+      AND es.subject_relation IS NULL
+      AND (NOT es.expandable OR mc.subject_type IS NULL);
 $$
 LANGUAGE sql
 STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
@@ -254,23 +285,73 @@ STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 CREATE OR REPLACE FUNCTION authz.filter_authorized (p_subject_type text, p_subject_id text, p_resource_type text, p_permission text, p_resource_ids text[], p_namespace text DEFAULT 'default')
     RETURNS text[]
     AS $$
+DECLARE
+    v_direct_ids text[];
+    v_unresolved_ids text[];
 BEGIN
     PERFORM authz._validate_batch_size(cardinality(p_resource_ids), 'resource_ids');
     PERFORM authz._warn_namespace_mismatch(p_namespace);
 
+    WITH RECURSIVE
+    candidate_ids(resource_id) AS MATERIALIZED (
+        SELECT DISTINCT resource_id
+        FROM unnest(p_resource_ids) AS resource_id
+    ),
+    implied_by(permission, depth) AS (
+        SELECT p_permission, 1
+
+        UNION
+
+        SELECT h.permission, ib.depth + 1
+        FROM implied_by ib
+        JOIN authz.permission_hierarchy h
+          ON h.namespace IN ('global', p_namespace)
+         AND h.resource_type = p_resource_type
+         AND h.implies = ib.permission
+        WHERE ib.depth < 50
+    )
+    SELECT COALESCE(array_agg(d.resource_id ORDER BY d.resource_id), ARRAY[]::text[])
+    INTO v_direct_ids
+    FROM (
+        SELECT DISTINCT c.resource_id
+        FROM candidate_ids c
+        JOIN authz.tuples t
+          ON t.namespace = p_namespace
+         AND t.resource_type = p_resource_type
+         AND t.resource_id = c.resource_id COLLATE authz.canonical
+         AND t.subject_type = p_subject_type
+         AND t.subject_id = p_subject_id
+         AND t.subject_relation IS NULL
+         AND (t.expires_at IS NULL OR t.expires_at > now())
+        JOIN implied_by ib ON ib.permission = t.relation
+    ) d;
+
+    SELECT COALESCE(array_agg(c.resource_id ORDER BY c.resource_id), ARRAY[]::text[])
+    INTO v_unresolved_ids
+    FROM (
+        SELECT DISTINCT resource_id
+        FROM unnest(p_resource_ids) AS resource_id
+    ) c
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM unnest(v_direct_ids) AS direct_id
+        WHERE direct_id = c.resource_id
+    );
+
+    IF cardinality(v_unresolved_ids) = 0 THEN
+        RETURN v_direct_ids;
+    END IF;
+
     RETURN (
-    -- Note: RECURSIVE keyword required for implied_by CTE below;
-    -- subject_memberships itself is not recursive (delegates to helper function)
     WITH RECURSIVE subject_memberships AS (
         SELECT * FROM authz._expand_subject_memberships(p_subject_type, p_subject_id, p_namespace)
     ),
--- Expand each candidate resource to include its ancestors
 candidate_with_ancestors AS (
     SELECT
         rid AS original_resource_id,
         a.resource_type,
         a.resource_id
-    FROM unnest(p_resource_ids) AS rid
+    FROM unnest(v_unresolved_ids) AS rid
     CROSS JOIN LATERAL authz._expand_resource_ancestors(p_resource_type, rid, p_namespace) a
 ),
 implied_by AS (
@@ -286,7 +367,6 @@ implied_by AS (
             AND h.implies = ib.permission
 ),
 accessible AS (
-    -- Direct grants on resource or ancestor
     SELECT DISTINCT
         ca.original_resource_id AS resource_id
     FROM
@@ -302,7 +382,6 @@ accessible AS (
         AND (t.expires_at IS NULL
             OR t.expires_at > now())
     UNION
-    -- Group grants on resource or ancestor
     SELECT DISTINCT
         ca.original_resource_id AS resource_id
     FROM
@@ -323,7 +402,12 @@ SELECT
         SELECT
             resource_id
         FROM
-            accessible
+            (
+                SELECT unnest(v_direct_ids) AS resource_id
+                UNION
+                SELECT accessible.resource_id
+                FROM accessible
+            ) resolved
         ORDER BY
             resource_id));
 END;

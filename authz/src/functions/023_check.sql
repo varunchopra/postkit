@@ -21,19 +21,13 @@ CREATE OR REPLACE FUNCTION authz._get_permissions(
 RETURNS TABLE(permission text)
 AS $$
     WITH RECURSIVE
-    -- Phase 1: Find all groups/entities the subject belongs to (including nested)
     subject_memberships AS (
         SELECT * FROM authz._expand_subject_memberships(p_subject_type, p_subject_id, p_namespace)
     ),
-
-    -- Phase 2: Find resource and all ancestor resources (via parent relations)
     resource_chain AS (
         SELECT * FROM authz._expand_resource_ancestors(p_resource_type, p_resource_id, p_namespace)
     ),
-
-    -- Phase 3: Find permissions granted on the resource or any ancestor
     granted_permissions AS (
-        -- Direct grants to subject on resource or ancestor
         SELECT t.relation AS perm
         FROM authz.tuples t
         JOIN resource_chain rc
@@ -46,8 +40,6 @@ AS $$
           AND (t.expires_at IS NULL OR t.expires_at > now())
 
         UNION
-
-        -- Grants via groups (including nested) on resource or ancestor
         SELECT t.relation AS perm
         FROM authz.tuples t
         JOIN resource_chain rc
@@ -61,9 +53,8 @@ AS $$
           AND (t.expires_at IS NULL OR t.expires_at > now())
     ),
 
-    -- Phase 4: Expand via permission hierarchy
-    -- Checks both global and tenant namespace hierarchies.
-    -- Depth limited to 50 (same as group/resource limits).
+    -- Permission implications combine global defaults with tenant rules and use
+    -- the same depth bound as group and resource traversal.
     all_permissions(perm, depth) AS (
         SELECT perm, 1 FROM granted_permissions
 
@@ -82,6 +73,46 @@ AS $$
 $$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
 
 
+-- Exact-resource grants can be decided without expanding subject memberships or
+-- resource ancestors. Reverse hierarchy traversal preserves tenant and global
+-- permission implications and the public traversal depth bound.
+CREATE OR REPLACE FUNCTION authz._has_direct_permission(
+    p_subject_type text,
+    p_subject_id text,
+    p_permissions text[],
+    p_resource_type text,
+    p_resource_id text,
+    p_namespace text
+) RETURNS boolean AS $$
+    WITH RECURSIVE implied_by(permission, depth) AS (
+        SELECT permission, 1
+        FROM unnest(p_permissions) AS permission
+
+        UNION
+
+        SELECT h.permission, ib.depth + 1
+        FROM implied_by ib
+        JOIN authz.permission_hierarchy h
+          ON h.namespace IN ('global', p_namespace)
+         AND h.resource_type = p_resource_type
+         AND h.implies = ib.permission
+        WHERE ib.depth < 50
+    )
+    SELECT EXISTS (
+        SELECT 1
+        FROM authz.tuples t
+        JOIN implied_by ib ON ib.permission = t.relation
+        WHERE t.namespace = p_namespace
+          AND t.resource_type = p_resource_type
+          AND t.resource_id = p_resource_id
+          AND t.subject_type = p_subject_type
+          AND t.subject_id = p_subject_id
+          AND t.subject_relation IS NULL
+          AND (t.expires_at IS NULL OR t.expires_at > now())
+    );
+$$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, pg_temp;
+
+
 -- @function authz.check
 -- @brief Check if a subject has a permission on a resource
 -- @param p_subject_type The subject type (e.g., 'user', 'api_key', 'service')
@@ -91,9 +122,8 @@ $$ LANGUAGE sql STABLE PARALLEL SAFE SECURITY INVOKER SET search_path = authz, p
 -- @param p_resource_id The resource identifier
 -- @returns True if the subject has the permission
 --
--- PERFORMANCE: This function performs graph traversal on every call (subject groups,
--- resource ancestors, permission hierarchy). Recursion depth is bounded at 50.
--- For high-throughput scenarios, consider application-layer caching of results.
+-- Direct grants avoid graph traversal. Group-derived and inherited access uses
+-- bounded subject and resource traversal.
 --
 -- @example SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 -- @example SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
@@ -107,6 +137,16 @@ CREATE OR REPLACE FUNCTION authz.check(
 ) RETURNS boolean AS $$
 BEGIN
     PERFORM authz._warn_namespace_mismatch(p_namespace);
+    IF authz._has_direct_permission(
+        p_subject_type,
+        p_subject_id,
+        ARRAY[p_permission],
+        p_resource_type,
+        p_resource_id,
+        p_namespace
+    ) THEN
+        RETURN true;
+    END IF;
     RETURN EXISTS (
         SELECT 1 FROM authz._get_permissions(
             p_subject_type, p_subject_id, p_resource_type, p_resource_id, p_namespace
@@ -137,6 +177,16 @@ CREATE OR REPLACE FUNCTION authz.check_any(
 BEGIN
     PERFORM authz._validate_batch_size(cardinality(p_permissions), 'permissions');
     PERFORM authz._warn_namespace_mismatch(p_namespace);
+    IF authz._has_direct_permission(
+        p_subject_type,
+        p_subject_id,
+        p_permissions,
+        p_resource_type,
+        p_resource_id,
+        p_namespace
+    ) THEN
+        RETURN true;
+    END IF;
     RETURN EXISTS (
         SELECT 1 FROM authz._get_permissions(
             p_subject_type, p_subject_id, p_resource_type, p_resource_id, p_namespace

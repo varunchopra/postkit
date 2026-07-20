@@ -71,6 +71,11 @@ DECLARE
     v_current_expiration timestamptz;
     v_new_expiration timestamptz;
 BEGIN
+    IF p_extension IS NULL OR p_extension <= interval '0' THEN
+        RAISE EXCEPTION 'extension must be a positive interval'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:authz:VAL_INTERVAL_NOT_POSITIVE';
+    END IF;
     IF p_subject_relation IS NOT NULL THEN
         PERFORM authz._validate_identifier(p_subject_relation, 'subject_relation');
     END IF;

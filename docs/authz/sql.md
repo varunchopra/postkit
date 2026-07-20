@@ -217,7 +217,7 @@ Delete expired grants to reclaim storage (optional, run via cron)
 SELECT * FROM authz.cleanup_expired('default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:158*
+*Source: authz/src/functions/031_expiration.sql:163*
 
 ---
 
@@ -285,7 +285,7 @@ Find grants that will expire soon (for renewal reminders)
 SELECT * FROM authz.list_expiring(interval '7 days', 'default');
 ```
 
-*Source: authz/src/functions/031_expiration.sql:119*
+*Source: authz/src/functions/031_expiration.sql:124*
 
 ---
 
@@ -400,7 +400,7 @@ Count subjects who can access a resource (without fetching all)
 SELECT authz.count_subjects('team', 'engineering', 'member', 'default', 'user');
 ```
 
-*Source: authz/src/functions/024_list.sql:228*
+*Source: authz/src/functions/024_list.sql:259*
 
 ---
 
@@ -427,7 +427,7 @@ ARRAY['payments-api', 'internal-api', 'public-api'], 'default');
 -- Returns: ['payments-api', 'public-api'] (if alice can't see internal-api)
 ```
 
-*Source: authz/src/functions/024_list.sql:254*
+*Source: authz/src/functions/024_list.sql:285*
 
 ---
 
@@ -484,7 +484,7 @@ SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, '
 SELECT * FROM authz.list_subjects('repo', 'payments', 'admin', 'default', 100, NULL, 'user', 'alice');
 ```
 
-*Source: authz/src/functions/024_list.sql:203*
+*Source: authz/src/functions/024_list.sql:234*
 
 ---
 
@@ -637,7 +637,7 @@ SELECT authz.check('user', 'alice', 'read', 'doc', 'spec-123');
 SELECT authz.check('api_key', 'key-123', 'read', 'repo', 'api');
 ```
 
-*Source: authz/src/functions/023_check.sql:100*
+*Source: authz/src/functions/023_check.sql:130*
 
 ---
 
@@ -663,7 +663,7 @@ Check if a subject has all of the specified permissions
 SELECT authz.check_all('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:159*
+*Source: authz/src/functions/023_check.sql:209*
 
 ---
 
@@ -689,7 +689,7 @@ Check if a subject has any of the specified permissions
 SELECT authz.check_any('user', 'alice', ARRAY['read', 'write'], 'doc', 'spec-123');
 ```
 
-*Source: authz/src/functions/023_check.sql:129*
+*Source: authz/src/functions/023_check.sql:169*
 
 ---
 
