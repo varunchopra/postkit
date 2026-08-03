@@ -11,7 +11,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from tests.conftest import DATABASE_URL
-from tests.helpers import make_namespace
+from tests.helpers import connect_as_rls_user, ensure_rls_role, make_namespace
 from tests.presence.helpers import PresenceTestHelpers
 from tests.presence.helpers import cleanup_namespace as _cleanup_presence
 
@@ -30,11 +30,43 @@ def hooks_connection():
             pytest.fail(f"dist/{schema}.sql not found. Run 'make build' first.")
         conn.execute(sql_file.read_text())
 
+    ensure_rls_role(conn, "presence")
+    role = "presence_rls_user"
+    conn.execute(f"GRANT USAGE ON SCHEMA queue TO {role}")
+    conn.execute(f"GRANT ALL ON ALL TABLES IN SCHEMA queue TO {role}")
+    conn.execute(f"GRANT ALL ON ALL SEQUENCES IN SCHEMA queue TO {role}")
+    conn.execute(f"GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA queue TO {role}")
+
     yield conn
 
     conn.execute("DROP SCHEMA IF EXISTS presence CASCADE")
     conn.execute("DROP SCHEMA IF EXISTS queue CASCADE")
     conn.close()
+
+
+@pytest.fixture
+def revival_hook_case(hooks_connection, request):
+    namespace = make_namespace(request)
+    setup = hooks_connection.cursor()
+    with hooks_connection.transaction():
+        helper = PresenceTestHelpers(setup, namespace)
+        helper.set_config(on_revival_queue="alerts")
+        setup.execute("SELECT presence.register(%s, 'w1')", (namespace,))
+
+    conn = connect_as_rls_user(hooks_connection, "presence")
+    cursor = conn.cursor()
+    cursor.execute("SELECT presence.assert_rls_active()")
+    cursor.execute("SELECT queue.assert_rls_active()")
+    conn.commit()
+
+    yield cursor, namespace
+
+    conn.rollback()
+    cursor.close()
+    conn.close()
+    with hooks_connection.transaction():
+        _cleanup_presence(setup, namespace)
+    setup.close()
 
 
 @pytest.fixture
@@ -67,6 +99,53 @@ def alert_jobs(h) -> list[dict]:
         (h.namespace,),
     )
     return [r[0] for r in h.cursor.fetchall()]
+
+
+class TestHookQueueTenant:
+    def test_revival_hook_enqueues_under_rls_without_queue_context(
+        self, revival_hook_case
+    ):
+        cursor, namespace = revival_hook_case
+
+        with cursor.connection.transaction(force_rollback=True):
+            cursor.execute("SELECT presence.set_tenant(%s)", (namespace,))
+            cursor.execute("SELECT presence.heartbeat(%s, 'w1')", (namespace,))
+            assert cursor.fetchone()[0] == "alive"
+
+            cursor.execute("SELECT count(*) FROM queue.jobs")
+            assert cursor.fetchone()[0] == 0
+
+            cursor.execute("SELECT queue.set_tenant(%s)", (namespace,))
+            cursor.execute(
+                "SELECT payload FROM queue.jobs "
+                "WHERE namespace = %s AND queue = 'alerts'",
+                (namespace,),
+            )
+            assert cursor.fetchone()[0]["entity_id"] == "w1"
+
+    def test_revival_hook_preserves_existing_queue_context(self, revival_hook_case):
+        cursor, namespace = revival_hook_case
+        previous_queue_namespace = f"{namespace}_queue"
+
+        with cursor.connection.transaction(force_rollback=True):
+            cursor.execute("SELECT presence.set_tenant(%s)", (namespace,))
+            cursor.execute("SELECT queue.set_tenant(%s)", (previous_queue_namespace,))
+            cursor.execute("SELECT presence.heartbeat(%s, 'w1')", (namespace,))
+            assert cursor.fetchone()[0] == "alive"
+
+            cursor.execute(
+                "SELECT queue.push(%s, 'probe', '{}'::jsonb)",
+                (previous_queue_namespace,),
+            )
+            assert cursor.fetchone()[0] is not None
+
+            cursor.execute("SELECT queue.set_tenant(%s)", (namespace,))
+            cursor.execute(
+                "SELECT payload FROM queue.jobs "
+                "WHERE namespace = %s AND queue = 'alerts'",
+                (namespace,),
+            )
+            assert cursor.fetchone()[0]["entity_id"] == "w1"
 
 
 class TestDeathHook:

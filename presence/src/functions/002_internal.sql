@@ -190,6 +190,7 @@ CREATE OR REPLACE FUNCTION presence._fire_hooks(
 RETURNS void AS $$
 DECLARE
     v_queue text;
+    v_previous_queue_tenant text;
 BEGIN
     IF p_to_status = 'dead' THEN
         v_queue := p_config.on_death_queue;
@@ -208,6 +209,10 @@ BEGIN
                   HINT = 'postkit:presence:HOOK_QUEUE_MISSING';
     END IF;
 
+    -- Queue has its own tenant context; restore the caller's after the push.
+    v_previous_queue_tenant := current_setting('queue.tenant_id', true);
+    EXECUTE 'SELECT queue.set_tenant($1)' USING p_namespace;
+
     EXECUTE 'SELECT queue.push($1, $2, $3)'
     USING p_namespace, v_queue, jsonb_build_object(
         'namespace', p_namespace,
@@ -217,6 +222,10 @@ BEGIN
         'to', p_to_status,
         'at', p_at,
         'silent_for', p_silent_for
+    );
+
+    PERFORM set_config(
+        'queue.tenant_id', COALESCE(v_previous_queue_tenant, ''), true
     );
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = presence, pg_temp;
