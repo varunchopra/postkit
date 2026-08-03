@@ -1,7 +1,7 @@
 """Tests for audit logging and partition management."""
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 import psycopg
 import pytest
@@ -80,7 +80,7 @@ class TestDropAuditPartitions:
     def test_preserves_recent_partitions(self, test_helpers):
         """Does not drop partitions newer than threshold."""
         # Current month partition should not be dropped
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         current_partition = f"audit_events_y{now.year:04d}m{now.month:02d}"
 
         test_helpers.cursor.execute("SELECT * FROM authn.drop_audit_partitions(1)")

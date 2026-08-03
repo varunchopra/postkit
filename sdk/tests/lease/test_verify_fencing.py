@@ -239,9 +239,11 @@ class Test40001Disambiguation:
         got = lease.acquire("job", "w1")
         test_helpers.set_expires_at("job", "-1 second")
 
-        with pytest.raises(LeaseFencingError) as exc_info:
-            with lease.cursor.connection.transaction():
-                lease.verify("job", "w1", got["fence_token"])
+        with (
+            pytest.raises(LeaseFencingError) as exc_info,
+            lease.cursor.connection.transaction(),
+        ):
+            lease.verify("job", "w1", got["fence_token"])
         assert exc_info.value.error_code == LeaseErrorCode.FENCE_STALE
 
     def test_hintless_40001_is_not_fencing_error(self, lease):

@@ -243,7 +243,7 @@ class TestCleanupPlanShape:
     arm predicate stopped implying its partial index (see the per-arm note
     on authn.cleanup_expired)."""
 
-    HARVESTS = [
+    HARVESTS = (
         ("refresh_tokens", "revoked_at IS NULL AND expires_at < now()"),
         ("refresh_tokens", "(replaced_by IS NOT NULL OR revoked_at IS NOT NULL)"),
         ("impersonation_sessions", "ended_at IS NOT NULL"),
@@ -257,11 +257,11 @@ class TestCleanupPlanShape:
             "api_keys",
             "revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at < now()",
         ),
-    ]
-    OPERATOR_HARVESTS = [
+    )
+    OPERATOR_HARVESTS = (
         "ended_at IS NOT NULL",
         "ended_at IS NULL AND expires_at < now()",
-    ]
+    )
 
     def _assert_no_seq_scan(self, cursor, harvest_sql):
         cursor.execute(f"EXPLAIN (COSTS OFF) {harvest_sql}")

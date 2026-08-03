@@ -74,7 +74,9 @@ class AcmeAuth:
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         return self.client.verify_email(token_hash) is not None
 
-    def login(self, email: str, password: str, ip_address: str = None) -> dict | None:
+    def login(
+        self, email: str, password: str, ip_address: str | None = None
+    ) -> dict | None:
         """Attempt login. Returns session info or None."""
         if self.client.is_locked_out(email):
             return None

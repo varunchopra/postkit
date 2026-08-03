@@ -147,23 +147,23 @@ class TestP1PhotoFinish:
             test_helpers.set_last_seen("w1", "-10 minutes")
             barrier = threading.Barrier(2)
 
-            def run_sweep():
+            def run_sweep(round_barrier):
                 conn = connect()
                 c = conn.cursor()
-                barrier.wait(timeout=JOIN_TIMEOUT)
+                round_barrier.wait(timeout=JOIN_TIMEOUT)
                 sweep(c, ns)
                 conn.commit()
 
-            def run_heartbeat():
+            def run_heartbeat(round_barrier):
                 conn = connect()
                 c = conn.cursor()
-                barrier.wait(timeout=JOIN_TIMEOUT)
+                round_barrier.wait(timeout=JOIN_TIMEOUT)
                 heartbeat(c, ns, "w1")
                 conn.commit()
 
             threads = [
-                threading.Thread(target=run_sweep),
-                threading.Thread(target=run_heartbeat),
+                threading.Thread(target=run_sweep, args=(barrier,)),
+                threading.Thread(target=run_heartbeat, args=(barrier,)),
             ]
             for t in threads:
                 t.start()

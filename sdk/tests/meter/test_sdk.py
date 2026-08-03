@@ -616,7 +616,7 @@ class TestActorContext:
         meter.consume("alice", "llm_call", 100, "tokens")
 
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
-        consumption = [e for e in ledger if e["entry_type"] == "consumption"][0]
+        consumption = next(e for e in ledger if e["entry_type"] == "consumption")
 
         assert consumption["actor_id"] == "service:api"
         assert consumption["reason"] == "API usage"
@@ -630,7 +630,7 @@ class TestActorContext:
         meter.commit(res["reservation_id"], 350)
 
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
-        consumption = [e for e in ledger if e["entry_type"] == "consumption"][0]
+        consumption = next(e for e in ledger if e["entry_type"] == "consumption")
 
         assert consumption["actor_id"] == "service:llm"
         assert consumption["reason"] == "Streaming completion"
@@ -643,7 +643,7 @@ class TestActorContext:
         meter.adjust("alice", "llm_call", 500, "tokens")
 
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
-        adjustment = [e for e in ledger if e["entry_type"] == "adjustment"][0]
+        adjustment = next(e for e in ledger if e["entry_type"] == "adjustment")
 
         assert adjustment["actor_id"] == "user:support"
         assert adjustment["reason"] == "Refund for outage"
@@ -673,8 +673,8 @@ class TestActorContext:
         meter.consume("alice", "llm_call", 100, "tokens")
 
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
-        allocation = [e for e in ledger if e["entry_type"] == "allocation"][0]
-        consumption = [e for e in ledger if e["entry_type"] == "consumption"][0]
+        allocation = next(e for e in ledger if e["entry_type"] == "allocation")
+        consumption = next(e for e in ledger if e["entry_type"] == "consumption")
 
         assert allocation["actor_id"] == "user:admin"
         assert consumption["actor_id"] is None  # Cleared

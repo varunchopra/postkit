@@ -58,10 +58,10 @@ while True:
     if got["acquired"]:
         fence = got["fence_token"]
         while True:
-            do_one_increment(fence)       # calls lease.verify(...) in its transaction
+            do_one_increment(fence)  # calls lease.verify(...) in its transaction
             if not lease.renew("leader", me, fence)["renewed"]:
-                break                     # lease lost: stop at once, rejoin
-    time.sleep(10)                        # candidates poll (or LISTEN for release)
+                break  # lease lost: stop at once, rejoin
+    time.sleep(10)  # candidates poll (or LISTEN for release)
 ```
 
 Renew at about a third of the duration, `verify` inside every writing transaction, and stop the moment either fails.

@@ -305,9 +305,11 @@ class TestViewerContext:
     def test_viewer_context_clears_when_body_raises(self, authz):
         """The pool-leak guarantee: the viewer identity is gone however the
         block exits."""
-        with pytest.raises(RuntimeError):
-            with authz.viewer_context(("user", "alice")):
-                raise RuntimeError("boom")
+        with (
+            pytest.raises(RuntimeError),
+            authz.viewer_context(("user", "alice")),
+        ):
+            raise RuntimeError("boom")
         assert self._current_viewer(authz) == ("", "")
 
 

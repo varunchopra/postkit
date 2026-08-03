@@ -13,7 +13,7 @@ that locks reservations first (matching commit()'s order).
 import threading
 
 import psycopg
-from postkit.meter import MeterClient
+from postkit.meter import MeterClient, MeterError
 from tests.conftest import DATABASE_URL
 from tests.meter.helpers import cleanup_namespace
 
@@ -101,28 +101,28 @@ class TestCommitExpiredReservation:
                 results = {"commit_error": None, "expire_error": None}
                 barrier = threading.Barrier(2, timeout=5)
 
-                def do_commit():
+                def do_commit(current_res_id, round_barrier, round_results):
                     conn, client = _make_client(namespace)
                     try:
-                        barrier.wait()
-                        client.commit(res_id, 500)
-                    except Exception as e:
-                        results["commit_error"] = e
+                        round_barrier.wait()
+                        client.commit(current_res_id, 500)
+                    except (MeterError, threading.BrokenBarrierError) as e:
+                        round_results["commit_error"] = e
                     finally:
                         conn.close()
 
-                def do_expire():
+                def do_expire(round_barrier, round_results):
                     conn, client = _make_client(namespace)
                     try:
-                        barrier.wait()
+                        round_barrier.wait()
                         client.release_expired_reservations()
-                    except Exception as e:
-                        results["expire_error"] = e
+                    except (MeterError, threading.BrokenBarrierError) as e:
+                        round_results["expire_error"] = e
                     finally:
                         conn.close()
 
-                t1 = threading.Thread(target=do_commit)
-                t2 = threading.Thread(target=do_expire)
+                t1 = threading.Thread(target=do_commit, args=(res_id, barrier, results))
+                t2 = threading.Thread(target=do_expire, args=(barrier, results))
                 t1.start()
                 t2.start()
                 t1.join(timeout=10)
@@ -200,7 +200,7 @@ class TestExpireReleaseConcurrencyStress:
                     client.commit(res_id, 300)
                     with results_lock:
                         results["commits"] += 1
-                except Exception as e:
+                except (MeterError, threading.BrokenBarrierError) as e:
                     with results_lock:
                         cause = getattr(e, "__cause__", e)
                         if hasattr(cause, "sqlstate") and cause.sqlstate == "40P01":
@@ -215,7 +215,7 @@ class TestExpireReleaseConcurrencyStress:
                 try:
                     barrier.wait()
                     client.release_expired_reservations()
-                except Exception:
+                except (MeterError, threading.BrokenBarrierError):
                     with results_lock:
                         results["expire_errors"] += 1
                 finally:

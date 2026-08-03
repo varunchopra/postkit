@@ -58,9 +58,11 @@ class TestNamespaceValidation:
 
 class TestTopicAndInputValidation:
     def test_star_topic_reserved(self, outbox, db_connection):
-        with pytest.raises(OutboxValidationError) as exc_info:
-            with db_connection.transaction():
-                outbox.emit("*", "e.created", {})
+        with (
+            pytest.raises(OutboxValidationError) as exc_info,
+            db_connection.transaction(),
+        ):
+            outbox.emit("*", "e.created", {})
         assert exc_info.value.error_code == OutboxErrorCode.VAL_TOPIC_RESERVED
 
     @pytest.mark.parametrize(
@@ -72,9 +74,11 @@ class TestTopicAndInputValidation:
         ],
     )
     def test_bad_topics(self, outbox, db_connection, topic, code):
-        with pytest.raises(OutboxValidationError) as exc_info:
-            with db_connection.transaction():
-                outbox.emit(topic, "e.created", {})
+        with (
+            pytest.raises(OutboxValidationError) as exc_info,
+            db_connection.transaction(),
+        ):
+            outbox.emit(topic, "e.created", {})
         assert exc_info.value.error_code == code
 
 
@@ -83,9 +87,11 @@ class TestNameRules:
 
     @pytest.mark.parametrize(("topic", "code_name"), name_error_cases("VAL_TOPIC"))
     def test_topic_violations(self, outbox, db_connection, topic, code_name):
-        with pytest.raises(OutboxValidationError) as exc_info:
-            with db_connection.transaction():
-                outbox.emit(topic, "e.created", {})
+        with (
+            pytest.raises(OutboxValidationError) as exc_info,
+            db_connection.transaction(),
+        ):
+            outbox.emit(topic, "e.created", {})
         assert exc_info.value.error_code == getattr(OutboxErrorCode, code_name)
 
     @pytest.mark.parametrize(
@@ -100,9 +106,11 @@ class TestNameRules:
         ("event_type", "code_name"), name_error_cases("VAL_EVENT_TYPE")
     )
     def test_event_type_violations(self, outbox, db_connection, event_type, code_name):
-        with pytest.raises(OutboxValidationError) as exc_info:
-            with db_connection.transaction():
-                outbox.emit("orders", event_type, {})
+        with (
+            pytest.raises(OutboxValidationError) as exc_info,
+            db_connection.transaction(),
+        ):
+            outbox.emit("orders", event_type, {})
         assert exc_info.value.error_code == getattr(OutboxErrorCode, code_name)
 
     @pytest.mark.parametrize("name", ACCEPTED_NAMES)
@@ -157,7 +165,9 @@ class TestCursorLostMapping:
 
     def test_plain_validation_is_not_cursor_lost(self, outbox, db_connection):
         """Both share SQLSTATE 22023; only the hint may distinguish them."""
-        with pytest.raises(OutboxValidationError) as exc_info:
-            with db_connection.transaction():
-                outbox.emit("*", "e.created", {})
+        with (
+            pytest.raises(OutboxValidationError) as exc_info,
+            db_connection.transaction(),
+        ):
+            outbox.emit("*", "e.created", {})
         assert not isinstance(exc_info.value, OutboxCursorLostError)

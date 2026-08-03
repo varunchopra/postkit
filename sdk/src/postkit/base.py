@@ -5,10 +5,11 @@ from __future__ import annotations
 import base64
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 from ipaddress import IPv4Address, IPv6Address
-from typing import Any, Callable, LiteralString, NoReturn, TypeVar
+from typing import Any, ClassVar, LiteralString, NoReturn, TypeVar
 from uuid import UUID
 
 import psycopg
@@ -59,19 +60,13 @@ class PostkitError(Exception):
 class UniqueViolationError(PostkitError):
     """Raised when a unique constraint is violated (e.g., duplicate email)."""
 
-    pass
-
 
 class ForeignKeyViolationError(PostkitError):
     """Raised when a foreign key constraint is violated."""
 
-    pass
-
 
 class CheckViolationError(PostkitError):
     """Raised when a check constraint is violated (e.g., invalid format)."""
-
-    pass
 
 
 # Populate SQLSTATE mapping after classes are defined
@@ -104,8 +99,8 @@ class BaseClient(ABC):
 
     _schema: str  # Must be a valid SQL identifier
     _error_class: type[PostkitError] = PostkitError
-    _module_sqlstate_map: dict[
-        str, type[PostkitError]
+    _module_sqlstate_map: ClassVar[
+        dict[str, type[PostkitError]]
     ] = {}  # Module-specific overrides
 
     def __init__(self, cursor: psycopg.Cursor[tuple[Any, ...]], namespace: str) -> None:

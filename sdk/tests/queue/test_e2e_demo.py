@@ -378,9 +378,7 @@ class TestOrderProcessing:
 
         # Stats are scoped per tenant.
         mumbai.ack(mum_job["id"], mum_job["fence_token"])
-        assert delhi.fail(
-            del_job["id"], del_job["fence_token"], error="kitchen closed"
-        )
+        assert delhi.fail(del_job["id"], del_job["fence_token"], error="kitchen closed")
 
         mum_stats = mumbai.get_stats()
         del_stats = delhi.get_stats()

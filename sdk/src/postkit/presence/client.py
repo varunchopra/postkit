@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 from postkit.base import BaseClient, PostkitError
 
@@ -39,7 +39,7 @@ class PresenceClient(BaseClient):
 
     _schema = "presence"
     _error_class = PresenceError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": PresenceValidationError,  # invalid_parameter_value
         "22004": PresenceValidationError,  # null_value_not_allowed
         "22001": PresenceValidationError,  # string_data_right_truncation

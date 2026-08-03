@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Sequence
+from typing import Any, ClassVar
 
 import psycopg
 from psycopg.abc import Buffer
@@ -55,7 +56,7 @@ class MemoryClient(BaseClient):
 
     _schema = "memory"
     _error_class = MemoryError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": MemoryValidationError,  # invalid_parameter_value
         "22004": MemoryValidationError,  # null_value_not_allowed
         "22001": MemoryValidationError,  # string_data_right_truncation

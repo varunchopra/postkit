@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from decimal import Decimal
+from typing import ClassVar
 
 from postkit.base import BaseClient, PostkitError
 
@@ -43,7 +44,7 @@ class MeterClient(BaseClient):
 
     _schema = "meter"
     _error_class = MeterError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": MeterValidationError,  # invalid_parameter_value
         "22004": MeterValidationError,  # null_value_not_allowed
         "22001": MeterValidationError,  # string_data_right_truncation
@@ -75,7 +76,7 @@ class MeterClient(BaseClient):
         self,
         user_id: str | None,
         event_type: str,
-        amount: float | int | Decimal,
+        amount: float | Decimal,
         unit: str,
         resource: str | None = None,
         idempotency_key: str | None = None,
@@ -120,7 +121,7 @@ class MeterClient(BaseClient):
         self,
         user_id: str | None,
         event_type: str,
-        amount: float | int | Decimal,
+        amount: float | Decimal,
         unit: str,
         resource: str | None = None,
         check_balance: bool = False,
@@ -169,7 +170,7 @@ class MeterClient(BaseClient):
         self,
         user_id: str | None,
         event_type: str,
-        amount: float | int | Decimal,
+        amount: float | Decimal,
         unit: str,
         resource: str | None = None,
         ttl_seconds: int = 300,
@@ -218,7 +219,7 @@ class MeterClient(BaseClient):
     def commit(
         self,
         reservation_id: str,
-        actual_amount: float | int | Decimal,
+        actual_amount: float | Decimal,
         metadata: dict | None = None,
         idempotency_key: str | None = None,
     ) -> dict:
@@ -282,7 +283,7 @@ class MeterClient(BaseClient):
         self,
         user_id: str,
         event_type: str,
-        amount: float | int | Decimal,
+        amount: float | Decimal,
         unit: str,
         resource: str | None = None,
         reference_id: int | None = None,
@@ -454,8 +455,8 @@ class MeterClient(BaseClient):
         unit: str,
         resource: str | None,
         period_start: date,
-        period_allocation: float | int | Decimal,
-        carry_over_limit: float | int | Decimal | None = None,
+        period_allocation: float | Decimal,
+        carry_over_limit: float | Decimal | None = None,
     ) -> None:
         """Configure period settings for an account.
 
@@ -540,7 +541,7 @@ class MeterClient(BaseClient):
         unit: str,
         resource: str | None,
         period_start: date,
-        allocation: float | int | Decimal | None = None,
+        allocation: float | Decimal | None = None,
     ) -> float:
         """Open a new billing period with allocation.
 

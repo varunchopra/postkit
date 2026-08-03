@@ -1,5 +1,6 @@
 """RLS tenant isolation across the presence surface, as a non-superuser role."""
 
+import psycopg
 import pytest
 
 from tests.helpers import connect_as_rls_user, ensure_rls_role
@@ -58,14 +59,14 @@ class TestCrossTenantIsolation:
         rls_cursor.execute("SELECT presence.set_tenant(%s)", ("tenant_b",))
 
         # register into tenant_a violates the WITH CHECK policy
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "SELECT presence.register(%s, 'intruder')", ("tenant_a",)
             )
 
         # heartbeat against tenant_a's entity: RLS hides the row, so the
         # module reports it unknown rather than touching it
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "SELECT presence.heartbeat(%s, 'worker-1')", ("tenant_a",)
             )
@@ -100,7 +101,7 @@ class TestConfigPolicies:
         )
         assert rls_cursor.rowcount == 0
 
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "INSERT INTO presence.config (namespace, kind) "
                 "VALUES ('global', 'default') "

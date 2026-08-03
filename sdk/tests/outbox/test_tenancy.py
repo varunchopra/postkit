@@ -3,6 +3,7 @@
 import time
 from datetime import timedelta
 
+import psycopg
 import pytest
 from postkit.outbox import OutboxClient
 
@@ -97,13 +98,13 @@ class TestCrossTenantIsolation:
         rls_cursor.execute("SELECT outbox.set_tenant(%s)", ("tenant_b",))
 
         # emit into tenant_a violates the WITH CHECK policy
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "SELECT outbox.emit(%s, 'orders', 'e.x', '{}')", ("tenant_a",)
             )
 
         # poll against tenant_a's consumer: RLS hides the cursor row
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "SELECT * FROM outbox.poll(%s, 'orders', 'billing')", ("tenant_a",)
             )
@@ -143,7 +144,7 @@ class TestConfigPolicies:
         )
         assert rls_cursor.rowcount == 0
 
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "INSERT INTO outbox.config (namespace, topic) VALUES ('global', '*') "
                 "ON CONFLICT (namespace, topic) DO UPDATE SET notify = false"

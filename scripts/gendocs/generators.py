@@ -167,8 +167,7 @@ def generate_python_markdown(module: str, results: ExtractionResult) -> str:
             if f.examples:
                 lines.append("**Example:**")
                 lines.append("```python")
-                for ex in f.examples:
-                    lines.append(ex)
+                lines.extend(f.examples)
                 lines.append("```")
                 lines.append("")
 
@@ -242,8 +241,7 @@ def generate_sql_markdown(module: str, results: ExtractionResult) -> str:
             if f.examples:
                 lines.append("**Example:**")
                 lines.append("```sql")
-                for ex in f.examples:
-                    lines.append(ex)
+                lines.extend(f.examples)
                 lines.append("```")
                 lines.append("")
 

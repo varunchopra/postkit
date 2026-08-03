@@ -51,7 +51,7 @@ When using connection pools (e.g., PgBouncer, application-level pools), clear co
 ```python
 # After request completes, before returning connection to pool
 authz.clear_viewer()  # Clear cross-namespace viewer context
-authz.clear_actor()   # Clear audit actor context
+authz.clear_actor()  # Clear audit actor context
 ```
 
 Tenant context (`authz.tenant_id`) is set per-request via `AuthzClient(cursor, namespace=...)`, so it's automatically overwritten on next use. However, `set_viewer()` persists for the session and must be explicitly cleared to prevent context leakage between requests.

@@ -634,8 +634,8 @@ class TestSetDefault:
     def test_multiple_defaults_safe(self, config):
         """Calling set_default multiple times is safe."""
         v1, c1 = config.set_default("plans/free", {"tokens": 10000})
-        v2, c2 = config.set_default("plans/free", {"tokens": 5000})
-        v3, c3 = config.set_default("plans/free", {"tokens": 1000})
+        _, c2 = config.set_default("plans/free", {"tokens": 5000})
+        _, c3 = config.set_default("plans/free", {"tokens": 1000})
 
         assert v1 == 1
         assert c1 is True  # First call created
@@ -669,8 +669,8 @@ class TestSetDefault:
         tenant_a = make_config("tenant_a")
         tenant_b = make_config("tenant_b")
 
-        v_a, c_a = tenant_a.set_default("plans/free", {"tokens": 1000})
-        v_b, c_b = tenant_b.set_default("plans/free", {"tokens": 2000})
+        _, c_a = tenant_a.set_default("plans/free", {"tokens": 1000})
+        _, c_b = tenant_b.set_default("plans/free", {"tokens": 2000})
 
         assert c_a is True
         assert c_b is True

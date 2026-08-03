@@ -92,9 +92,11 @@ class TestNameAndHolderValidation:
             lease.renew("job", "w1", None)
         assert exc_info.value.error_code == LeaseErrorCode.VAL_FENCE_NULL
 
-        with pytest.raises(LeaseValidationError) as exc_info:
-            with lease.cursor.connection.transaction():
-                lease.verify("job", "w1", None)
+        with (
+            pytest.raises(LeaseValidationError) as exc_info,
+            lease.cursor.connection.transaction(),
+        ):
+            lease.verify("job", "w1", None)
         assert exc_info.value.error_code == LeaseErrorCode.VAL_FENCE_NULL
 
         with pytest.raises(LeaseValidationError) as exc_info:

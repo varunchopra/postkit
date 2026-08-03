@@ -11,9 +11,9 @@ from postkit.errors import AuthzErrorCode
 
 __all__ = [
     "AuthzClient",
+    "AuthzCycleError",
     "AuthzError",
     "AuthzErrorCode",
     "AuthzValidationError",
-    "AuthzCycleError",
     "Entity",
 ]

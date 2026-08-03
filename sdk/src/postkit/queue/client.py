@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from datetime import timedelta
-from typing import Any, NoReturn
+from typing import Any, ClassVar, NoReturn
 
 import psycopg
 
@@ -56,7 +56,7 @@ class QueueClient(BaseClient):
 
     _schema = "queue"
     _error_class = QueueError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": QueueValidationError,  # invalid_parameter_value
         "22004": QueueValidationError,  # null_value_not_allowed
         "22001": QueueValidationError,  # string_data_right_truncation

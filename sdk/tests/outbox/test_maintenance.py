@@ -149,7 +149,7 @@ class TestTrimRules:
         cur_long = conn_long.cursor()
         cur_long.execute("SELECT 1")  # pin the transaction start time
 
-        young_low = emit(cur, ns, "orders", '{"who": "young-low-id"}')
+        emit(cur, ns, "orders", '{"who": "young-low-id"}')
         old_high = emit(cur_long, ns, "orders", '{"who": "old-high-id"}')
         conn_long.commit()
         test_helpers.wait_readable("orders", old_high)
@@ -171,7 +171,6 @@ class TestTrimRules:
         assert all(pair > trimmed for pair in surviving), (
             f"rows {surviving} stranded at or below trimmed pair {trimmed}"
         )
-        assert young_low or True  # ids referenced above; assertion is the invariant
 
     def test_trim_does_not_strand_inflight_business_write_emit(
         self, test_helpers, connect

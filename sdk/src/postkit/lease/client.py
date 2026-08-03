@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import Any, NoReturn
+from typing import Any, ClassVar, NoReturn
 
 import psycopg
 
@@ -49,7 +49,7 @@ class LeaseClient(BaseClient):
 
     _schema = "lease"
     _error_class = LeaseError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": LeaseValidationError,  # invalid_parameter_value
         "22004": LeaseValidationError,  # null_value_not_allowed
         "22001": LeaseValidationError,  # string_data_right_truncation

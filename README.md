@@ -49,7 +49,9 @@ To pin a version, install from a specific tag:
 Works with any language or driver:
 
 ```python
-cursor.execute("SELECT authz.check(%s, %s, %s, %s, %s)", ("user", user_id, "read", "doc", doc_id))
+cursor.execute(
+    "SELECT authz.check(%s, %s, %s, %s, %s)", ("user", user_id, "read", "doc", doc_id)
+)
 ```
 
 ```typescript
@@ -79,7 +81,9 @@ user_id = authn.create_user("alice@example.com", password_hash)
 authn.create_session(user_id, token_hash)
 
 # config: versioned configuration
-config.set("prompts/bot", {"template": "You are...", "model": "claude-sonnet-4-20250514"})
+config.set(
+    "prompts/bot", {"template": "You are...", "model": "claude-sonnet-4-20250514"}
+)
 config.rollback("prompts/bot")
 
 # meter: usage tracking with reservations
@@ -99,8 +103,8 @@ events = outbox.poll("orders", "billing")
 
 # presence: heartbeat liveness
 presence.register("worker-7")
-presence.heartbeat("worker-7")            # every 10-60s while running
-deaths = presence.sweep()                 # from a cron: who went silent?
+presence.heartbeat("worker-7")  # every 10-60s while running
+deaths = presence.sweep()  # from a cron: who went silent?
 
 # queue: job scheduling
 queue.push("reindex", {"document_id": 42})
@@ -110,7 +114,7 @@ if job is not None:
     queue.ack(job["id"], job["fence_token"])
 
 # memory: durable agent memory (pgvector)
-memory.set_dimension(1536)                 # once, after install
+memory.set_dimension(1536)  # once, after install
 memory.record("session-1", "user", "my apartment has hard water", keywords=["water"])
 hits = memory.recall(keywords=["water"])
 ```

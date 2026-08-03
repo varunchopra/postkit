@@ -12,7 +12,7 @@ Raise unless row-level security applies to the connection's role.
 
 Call from CI setup: a suite connecting as a superuser or BYPASSRLS role bypasses every policy and exercises none of the tenancy model.
 
-*Source: sdk/src/postkit/base.py:402*
+*Source: sdk/src/postkit/base.py:397*
 
 ---
 
@@ -24,7 +24,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:395*
+*Source: sdk/src/postkit/base.py:390*
 
 ---
 
@@ -181,7 +181,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:366*
+*Source: sdk/src/postkit/base.py:361*
 
 ---
 

@@ -9,6 +9,7 @@ This module provides:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 from postkit.base import BaseClient, PostkitError
 
@@ -50,7 +51,7 @@ class AuthnClient(BaseClient):
 
     _schema = "authn"
     _error_class = AuthnError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": AuthnValidationError,  # invalid_parameter_value
         "22004": AuthnValidationError,  # null_value_not_allowed
         "22001": AuthnValidationError,  # string_data_right_truncation

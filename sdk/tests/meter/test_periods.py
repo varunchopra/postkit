@@ -308,7 +308,7 @@ class TestClosePeriod:
 
         # Balance=1000, carry_over_limit=200 → 800 expired.
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
-        expiration = [e for e in ledger if e["entry_type"] == "expiration"][0]
+        expiration = next(e for e in ledger if e["entry_type"] == "expiration")
         assert expiration["amount"] == -800
         assert expiration["balance_after"] == 200
 
@@ -624,7 +624,7 @@ class TestOpenPeriod:
         assert allocation_count == 1
 
         ledger = meter.get_ledger("alice", "llm_call", "tokens")
-        allocation = [e for e in ledger if e["entry_type"] == "allocation"][0]
+        allocation = next(e for e in ledger if e["entry_type"] == "allocation")
         assert allocation["amount"] == 10000
         assert allocation["balance_after"] == 10000
 

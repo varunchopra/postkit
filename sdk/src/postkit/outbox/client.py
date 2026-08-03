@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from typing import Any, NoReturn
+from typing import Any, ClassVar, NoReturn
 
 import psycopg
 from psycopg import pq
@@ -86,7 +86,7 @@ class OutboxClient(BaseClient):
 
     _schema = "outbox"
     _error_class = OutboxError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": OutboxValidationError,  # invalid_parameter_value
         "22004": OutboxValidationError,  # null_value_not_allowed
         "22001": OutboxValidationError,  # string_data_right_truncation

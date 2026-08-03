@@ -43,9 +43,13 @@ def validate_docs(
             continue
 
         # Check for missing params/returns (just a warning)
-        if doc.language == "sql" and doc.return_type and doc.return_type != "void":
-            if not doc.returns:
-                result.warnings.append(f"{doc.name}: documented but missing @returns")
+        if (
+            doc.language == "sql"
+            and doc.return_type
+            and doc.return_type != "void"
+            and not doc.returns
+        ):
+            result.warnings.append(f"{doc.name}: documented but missing @returns")
 
     return result
 

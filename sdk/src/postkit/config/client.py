@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import jsonschema
 
@@ -17,8 +17,6 @@ class ConfigError(PostkitError):
 
 class ConfigValidationError(ConfigError):
     """Raised when validation fails (schema or SQL-level)."""
-
-    pass
 
 
 class SchemaViolationError(ConfigError):
@@ -69,7 +67,7 @@ class ConfigClient(BaseClient):
 
     _schema = "config"
     _error_class = ConfigError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": ConfigValidationError,  # invalid_parameter_value
         "22004": ConfigValidationError,  # null_value_not_allowed
         "22001": ConfigValidationError,  # string_data_right_truncation

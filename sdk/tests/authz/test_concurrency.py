@@ -53,7 +53,7 @@ class TestWriteSerialization:
                 )
                 conn.commit()
                 results["t1_done"] = True
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["errors"].append(f"T1: {e}")
             finally:
                 conn.close()
@@ -69,7 +69,7 @@ class TestWriteSerialization:
                 )
                 conn.commit()
                 results["t2_done"] = True
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["errors"].append(f"T2: {e}")
             finally:
                 conn.close()
@@ -120,7 +120,7 @@ class TestWriteSerialization:
                 conn.commit()
                 with results_lock:
                     results["completed"] += 1
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 with results_lock:
                     results["errors"].append(f"User {user_id}: {e}")
             finally:
@@ -179,7 +179,7 @@ class TestNamespaceIsolation:
                 cur.execute("SELECT pg_sleep(0.05)")
                 conn.commit()
                 results["end_times"][thread_id] = time.time()
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["errors"].append(f"{thread_id}: {e}")
             finally:
                 conn.close()
@@ -231,7 +231,7 @@ class TestConcurrentHierarchyChanges:
                         (f"doc-{thread_id}-{i}", namespace),
                     )
                     conn.commit()
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 with results_lock:
                     results["errors"].append(f"writer-{thread_id}: {e}")
             finally:
@@ -255,7 +255,7 @@ class TestConcurrentHierarchyChanges:
                         (namespace,),
                     )
                     conn.commit()
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 with results_lock:
                     results["errors"].append(f"hierarchy: {e}")
             finally:
@@ -328,7 +328,7 @@ class TestConcurrentCyclePrevention:
                 )
                 conn.commit()
                 results["t1_success"] = True
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["t1_error"] = str(e)
             finally:
                 conn.close()
@@ -344,7 +344,7 @@ class TestConcurrentCyclePrevention:
                 )
                 conn.commit()
                 results["t2_success"] = True
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["t2_error"] = str(e)
             finally:
                 conn.close()
@@ -405,7 +405,7 @@ class TestConcurrentCyclePrevention:
                 )
                 conn.commit()
                 results["t1_success"] = True
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["t1_error"] = str(e)
             finally:
                 conn.close()
@@ -421,7 +421,7 @@ class TestConcurrentCyclePrevention:
                 )
                 conn.commit()
                 results["t2_success"] = True
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 results["t2_error"] = str(e)
             finally:
                 conn.close()
@@ -488,7 +488,7 @@ class TestConcurrentCyclePrevention:
                 conn.commit()
                 with lock:
                     results["successes"] += 1
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 with lock:
                     if "circular" in str(e).lower():
                         results["cycle_errors"] += 1
@@ -550,7 +550,7 @@ class TestConcurrentIdempotency:
                 conn.commit()
                 with lock:
                     results["ids"].append(tuple_id)
-            except Exception as e:
+            except (psycopg.Error, threading.BrokenBarrierError) as e:
                 with lock:
                     results["errors"].append(str(e))
             finally:
@@ -587,37 +587,38 @@ class TestConcurrentIdempotency:
             barrier = threading.Barrier(2)
             result = {"errors": []}
 
-            def grant():
+            def grant(round_barrier, round_result, round_resource):
                 connection = psycopg.connect(DATABASE_URL, autocommit=True)
                 client = AuthzClient(connection.cursor(), namespace)
                 try:
-                    barrier.wait()
-                    result["grant_id"] = client.grant(
+                    round_barrier.wait()
+                    round_result["grant_id"] = client.grant(
                         "read",
-                        resource=resource,
+                        resource=round_resource,
                         subject=("user", "alice"),
                         expires_at=original_expiry,
                     )
-                except Exception as exc:
-                    result["errors"].append(exc)
+                except (AuthzError, threading.BrokenBarrierError) as exc:
+                    round_result["errors"].append(exc)
                 finally:
                     connection.close()
 
-            def revoke():
+            def revoke(round_barrier, round_result, round_resource):
                 connection = psycopg.connect(DATABASE_URL, autocommit=True)
                 client = AuthzClient(connection.cursor(), namespace)
                 try:
-                    barrier.wait()
-                    result["revoked"] = client.revoke(
-                        "read", resource=resource, subject=("user", "alice")
+                    round_barrier.wait()
+                    round_result["revoked"] = client.revoke(
+                        "read", resource=round_resource, subject=("user", "alice")
                     )
-                except Exception as exc:
-                    result["errors"].append(exc)
+                except (AuthzError, threading.BrokenBarrierError) as exc:
+                    round_result["errors"].append(exc)
                 finally:
                     connection.close()
 
-            grant_thread = threading.Thread(target=grant)
-            revoke_thread = threading.Thread(target=revoke)
+            worker_args = (barrier, result, resource)
+            grant_thread = threading.Thread(target=grant, args=worker_args)
+            revoke_thread = threading.Thread(target=revoke, args=worker_args)
             grant_thread.start()
             revoke_thread.start()
             grant_thread.join(3)

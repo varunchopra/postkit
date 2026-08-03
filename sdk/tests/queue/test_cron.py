@@ -12,7 +12,7 @@ class TestCronParseField:
     def test_star_returns_full_range(self, raw_cursor):
         cursor, _ = raw_cursor
         cursor.execute("SELECT queue._cron_parse_field('*', 0, 59)")
-        assert cursor.fetchone()[0] == list(range(0, 60))
+        assert cursor.fetchone()[0] == list(range(60))
 
     def test_single_value(self, raw_cursor):
         cursor, _ = raw_cursor

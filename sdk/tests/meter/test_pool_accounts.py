@@ -7,7 +7,7 @@ adjust all accept a NULL user_id and operate on that shared row.
 import threading
 
 import psycopg
-from postkit.meter import MeterClient
+from postkit.meter import MeterClient, MeterError
 from tests.conftest import DATABASE_URL
 from tests.meter.helpers import cleanup_namespace
 
@@ -76,20 +76,21 @@ class TestPoolAccountColdStartRace:
                 results: dict = {"a": None, "b": None}
                 barrier = threading.Barrier(2, timeout=5)
 
-                def do_allocate(key: str, resource: str = resource):
+                def do_allocate(key, current_resource, round_barrier, round_results):
                     conn, client = _make_client(namespace)
                     try:
-                        barrier.wait()
-                        results[key] = client.allocate(
-                            None, "llm_call", 100, "tokens", resource=resource
+                        round_barrier.wait()
+                        round_results[key] = client.allocate(
+                            None, "llm_call", 100, "tokens", resource=current_resource
                         )
-                    except Exception as e:
-                        results[key] = e
+                    except (MeterError, threading.BrokenBarrierError) as e:
+                        round_results[key] = e
                     finally:
                         conn.close()
 
-                t1 = threading.Thread(target=do_allocate, args=("a",))
-                t2 = threading.Thread(target=do_allocate, args=("b",))
+                worker_args = (resource, barrier, results)
+                t1 = threading.Thread(target=do_allocate, args=("a", *worker_args))
+                t2 = threading.Thread(target=do_allocate, args=("b", *worker_args))
                 t1.start()
                 t2.start()
                 t1.join(timeout=10)

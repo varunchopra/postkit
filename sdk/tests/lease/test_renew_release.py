@@ -73,10 +73,7 @@ class TestRelease:
 
         lease.release("job", "w1", got["fence_token"])
 
-        notifies = []
-        gen = listener.notifies(timeout=10, stop_after=1)
-        for n in gen:
-            notifies.append(n)
+        notifies = list(listener.notifies(timeout=10, stop_after=1))
         assert len(notifies) == 1
         payload = json.loads(notifies[0].payload)
         assert payload == {"name": "job", "event": "released"}

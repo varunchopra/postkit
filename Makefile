@@ -6,6 +6,8 @@ PG_CONTAINER ?= postkit-test
 PG_PORT ?= 5433
 DATABASE_URL ?= postgresql://postgres:postgres@localhost:$(PG_PORT)/postgres
 PYTEST = cd sdk && uv run --extra dev pytest
+RUFF_VERSION ?= 0.16.1
+RUFF = uvx ruff@$(RUFF_VERSION)
 
 RED = \033[0;31m
 GREEN = \033[0;32m
@@ -71,13 +73,13 @@ clean:
 	@echo "$(GREEN)✓ Cleaned up$(NC)"
 
 lint:
-	@uvx ruff check .
+	@$(RUFF) check .
 	@uvx --with 'psycopg[binary]' --with jsonschema ty check sdk/src/
 	@if git grep -nI "$$(printf '\342\200\224')"; then echo "$(RED)em dashes found: use ' - '$(NC)"; exit 1; fi
 	@echo "$(GREEN)✓ Lint passed$(NC)"
 
 format:
-	@uvx ruff check --fix .
-	@uvx ruff check --select I --fix .
-	@uvx ruff format .
+	@$(RUFF) check --fix .
+	@$(RUFF) check --select I --fix .
+	@$(RUFF) format .
 	@echo "$(GREEN)✓ Formatted$(NC)"

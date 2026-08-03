@@ -65,8 +65,9 @@ def connection_factory_for(db_connection):
         try:
             conn.rollback()
             conn.close()
-        except Exception:
-            pass
+        except psycopg.Error:
+            # A test may already have closed or invalidated its connection.
+            continue
 
 
 def require_pgvector():

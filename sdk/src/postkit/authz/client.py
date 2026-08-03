@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 import psycopg
 from psycopg import sql
@@ -20,9 +21,9 @@ from postkit.base import BaseClient, PostkitError
 
 __all__ = [
     "AuthzClient",
+    "AuthzCycleError",
     "AuthzError",
     "AuthzValidationError",
-    "AuthzCycleError",
     "Entity",
 ]
 
@@ -66,7 +67,7 @@ class AuthzClient(BaseClient):
 
     _schema = "authz"
     _error_class = AuthzError
-    _module_sqlstate_map = {
+    _module_sqlstate_map: ClassVar[dict[str, type[PostkitError]]] = {
         "22023": AuthzValidationError,  # invalid_parameter_value
         "22004": AuthzValidationError,  # null_value_not_allowed
         "22001": AuthzValidationError,  # string_data_right_truncation
@@ -148,9 +149,7 @@ class AuthzClient(BaseClient):
 
         Example:
             with authz.viewer_context(("user", "alice")):
-                shared = authz.list_external_resources(
-                    ("user", "alice"), "note", "view"
-                )
+                shared = authz.list_external_resources(("user", "alice"), "note", "view")
         """
         self.set_viewer(subject)
         try:
@@ -197,10 +196,16 @@ class AuthzClient(BaseClient):
             authz.grant("admin", resource=("repo", "api"), subject=("team", "eng"))
             authz.grant("read", resource=("repo", "api"), subject=("user", "alice"))
             # Grant only to team admins:
-            authz.grant("write", resource=("repo", "api"), subject=("team", "eng"), subject_relation="admin")
+            authz.grant(
+                "write", resource=("repo", "api"), subject=("team", "eng"), subject_relation="admin"
+            )
             # Grant with expiration:
-            authz.grant("read", resource=("doc", "1"), subject=("user", "bob"),
-                       expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+            authz.grant(
+                "read",
+                resource=("doc", "1"),
+                subject=("user", "bob"),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
@@ -261,7 +266,9 @@ class AuthzClient(BaseClient):
         Example:
             authz.revoke("read", resource=("repo", "api"), subject=("user", "alice"))
             # Revoke from team admins only:
-            authz.revoke("write", resource=("repo", "api"), subject=("team", "eng"), subject_relation="admin")
+            authz.revoke(
+                "write", resource=("repo", "api"), subject=("team", "eng"), subject_relation="admin"
+            )
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
@@ -1059,11 +1066,15 @@ class AuthzClient(BaseClient):
             Count of tuples inserted
 
         Example:
-            authz.bulk_grant("read", resource=("doc", "1"), subjects=[
-                ("user", "alice"),
-                ("user", "bob"),
-                ("api_key", "key-123"),
-            ])
+            authz.bulk_grant(
+                "read",
+                resource=("doc", "1"),
+                subjects=[
+                    ("user", "alice"),
+                    ("user", "bob"),
+                    ("api_key", "key-123"),
+                ],
+            )
         """
         resource_type, resource_id = resource
 
@@ -1151,7 +1162,9 @@ class AuthzClient(BaseClient):
         Example:
             expiring = authz.list_expiring(within=timedelta(days=30))
             for grant in expiring:
-                print(f"{grant['subject']} access to {grant['resource']} expires {grant['expires_at']}")
+                print(
+                    f"{grant['subject']} access to {grant['resource']} expires {grant['expires_at']}"
+                )
         """
         rows = self._fetch_raw(
             "SELECT * FROM authz.list_expiring(%s, %s)",
@@ -1215,8 +1228,12 @@ class AuthzClient(BaseClient):
             True if grant was found and updated
 
         Example:
-            authz.set_expiration("read", resource=("doc", "1"), subject=("user", "alice"),
-                                expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+            authz.set_expiration(
+                "read",
+                resource=("doc", "1"),
+                subject=("user", "alice"),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject
@@ -1303,9 +1320,12 @@ class AuthzClient(BaseClient):
             The new expiration time
 
         Example:
-            new_expires = authz.extend_expiration("read", resource=("doc", "1"),
-                                                  subject=("user", "alice"),
-                                                  extension=timedelta(days=30))
+            new_expires = authz.extend_expiration(
+                "read",
+                resource=("doc", "1"),
+                subject=("user", "alice"),
+                extension=timedelta(days=30),
+            )
         """
         resource_type, resource_id = resource
         subject_type, subject_id = subject

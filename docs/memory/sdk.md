@@ -12,7 +12,7 @@ Raise unless row-level security applies to the connection's role.
 
 Call from CI setup: a suite connecting as a superuser or BYPASSRLS role bypasses every policy and exercises none of the tenancy model.
 
-*Source: sdk/src/postkit/base.py:402*
+*Source: sdk/src/postkit/base.py:397*
 
 ---
 
@@ -24,7 +24,7 @@ clear_actor() -> None
 
 Clear actor context.
 
-*Source: sdk/src/postkit/base.py:395*
+*Source: sdk/src/postkit/base.py:390*
 
 ---
 
@@ -56,7 +56,7 @@ memory.consolidate(
 )
 ```
 
-*Source: sdk/src/postkit/memory/client.py:240*
+*Source: sdk/src/postkit/memory/client.py:241*
 
 ---
 
@@ -76,7 +76,7 @@ Read-only. Claiming and serialization are the worker's job (hold a lease, heartb
 **Returns:** One dict per due episode: id, session_id, role, content, occurred_at,
 oldest first
 
-*Source: sdk/src/postkit/memory/client.py:220*
+*Source: sdk/src/postkit/memory/client.py:221*
 
 ---
 
@@ -93,7 +93,7 @@ Fetch a single node including its evidence episode ids.
 
 **Returns:** The node dict (embedding omitted)
 
-*Source: sdk/src/postkit/memory/client.py:394*
+*Source: sdk/src/postkit/memory/client.py:395*
 
 ---
 
@@ -108,7 +108,7 @@ Namespace-wide memory counts.
 **Returns:** Dict with total_episodes, unconsolidated_episodes, total_nodes,
 live_nodes, total_edges, embedding_dim
 
-*Source: sdk/src/postkit/memory/client.py:320*
+*Source: sdk/src/postkit/memory/client.py:321*
 
 ---
 
@@ -128,7 +128,7 @@ List episodes newest first, with cursor pagination.
 **Returns:** Episode dicts (embedding omitted); each carries a 'cursor' field to
 pass back as before
 
-*Source: sdk/src/postkit/memory/client.py:332*
+*Source: sdk/src/postkit/memory/client.py:333*
 
 ---
 
@@ -149,7 +149,7 @@ List nodes newest first, with cursor pagination.
 **Returns:** Node dicts (embedding omitted); each carries a 'cursor' field to pass
 back as before
 
-*Source: sdk/src/postkit/memory/client.py:362*
+*Source: sdk/src/postkit/memory/client.py:363*
 
 ---
 
@@ -168,7 +168,7 @@ Return the nodes one edge away from a node, in either direction.
 **Returns:** One dict per neighbor: node_id, relation, weight, direction
 ('out'|'in'), kind, content
 
-*Source: sdk/src/postkit/memory/client.py:198*
+*Source: sdk/src/postkit/memory/client.py:199*
 
 ---
 
@@ -196,7 +196,7 @@ content, score, hops, and occurred_at, highest score first
 hits = memory.recall(keywords=["water"])
 ```
 
-*Source: sdk/src/postkit/memory/client.py:159*
+*Source: sdk/src/postkit/memory/client.py:160*
 
 ---
 
@@ -227,7 +227,7 @@ The insert is the hot path and touches no other table. Embedding and its model t
 memory.record("s1", "user", "hello", keywords=["hello"])
 ```
 
-*Source: sdk/src/postkit/memory/client.py:97*
+*Source: sdk/src/postkit/memory/client.py:98*
 
 ---
 
@@ -252,7 +252,7 @@ client.set_actor(request_id="req-123")  # Set request context first
 client.set_actor(actor_id="user:alice")  # Add actor after auth
 ```
 
-*Source: sdk/src/postkit/base.py:366*
+*Source: sdk/src/postkit/base.py:361*
 
 ---
 
@@ -269,7 +269,7 @@ A deployment-level, one-time DDL step run after install by a role that owns the 
 **Parameters:**
 - `dim`: Embedding dimension (1-16000)
 
-*Source: sdk/src/postkit/memory/client.py:308*
+*Source: sdk/src/postkit/memory/client.py:309*
 
 ---
 
@@ -285,6 +285,6 @@ Replace a node with a newer one, keeping the old for history.
 - `node`: Node being superseded
 - `replacement`: Node that replaces it
 
-*Source: sdk/src/postkit/memory/client.py:289*
+*Source: sdk/src/postkit/memory/client.py:290*
 
 ---

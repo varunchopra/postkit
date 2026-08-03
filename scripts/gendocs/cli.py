@@ -82,7 +82,7 @@ def main():
         result = extract_sql_docs(root / module / "src" / "functions", root)
         sql_results[module] = result
         documented = sum(1 for f in result.functions if f.brief)
-        groups = sorted(set(f.group for f in result.functions if f.group))
+        groups = sorted({f.group for f in result.functions if f.group})
         print(
             f"  ✓ {module}: {documented}/{len(result.all_public_functions)} SQL functions"
         )

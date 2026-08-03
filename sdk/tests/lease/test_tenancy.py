@@ -4,6 +4,7 @@ Run as a non-superuser role (superusers bypass RLS), attempting every
 public function across a tenant boundary.
 """
 
+import psycopg
 import pytest
 
 from tests.helpers import connect_as_rls_user, ensure_rls_role
@@ -69,7 +70,7 @@ class TestCrossTenantIsolation:
         rls_cursor.execute("SELECT lease.set_tenant(%s)", ("tenant_b",))
 
         # acquire into tenant_a: the INSERT violates the WITH CHECK policy
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "SELECT * FROM lease.acquire(%s, %s, %s)",
                 ("tenant_a", "secret", "attacker"),
@@ -88,7 +89,7 @@ class TestCrossTenantIsolation:
         )
         assert rls_cursor.fetchone()[0] is False
 
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "SELECT lease.verify(%s, %s, %s, %s)",
                 ("tenant_a", "secret", victim["holder"], victim["fence"]),
@@ -168,7 +169,7 @@ class TestConfigPolicies:
         assert rls_cursor.rowcount == 0
 
         # INSERT into global: blocked by the RESTRICTIVE write-protection policy
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg.Error):
             rls_cursor.execute(
                 "INSERT INTO lease.config (namespace) VALUES ('global') "
                 "ON CONFLICT (namespace) DO UPDATE SET notify_on_release = true"

@@ -4,7 +4,7 @@ Audit logging tests for postkit/authz.
 Tests audit event capture, actor context, filtering, and partition management.
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 import pytest
@@ -471,7 +471,7 @@ class TestPartitionManagement:
     def test_drop_preserves_recent_partitions(self, authz):
         """drop_audit_partitions preserves recent partitions."""
         # Create a partition for current year + 1 (definitely recent)
-        future_year = date.today().year + 1
+        future_year = datetime.now(timezone.utc).year + 1
         authz.cursor.execute(f"SELECT authz.create_audit_partition({future_year}, 6)")
 
         # Try to drop with 12 month retention
