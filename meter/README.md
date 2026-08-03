@@ -89,7 +89,7 @@ With Alice at 5000, `app.charge('alice', 1500)` returns `user` and leaves her at
 
 Who acted is recorded in the ledger's actor columns (`actor_id`, `on_behalf_of`, `request_id`) even for a pool charge, so a shared-balance draw stays attributable.
 
-Schedule `meter.reconcile()` with alerting: it checks each account's stored `balance` against the sum of its ledger entries, the standing backstop that turns any balance drift into a detected, repairable condition.
+Schedule `meter.reconcile()` and alert when it returns rows. It checks `balance = ledger_checkpoint + SUM(retained ledger.amount)` and `reserved = SUM(active reservations.amount)`.
 
 ## Billing Periods
 
@@ -134,7 +134,7 @@ SELECT * FROM meter.get_ledger('alice', 'llm_call', 'tokens', p_limit := 50);
 
 ## Idempotency
 
-All write operations support idempotency keys for safe retries:
+For operations that accept `idempotency_key`, retry with the same non-null key. Deduplication ends when the ledger partition containing that key is dropped.
 
 ```sql
 SELECT * FROM meter.consume(

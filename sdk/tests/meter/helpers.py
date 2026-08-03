@@ -6,6 +6,9 @@ from tests.helpers import fetch_row
 def cleanup_namespace(cursor, namespace: str):
     """Delete all meter data for a namespace."""
     cursor.execute("DELETE FROM meter.reservations WHERE namespace = %s", (namespace,))
+    cursor.execute(
+        "DELETE FROM meter.period_openings WHERE namespace = %s", (namespace,)
+    )
     # Disable immutability trigger for cleanup, then re-enable.
     cursor.execute("ALTER TABLE meter.ledger DISABLE TRIGGER ledger_no_delete")
     cursor.execute("DELETE FROM meter.ledger WHERE namespace = %s", (namespace,))

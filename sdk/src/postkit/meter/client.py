@@ -476,7 +476,7 @@ class MeterClient(BaseClient):
             period_allocation: Amount to allocate each period (must be positive)
             carry_over_limit: Maximum unused balance to carry forward at period
                 close. None means unlimited carry-over. Zero means strict
-                expiration with no carry-over
+                expiration with no carry-over. Must not be negative
         """
         self._fetch_val(
             "SELECT meter.set_period_config(%s, %s, %s, %s, %s, %s, %s, %s)",
@@ -551,8 +551,10 @@ class MeterClient(BaseClient):
         This is intentional: open_period is for recurring allocations, not initial
         account setup.
 
-        NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key
-        with allocate() if you need idempotent period allocations.
+        Repeated calls for the same account and period_start return the first call's
+        balance without allocating again. The retry's allocation is ignored, and the
+        result may differ from the current balance. Use allocate() with a distinct
+        idempotency_key to add credit.
 
         Args:
             user_id: User ID
@@ -563,7 +565,7 @@ class MeterClient(BaseClient):
             allocation: Amount to allocate (uses period_allocation if None)
 
         Returns:
-            New balance after allocation
+            Balance returned by the first successful call.
 
         Raises:
             MeterError: If account does not exist (DATA_ACCOUNT_NOT_FOUND)
@@ -618,8 +620,9 @@ class MeterClient(BaseClient):
         """Check for discrepancies in account invariants.
 
         Checks two invariants:
-        1. balance_mismatch: account.balance != SUM(ledger.amount)
-        2. reserved_mismatch: account.reserved != SUM(active_reservations.amount)
+        1. balance_mismatch: balance != ledger_checkpoint + SUM(retained ledger
+           amounts).
+        2. reserved_mismatch: reserved != SUM(active reservation amounts).
 
         Returns:
             List of dicts with 'user_id', 'event_type', 'resource', 'unit',

@@ -33,7 +33,7 @@ SELECT meter.create_partition(2025, 1);
 meter.drop_old_partitions(p_older_than_months: int4) -> setof text
 ```
 
-Drop partitions older than retention period
+Checkpoint balances and drop old ledger partitions (requires RLS bypass and READ COMMITTED)
 
 **Parameters:**
 - `p_older_than_months`: Months to retain (default 24)
@@ -45,7 +45,7 @@ Drop partitions older than retention period
 SELECT * FROM meter.drop_old_partitions(12);
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:94*
+*Source: meter/src/functions/040_maintenance.sql:95*
 
 ---
 
@@ -89,7 +89,7 @@ Get namespace statistics
 SELECT * FROM meter.get_stats();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:219*
+*Source: meter/src/functions/040_maintenance.sql:300*
 
 ---
 
@@ -99,7 +99,7 @@ SELECT * FROM meter.get_stats();
 meter.reconcile(p_namespace: text) -> table(user_id: text, event_type: text, resource: text, unit: text, issue_type: text, expected: numeric, actual: numeric, discrepancy: numeric)
 ```
 
-Verify account invariants: balance vs ledger sum, reserved vs active reservations
+Verify account invariants against retained ledger history and active reservations
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
@@ -111,7 +111,7 @@ Verify account invariants: balance vs ledger sum, reserved vs active reservation
 SELECT * FROM meter.reconcile();
 ```
 
-*Source: meter/src/functions/040_maintenance.sql:142*
+*Source: meter/src/functions/040_maintenance.sql:222*
 
 ---
 
@@ -239,7 +239,7 @@ Close a billing period, handle expiration and carry-over
 SELECT * FROM meter.close_period('alice', 'llm_call', 'tokens', NULL, '2025-01-31');
 ```
 
-*Source: meter/src/functions/030_periods.sql:66*
+*Source: meter/src/functions/030_periods.sql:72*
 
 ---
 
@@ -249,7 +249,7 @@ SELECT * FROM meter.close_period('alice', 'llm_call', 'tokens', NULL, '2025-01-3
 meter.open_period(p_user_id: text, p_event_type: text, p_unit: text, p_resource: text, p_period_start: date, p_allocation: numeric, p_namespace: text) -> numeric
 ```
 
-Open a new billing period with fresh allocation
+Idempotently open a new billing period with fresh allocation
 
 **Parameters:**
 - `p_user_id`: User ID
@@ -260,14 +260,14 @@ Open a new billing period with fresh allocation
 - `p_allocation`: Amount to allocate (uses period_allocation if NULL)
 - `p_namespace`: Tenant namespace
 
-**Returns:** New balance
+**Returns:** New balance from the first successful open for this account and period
 
 **Example:**
 ```sql
 SELECT meter.open_period('alice', 'llm_call', 'tokens', NULL, '2025-02-01');
 ```
 
-*Source: meter/src/functions/030_periods.sql:151*
+*Source: meter/src/functions/030_periods.sql:159*
 
 ---
 
@@ -289,7 +289,7 @@ Mark expired reservations as 'expired' and release their holds. Distinct from 'r
 SELECT meter.release_expired_reservations();
 ```
 
-*Source: meter/src/functions/030_periods.sql:230*
+*Source: meter/src/functions/030_periods.sql:259*
 
 ---
 
@@ -308,7 +308,7 @@ Configure period settings for an account
 - `p_resource`: Optional resource identifier
 - `p_period_start`: First day of the period
 - `p_period_allocation`: Amount granted each period
-- `p_carry_over_limit`: Max unused to roll forward (NULL = no limit)
+- `p_carry_over_limit`: Nonnegative maximum unused amount to roll forward (NULL = no limit)
 - `p_namespace`: Tenant namespace
 
 **Example:**

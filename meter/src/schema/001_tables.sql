@@ -8,7 +8,8 @@
 --   1. Double-entry ledger: Every balance change is an immutable ledger entry
 --   2. Atomic operations: Check-and-decrement in single statement
 --   3. Reservations: Hold tokens before operation, commit actual after
---   4. Idempotent: Safe retries via idempotency_key
+--   4. Retry safety: Caller keys deduplicate request-scoped writes;
+--      period_openings deduplicates billing-period opens
 --   5. Immutable audit trail: Ledger entries cannot be modified
 
 CREATE SCHEMA IF NOT EXISTS meter;
@@ -18,7 +19,9 @@ CREATE SCHEMA IF NOT EXISTS meter;
 -- =============================================================================
 -- Current state, denormalized for fast reads.
 -- One row per user/event_type/resource/unit combination.
--- Balance is authoritative but must equal SUM(ledger.amount) always.
+-- Balance is authoritative and must equal the retained-ledger checkpoint plus
+-- SUM(ledger.amount). The checkpoint starts at zero and advances only when
+-- retention drops an old ledger partition.
 
 CREATE TABLE meter.accounts (
     namespace text NOT NULL DEFAULT 'default',
@@ -47,17 +50,22 @@ CREATE TABLE meter.accounts (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
 
+    ledger_checkpoint numeric NOT NULL DEFAULT 0,
+    account_id bigint GENERATED ALWAYS AS IDENTITY,
+
+    CONSTRAINT accounts_pkey PRIMARY KEY (namespace, account_id),
     CONSTRAINT accounts_balance_reserved CHECK (reserved >= 0),
-    CONSTRAINT accounts_totals_positive CHECK (total_credited >= 0 AND total_debited >= 0)
+    CONSTRAINT accounts_totals_positive CHECK (total_credited >= 0 AND total_debited >= 0),
+    CONSTRAINT accounts_carry_over_nonnegative CHECK (
+        carry_over_limit IS NULL OR carry_over_limit >= 0
+    )
 )
 -- Every allocate/consume/reserve rewrites balance columns that no index
 -- covers, so page slack keeps those updates HOT (no index maintenance).
 WITH (fillfactor = 90);
 
--- user_id is nullable: NULL marks a namespace-level pool account. A primary
--- key would force it NOT NULL, making pool accounts impossible, so uniqueness
--- is two partial unique indexes instead of a PK. With no PK, logical
--- replication of this table needs REPLICA IDENTITY FULL.
+-- user_id is nullable, so natural-key uniqueness remains in two partial
+-- indexes. account_id provides a narrow foreign-key target for period_openings.
 CREATE UNIQUE INDEX accounts_user_unique_idx
     ON meter.accounts (namespace, user_id, event_type, resource, unit)
     WHERE user_id IS NOT NULL;
@@ -65,6 +73,23 @@ CREATE UNIQUE INDEX accounts_user_unique_idx
 CREATE UNIQUE INDEX accounts_namespace_pool_idx
     ON meter.accounts (namespace, event_type, resource, unit)
     WHERE user_id IS NULL;
+
+-- One row per account and period_start. Rows outlive ledger partitions, so
+-- retries return the original recorded balance without allocating again.
+CREATE TABLE meter.period_openings (
+    namespace text NOT NULL DEFAULT 'default',
+    account_id bigint NOT NULL,
+    period_start date NOT NULL,
+    balance_after numeric NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT period_openings_pkey PRIMARY KEY (
+        namespace, account_id, period_start
+    ),
+    CONSTRAINT period_openings_account_fkey FOREIGN KEY (namespace, account_id)
+        REFERENCES meter.accounts (namespace, account_id)
+        ON DELETE CASCADE
+);
 
 -- =============================================================================
 -- LEDGER TABLE
@@ -198,6 +223,18 @@ CREATE TABLE meter.reservations (
 ALTER TABLE meter.accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meter.accounts FORCE ROW LEVEL SECURITY;
 CREATE POLICY accounts_tenant_isolation ON meter.accounts
+    USING (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    )
+    WITH CHECK (
+        current_setting('meter.tenant_id', TRUE) != ''
+        AND namespace = current_setting('meter.tenant_id', TRUE)
+    );
+
+ALTER TABLE meter.period_openings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meter.period_openings FORCE ROW LEVEL SECURITY;
+CREATE POLICY period_openings_tenant_isolation ON meter.period_openings
     USING (
         current_setting('meter.tenant_id', TRUE) != ''
         AND namespace = current_setting('meter.tenant_id', TRUE)

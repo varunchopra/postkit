@@ -8,7 +8,7 @@
 -- @param p_resource Optional resource identifier
 -- @param p_period_start First day of the period
 -- @param p_period_allocation Amount granted each period
--- @param p_carry_over_limit Max unused to roll forward (NULL = no limit)
+-- @param p_carry_over_limit Nonnegative maximum unused amount to roll forward (NULL = no limit)
 -- @param p_namespace Tenant namespace
 -- @example SELECT meter.set_period_config('alice', 'llm_call', 'tokens', NULL, '2025-01-01', 100000, 10000);
 CREATE FUNCTION meter.set_period_config(
@@ -27,6 +27,12 @@ BEGIN
     PERFORM meter._validate_event_type(p_event_type);
     PERFORM meter._validate_unit(p_unit);
     PERFORM meter._validate_positive(p_period_allocation, 'period_allocation');
+
+    IF p_carry_over_limit < 0 THEN
+        RAISE EXCEPTION 'carry_over_limit cannot be negative'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:meter:VAL_CARRY_OVER_NEGATIVE';
+    END IF;
 
     UPDATE meter.accounts SET
         period_start = p_period_start,
@@ -138,7 +144,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 
 
 -- @function meter.open_period
--- @brief Open a new billing period with fresh allocation
+-- @brief Idempotently open a new billing period with fresh allocation
 -- @param p_user_id User ID
 -- @param p_event_type Event type
 -- @param p_unit Unit of measurement
@@ -146,8 +152,10 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 -- @param p_period_start First day of new period
 -- @param p_allocation Amount to allocate (uses period_allocation if NULL)
 -- @param p_namespace Tenant namespace
--- @returns New balance
+-- @returns New balance from the first successful open for this account and period
 -- @example SELECT meter.open_period('alice', 'llm_call', 'tokens', NULL, '2025-02-01');
+-- Safe to retry: the same account and period_start are allocated only once.
+-- Use meter.allocate with a distinct idempotency key for intentional top-ups.
 CREATE FUNCTION meter.open_period(
     p_user_id text,
     p_event_type text,
@@ -163,12 +171,13 @@ DECLARE
     v_allocation numeric;
     v_new_balance numeric;
     v_entry_id bigint;
+    v_rows int;
 BEGIN
     PERFORM meter._validate_namespace(p_namespace);
     PERFORM meter._validate_event_type(p_event_type);
     PERFORM meter._validate_unit(p_unit);
 
-    -- Get account
+    -- Serialize opens for this account before checking period_openings.
     SELECT * INTO v_account
     FROM meter.accounts
     WHERE namespace = p_namespace
@@ -184,6 +193,16 @@ BEGIN
                   HINT = 'postkit:meter:DATA_ACCOUNT_NOT_FOUND';
     END IF;
 
+    SELECT po.balance_after INTO v_new_balance
+    FROM meter.period_openings po
+    WHERE po.namespace = p_namespace
+      AND po.account_id = v_account.account_id
+      AND po.period_start = p_period_start;
+
+    IF FOUND THEN
+        RETURN v_new_balance;
+    END IF;
+
     -- Use provided allocation or account default
     v_allocation := COALESCE(p_allocation, v_account.period_allocation);
 
@@ -195,11 +214,13 @@ BEGIN
 
     v_new_balance := v_account.balance + v_allocation;
 
-    -- Create allocation entry
+    -- period_openings enforces one allocation per account and period_start.
+    -- Period allocations leave idempotency_key NULL, so they cannot collide
+    -- with caller keys.
     v_entry_id := meter._insert_ledger(
         p_namespace, p_user_id, p_event_type, p_resource, p_unit,
         'allocation', v_allocation, v_new_balance, v_account.reserved,
-        now(), 'period_open:' || p_period_start, NULL, NULL,
+        now(), NULL, NULL, NULL,
         jsonb_build_object('period_start', p_period_start)
     );
 
@@ -215,6 +236,14 @@ BEGIN
       AND event_type = p_event_type
       AND resource = COALESCE(p_resource, '')
       AND unit = p_unit;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    PERFORM meter._assert_account_write(v_rows);
+
+    INSERT INTO meter.period_openings (
+        namespace, account_id, period_start, balance_after
+    ) VALUES (
+        p_namespace, v_account.account_id, p_period_start, v_new_balance
+    );
 
     RETURN v_new_balance;
 END;

@@ -9,10 +9,32 @@ Tests for:
 - Full period lifecycle integration
 """
 
+import hashlib
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
+import psycopg
 import pytest
-from postkit.meter import MeterError, MeterErrorCode
+from postkit.meter import MeterClient, MeterError, MeterErrorCode, MeterValidationError
+
+
+def _wait_until_blocked_by(
+    observer, waiting_pid: int, blocking_pid: int, timeout: float = 5.0
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        blocked = observer.execute(
+            "SELECT %s::int = ANY(pg_blocking_pids(%s::int))",
+            (blocking_pid, waiting_pid),
+        ).fetchone()[0]
+        if blocked:
+            return
+        time.sleep(0.01)
+
+    raise AssertionError(
+        f"backend {waiting_pid} was not blocked by backend {blocking_pid}"
+    )
 
 
 class TestSetPeriodConfig:
@@ -91,6 +113,39 @@ class TestSetPeriodConfig:
 
         account = test_helpers.get_account_raw("alice", "llm_call", "tokens")
         assert float(account["carry_over_limit"]) == 0
+
+    def test_rejects_negative_carry_over_limit(self, meter):
+        with pytest.raises(MeterValidationError) as exc_info:
+            meter.set_period_config(
+                user_id="alice",
+                event_type="llm_call",
+                unit="tokens",
+                resource=None,
+                period_start=date(2025, 1, 1),
+                period_allocation=10000,
+                carry_over_limit=-1,
+            )
+
+        assert exc_info.value.error_code == MeterErrorCode.VAL_CARRY_OVER_NEGATIVE
+
+    def test_table_rejects_negative_carry_over_limit(self, meter, test_helpers):
+        meter.set_period_config(
+            user_id="alice",
+            event_type="llm_call",
+            unit="tokens",
+            resource=None,
+            period_start=date(2025, 1, 1),
+            period_allocation=10000,
+            carry_over_limit=0,
+        )
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            test_helpers.cursor.execute(
+                "UPDATE meter.accounts SET carry_over_limit = -1 "
+                "WHERE namespace = %s AND user_id = 'alice' "
+                "AND event_type = 'llm_call' AND resource = '' AND unit = 'tokens'",
+                (meter.namespace,),
+            )
 
     def test_config_with_resource(self, meter, test_helpers):
         """Period config can be set per resource."""
@@ -350,6 +405,172 @@ class TestOpenPeriod:
 
         # Uses period_allocation from config.
         assert new_balance == 10000
+
+    def test_open_period_credits_once_per_account_and_period(self, meter, test_helpers):
+        period_start = date(2025, 2, 1)
+        for user_id, allocation in (("alice", 1000), ("bob", 2000)):
+            meter.set_period_config(
+                user_id=user_id,
+                event_type="llm_call",
+                unit="tokens",
+                resource=None,
+                period_start=date(2025, 1, 1),
+                period_allocation=allocation,
+            )
+
+        first = meter.open_period("alice", "llm_call", "tokens", None, period_start)
+        retry = meter.open_period("alice", "llm_call", "tokens", None, period_start)
+        other_account = meter.open_period(
+            "bob", "llm_call", "tokens", None, period_start
+        )
+
+        assert first == retry == 1000
+        assert other_account == 2000
+
+        assert meter.get_balance("alice", "llm_call", "tokens")["balance"] == 1000
+        assert meter.get_balance("bob", "llm_call", "tokens")["balance"] == 2000
+        assert test_helpers.count_ledger_entries("allocation") == 2
+
+    def test_open_period_does_not_collide_with_allocate_idempotency_key(
+        self, meter, test_helpers
+    ):
+        period_start = date(2025, 2, 1)
+        meter.set_period_config(
+            "alice",
+            "llm_call",
+            "tokens",
+            None,
+            date(2025, 1, 1),
+            1000,
+        )
+        assert (
+            meter.open_period("alice", "llm_call", "tokens", None, period_start) == 1000
+        )
+
+        key = f"period_open:{period_start}"
+        first = meter.allocate("alice", "llm_call", 500, "tokens", idempotency_key=key)
+        retry = meter.allocate("alice", "llm_call", 500, "tokens", idempotency_key=key)
+
+        assert first == retry
+        assert first["balance"] == 1500
+        assert meter.get_balance("alice", "llm_call", "tokens")["balance"] == 1500
+        assert test_helpers.count_ledger_entries("allocation") == 2
+
+    def test_open_period_retry_returns_original_balance_after_consumption(self, meter):
+        period_start = date(2025, 2, 1)
+        meter.set_period_config(
+            "alice",
+            "llm_call",
+            "tokens",
+            None,
+            date(2025, 1, 1),
+            1000,
+        )
+        assert (
+            meter.open_period("alice", "llm_call", "tokens", None, period_start) == 1000
+        )
+        assert meter.consume("alice", "llm_call", 250, "tokens")["balance"] == 750
+
+        retry = meter.open_period(
+            "alice", "llm_call", "tokens", None, period_start, allocation=2000
+        )
+
+        assert retry == 1000
+        assert meter.get_balance("alice", "llm_call", "tokens")["balance"] == 750
+
+    def test_concurrent_open_period_calls_credit_once(
+        self, meter, test_helpers, connect
+    ):
+        period_start = date(2025, 2, 1)
+        meter.set_period_config(
+            user_id="alice",
+            event_type="llm_call",
+            unit="tokens",
+            resource=None,
+            period_start=date(2025, 1, 1),
+            period_allocation=1000,
+        )
+
+        first_conn = connect()
+        retry_conn = connect()
+        first_client = MeterClient(first_conn.cursor(), meter.namespace)
+        retry_client = MeterClient(retry_conn.cursor(), meter.namespace)
+        first_conn.commit()
+        retry_conn.commit()
+
+        first_conn.execute("BEGIN")
+        first = first_client.open_period(
+            "alice", "llm_call", "tokens", None, period_start
+        )
+
+        def retry_open() -> float:
+            result = retry_client.open_period(
+                "alice", "llm_call", "tokens", None, period_start
+            )
+            retry_conn.commit()
+            return result
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(retry_open)
+                try:
+                    _wait_until_blocked_by(
+                        meter.cursor,
+                        retry_conn.info.backend_pid,
+                        first_conn.info.backend_pid,
+                    )
+                    first_conn.commit()
+                except Exception:
+                    first_conn.rollback()
+                    raise
+                retry = future.result(timeout=10)
+        finally:
+            first_conn.rollback()
+            retry_conn.rollback()
+
+        assert first == retry == 1000
+        assert meter.get_balance("alice", "llm_call", "tokens")["balance"] == 1000
+        assert test_helpers.count_ledger_entries("allocation") == 1
+
+    def test_period_openings_accept_account_with_2680_byte_user_id(self, make_meter):
+        meter = make_meter("n")
+        user_id = "".join(
+            hashlib.sha256(str(i).encode()).hexdigest() for i in range(42)
+        )[:2680]
+        assert len(user_id.encode("utf-8")) == 2680
+
+        meter.set_period_config(
+            user_id=user_id,
+            event_type="e",
+            unit="u",
+            resource=None,
+            period_start=date(2025, 1, 1),
+            period_allocation=1000,
+        )
+        account_id = meter.cursor.execute(
+            """SELECT account_id
+               FROM meter.accounts
+               WHERE namespace = 'n' AND user_id = %s
+                 AND event_type = 'e' AND resource = '' AND unit = 'u'""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # account_id keeps period_openings below PostgreSQL's index-row limit
+        # when the account's natural key is near that limit.
+        period_start = date(2025, 2, 1)
+        meter.cursor.execute(
+            """INSERT INTO meter.period_openings
+                   (namespace, account_id, period_start, balance_after)
+               VALUES ('n', %s, %s, 1000)""",
+            (account_id, period_start),
+        )
+        assert meter.cursor.execute(
+            """SELECT balance_after
+               FROM meter.period_openings
+               WHERE namespace = 'n' AND account_id = %s
+                 AND period_start = %s""",
+            (account_id, period_start),
+        ).fetchone() == (1000,)
 
     def test_opens_period_adds_to_existing_balance(self, meter):
         """Open period adds allocation to existing balance (carry-over scenario)."""

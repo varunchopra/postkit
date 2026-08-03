@@ -87,24 +87,46 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 
 
 -- @function meter.drop_old_partitions
--- @brief Drop partitions older than retention period
+-- @brief Checkpoint balances and drop old ledger partitions (requires RLS bypass and READ COMMITTED)
 -- @param p_older_than_months Months to retain (default 24)
 -- @returns Names of dropped partitions
 -- @example SELECT * FROM meter.drop_old_partitions(12);
+-- @note A partition can contain every namespace, and checkpointing must see writers that commit after lock waits.
 CREATE FUNCTION meter.drop_old_partitions(
     p_older_than_months int DEFAULT 24
 )
 RETURNS SETOF text AS $$
 DECLARE
     v_cutoff date;
+    v_isolation text;
     v_partition RECORD;
     v_partition_end date;
+    v_accounts_locked boolean := false;
 BEGIN
     IF p_older_than_months < 1 THEN
         RAISE EXCEPTION 'older_than_months must be at least 1'
             USING ERRCODE = 'invalid_parameter_value',
                   HINT = 'postkit:meter:VAL_MONTHS_MIN';
     END IF;
+
+    IF NOT meter._rls_bypassed() THEN
+        RAISE EXCEPTION 'Dropping ledger partitions requires a role that bypasses RLS'
+            USING ERRCODE = 'insufficient_privilege',
+                  HINT = 'postkit:meter:BIZ_ALL_NAMESPACES_REQUIRES_BYPASS';
+    END IF;
+
+    v_isolation := current_setting('transaction_isolation');
+    IF v_isolation <> 'read committed' THEN
+        RAISE EXCEPTION 'drop_old_partitions requires READ COMMITTED isolation (current: %)',
+            v_isolation
+            USING ERRCODE = 'invalid_transaction_state',
+                  HINT = 'postkit:meter:BIZ_RETENTION_REQUIRES_READ_COMMITTED';
+    END IF;
+
+    -- Serialize before enumeration so two calls cannot checkpoint one partition.
+    PERFORM pg_advisory_xact_lock(
+        meter._hash64('meter.drop_old_partitions')
+    );
 
     v_cutoff := date_trunc('month', now())::date - (p_older_than_months || ' months')::interval;
 
@@ -126,6 +148,64 @@ BEGIN
         ) + interval '1 month';
 
         IF v_partition_end <= v_cutoff THEN
+            -- Standard balance mutations lock an account before inserting a
+            -- ledger row. Taking the table lock first waits for those writers;
+            -- at READ COMMITTED, the following statement gets a fresh snapshot
+            -- that includes their commits. The partition lock also excludes
+            -- direct inserts while it is summarized.
+            IF NOT v_accounts_locked THEN
+                LOCK TABLE meter.accounts IN EXCLUSIVE MODE;
+                v_accounts_locked := true;
+            END IF;
+            EXECUTE format(
+                'LOCK TABLE meter.%I IN ACCESS EXCLUSIVE MODE', v_partition.name
+            );
+
+            EXECUTE format(
+                $checkpoint$
+                WITH partition_totals AS (
+                    SELECT namespace, user_id, event_type, resource, unit,
+                           SUM(amount) AS amount
+                    FROM meter.%I
+                    WHERE user_id IS NOT NULL
+                    GROUP BY namespace, user_id, event_type, resource, unit
+                )
+                UPDATE meter.accounts a
+                SET ledger_checkpoint = a.ledger_checkpoint + p.amount
+                FROM partition_totals p
+                WHERE a.namespace = p.namespace
+                  AND a.user_id = p.user_id
+                  AND a.event_type = p.event_type
+                  AND a.resource = p.resource
+                  AND a.unit = p.unit
+                $checkpoint$,
+                v_partition.name
+            );
+
+            -- Nullable pool accounts use a separate equality-only join. Keeping
+            -- NULL handling out of the normal-account join avoids an O(accounts
+            -- x partition_accounts) join filter during large retention runs.
+            EXECUTE format(
+                $checkpoint$
+                WITH partition_totals AS (
+                    SELECT namespace, event_type, resource, unit,
+                           SUM(amount) AS amount
+                    FROM meter.%I
+                    WHERE user_id IS NULL
+                    GROUP BY namespace, event_type, resource, unit
+                )
+                UPDATE meter.accounts a
+                SET ledger_checkpoint = a.ledger_checkpoint + p.amount
+                FROM partition_totals p
+                WHERE a.namespace = p.namespace
+                  AND a.user_id IS NULL
+                  AND a.event_type = p.event_type
+                  AND a.resource = p.resource
+                  AND a.unit = p.unit
+                $checkpoint$,
+                v_partition.name
+            );
+
             EXECUTE format('DROP TABLE meter.%I', v_partition.name);
             RETURN NEXT v_partition.name;
         END IF;
@@ -135,7 +215,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = meter, pg_temp;
 
 
 -- @function meter.reconcile
--- @brief Verify account invariants: balance vs ledger sum, reserved vs active reservations
+-- @brief Verify account invariants against retained ledger history and active reservations
 -- @param p_namespace Tenant namespace
 -- @returns Accounts with discrepancies (issue_type: 'balance_mismatch' or 'reserved_mismatch')
 -- @example SELECT * FROM meter.reconcile();
@@ -153,7 +233,8 @@ RETURNS TABLE(
     discrepancy numeric
 ) AS $$
 BEGIN
-    -- Check invariant 1: account.balance = SUM(ledger.amount)
+    -- Check invariant 1:
+    -- account.balance = dropped-history checkpoint + SUM(retained ledger.amount)
     RETURN QUERY
     SELECT
         a.user_id,
@@ -161,9 +242,9 @@ BEGIN
         a.resource,
         a.unit,
         'balance_mismatch'::text AS issue_type,
-        COALESCE(l.total, 0) AS expected,
+        a.ledger_checkpoint + COALESCE(l.total, 0) AS expected,
         a.balance AS actual,
-        a.balance - COALESCE(l.total, 0) AS discrepancy
+        a.balance - (a.ledger_checkpoint + COALESCE(l.total, 0)) AS discrepancy
     FROM meter.accounts a
     LEFT JOIN (
         SELECT
@@ -178,7 +259,7 @@ BEGIN
         AND a.resource = l.resource
         AND a.unit = l.unit
     WHERE a.namespace = p_namespace
-      AND a.balance != COALESCE(l.total, 0);
+      AND a.balance != a.ledger_checkpoint + COALESCE(l.total, 0);
 
     -- Check invariant 2: account.reserved = SUM(active_reservations.amount)
     RETURN QUERY

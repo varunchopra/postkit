@@ -170,7 +170,7 @@ Not supported - meter module does not have audit events.
 
 The meter module uses a ledger-based design where all transactions are recorded in the ledger table. Use get_ledger() for transaction history instead.
 
-*Source: sdk/src/postkit/meter/client.py:653*
+*Source: sdk/src/postkit/meter/client.py:657*
 
 ---
 
@@ -249,7 +249,7 @@ Get namespace statistics.
 
 **Returns:** Dict with counts and totals
 
-*Source: sdk/src/postkit/meter/client.py:634*
+*Source: sdk/src/postkit/meter/client.py:638*
 
 ---
 
@@ -303,7 +303,7 @@ Adds the allocation to the current balance (which includes any carry-over from a
 
 The account must already exist (created via allocate() or set_period_config()). This is intentional: open_period is for recurring allocations, not initial account setup.
 
-NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key with allocate() if you need idempotent period allocations.
+Repeated calls for the same account and period_start return the first call's balance without allocating again. The retry's allocation is ignored, and the result may differ from the current balance. Use allocate() with a distinct idempotency_key to add credit.
 
 **Parameters:**
 - `user_id`: User ID
@@ -313,7 +313,7 @@ NOT IDEMPOTENT: Multiple calls add multiple allocations. Use idempotency_key wit
 - `period_start`: First day of the new period
 - `allocation`: Amount to allocate (uses period_allocation if None)
 
-**Returns:** New balance after allocation
+**Returns:** Balance returned by the first successful call.
 
 *Source: sdk/src/postkit/meter/client.py:536*
 
@@ -328,13 +328,14 @@ reconcile() -> list[dict]
 Check for discrepancies in account invariants.
 
 Checks two invariants:
-1. balance_mismatch: account.balance != SUM(ledger.amount)
-2. reserved_mismatch: account.reserved != SUM(active_reservations.amount)
+1. balance_mismatch: balance != ledger_checkpoint + SUM(retained ledger
+amounts).
+2. reserved_mismatch: reserved != SUM(active reservation amounts).
 
 **Returns:** List of dicts with 'user_id', 'event_type', 'resource', 'unit',
 'issue_type', 'expected', 'actual', 'discrepancy'
 
-*Source: sdk/src/postkit/meter/client.py:617*
+*Source: sdk/src/postkit/meter/client.py:620*
 
 ---
 
@@ -372,7 +373,7 @@ No ledger entries are created because reservations are holds on existing balance
 
 **Returns:** Count of reservations that were expired and released.
 
-*Source: sdk/src/postkit/meter/client.py:590*
+*Source: sdk/src/postkit/meter/client.py:593*
 
 ---
 
@@ -446,7 +447,7 @@ Period dates use the DATE type (not TIMESTAMP). Timezone handling is the caller'
 - `resource`: Optional resource identifier ('claude-sonnet', etc.)
 - `period_start`: First day of the billing period
 - `period_allocation`: Amount to allocate each period (must be positive)
-- `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over
+- `carry_over_limit`: Maximum unused balance to carry forward at period close. None means unlimited carry-over. Zero means strict expiration with no carry-over. Must not be negative
 
 *Source: sdk/src/postkit/meter/client.py:450*
 

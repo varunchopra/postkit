@@ -5,6 +5,8 @@ separate role to verify RLS policies work correctly, including
 tenant context recovery after commits and in autocommit mode.
 """
 
+from datetime import date
+
 import psycopg
 import pytest
 from postkit.meter import MeterClient
@@ -177,6 +179,51 @@ class TestMeterRowLevelSecurity:
         MeterClient(cursor, "rls_b")
         cursor.execute("SELECT * FROM meter.reservations WHERE namespace = 'rls_a'")
         assert cursor.fetchall() == []
+
+    def test_period_openings_rls_allows_owner_and_blocks_other_tenants(
+        self, rls_connection, db_connection
+    ):
+        su = db_connection.cursor()
+        tenant_a = MeterClient(su, "rls_a")
+        tenant_a.set_period_config(
+            "user1", "api_call", "count", None, date(2026, 7, 1), 1000
+        )
+        account_id = su.execute(
+            """SELECT account_id
+               FROM meter.accounts
+               WHERE namespace = 'rls_a'
+                 AND user_id = 'user1'
+                 AND event_type = 'api_call'
+                 AND resource = ''
+                 AND unit = 'count'"""
+        ).fetchone()[0]
+
+        cursor = rls_connection.cursor()
+        rls_tenant_a = MeterClient(cursor, "rls_a")
+        assert (
+            rls_tenant_a.open_period(
+                "user1", "api_call", "count", None, date(2026, 8, 1)
+            )
+            == 1000
+        )
+        cursor.execute(
+            """SELECT account_id, period_start, balance_after
+               FROM meter.period_openings
+               WHERE namespace = 'rls_a'"""
+        )
+        assert cursor.fetchall() == [(account_id, date(2026, 8, 1), 1000)]
+
+        MeterClient(cursor, "rls_b")
+        cursor.execute("SELECT * FROM meter.period_openings WHERE namespace = 'rls_a'")
+        assert cursor.fetchall() == []
+
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            cursor.execute(
+                """INSERT INTO meter.period_openings (
+                       namespace, account_id, period_start, balance_after
+                   ) VALUES ('rls_a', %s, %s, 1000)""",
+                (account_id, date(2026, 9, 1)),
+            )
 
     def test_ledger_partition_named_directly_returns_nothing(
         self, rls_connection, db_connection

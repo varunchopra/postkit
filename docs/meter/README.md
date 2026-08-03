@@ -30,17 +30,17 @@
 | Function | Description |
 |----------|-------------|
 | [`meter.create_partition`](sql.md#metercreate_partition) | Create a monthly partition for ledger |
-| [`meter.drop_old_partitions`](sql.md#meterdrop_old_partitions) | Drop partitions older than retention period |
+| [`meter.drop_old_partitions`](sql.md#meterdrop_old_partitions) | Checkpoint balances and drop old ledger partitions (requires RLS bypass and READ COMMITTED) |
 | [`meter.ensure_partitions`](sql.md#meterensure_partitions) | Create partitions for upcoming months |
 | [`meter.get_stats`](sql.md#meterget_stats) | Get namespace statistics |
-| [`meter.reconcile`](sql.md#meterreconcile) | Verify account invariants: balance vs ledger sum, reserved vs active reservations |
+| [`meter.reconcile`](sql.md#meterreconcile) | Verify account invariants against retained ledger history and active reservations |
 | [`meter.assert_rls_active`](sql.md#meterassert_rls_active) | Raise unless row-level security applies to the current role. |
 | [`meter.clear_actor`](sql.md#meterclear_actor) | Clear actor context |
 | [`meter.clear_tenant`](sql.md#meterclear_tenant) | Clear tenant context (fail-closed: queries return no rows). Call before returning pooled connections or when switching tenants. |
 | [`meter.set_actor`](sql.md#meterset_actor) | Set actor context for audit trail |
 | [`meter.set_tenant`](sql.md#meterset_tenant) | Set tenant context for RLS (transaction-local, clears on commit). Use BEGIN/COMMIT when autocommit is enabled. |
 | [`meter.close_period`](sql.md#meterclose_period) | Close a billing period, handle expiration and carry-over |
-| [`meter.open_period`](sql.md#meteropen_period) | Open a new billing period with fresh allocation |
+| [`meter.open_period`](sql.md#meteropen_period) | Idempotently open a new billing period with fresh allocation |
 | [`meter.release_expired_reservations`](sql.md#meterrelease_expired_reservations) | Mark expired reservations as 'expired' and release their holds. Distinct from 'released' to distinguish automatic expiry. No ledger entries. |
 | [`meter.set_period_config`](sql.md#meterset_period_config) | Configure period settings for an account |
 | [`meter.get_account`](sql.md#meterget_account) | Get full account details |
