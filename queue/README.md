@@ -13,29 +13,38 @@ See [installation instructions](../README.md#install) in the main README.
 ## Quick Start
 
 ```sql
--- Set tenant context
+-- Push a job transactionally with the application change that produced it.
+BEGIN;
 SELECT queue.set_tenant('acme');
-
--- Push a job
 SELECT queue.push('acme', 'email', '{"to": "alice@example.com", "subject": "Welcome"}');
 -- -> 1 (job ID)
+COMMIT;
 
--- Pull next job (locks it for processing)
+-- Pull in a short transaction and keep both the job ID and fence token.
+BEGIN;
+SELECT queue.set_tenant('acme');
 SELECT * FROM queue.pull('acme', 'email', p_worker_id := 'worker-1');
--- -> id: 1, queue: 'email', payload: {...}, attempts: 1, ...
+-- -> id: 1, fence_token: 41, payload: {...}, attempts: 1, ...
+COMMIT;
 
--- Success: acknowledge completion
-SELECT queue.ack('acme', 1);
+-- After successful processing, acknowledge that particular pull.
+BEGIN;
+SELECT queue.set_tenant('acme');
+SELECT queue.ack('acme', 1, 41);
 -- -> true
 
--- Failure: return to queue for retry
-SELECT queue.nack('acme', 1, p_error := 'SMTP timeout');
--- -> true (back to pending with exponential backoff)
+-- On temporary failure, run this instead of ack to schedule a retry:
+-- SELECT queue.nack('acme', 1, 41, p_error := 'SMTP timeout');
+-- -> true: returned to pending with backoff
+-- -> false: max_attempts was reached and the job was dead-lettered
 
--- Permanent failure: move to dead letter queue
-SELECT queue.fail('acme', 1, p_error := 'invalid recipient');
--- -> true
+-- On permanent failure, run this instead of ack to dead-letter the job:
+-- SELECT queue.fail('acme', 1, 41, p_error := 'invalid recipient');
+-- -> true: moved to the dead-letter queue
+COMMIT;
 ```
+
+Database-only handlers may pull, write their result, and acknowledge in one transaction so a rollback undoes all three. For email, HTTP calls, payments, or other external effects, commit the pull before processing and use a stable idempotency key. The fence protects queue state only; delivery remains at least once. If the pull commit outcome is unknown, discard that result, reconnect, and resume polling.
 
 ## Job States
 
@@ -48,7 +57,13 @@ Jobs move through four states:
 
 If a worker crashes, its job stays in running until the visibility timeout expires and the next `queue.tick_timeouts` call returns it to pending. Nothing reclaims jobs on its own: until that tick runs, the job is delayed, not lost. Schedule `tick_timeouts` from the same cron that runs `tick_schedules`.
 
-A claim commits or rolls back with the consumer's transaction, and so does the recovery path: after a rollback the job is pending again, and `nack` and `fail` accept it. The retry backoff comes from the committed attempt count, so the rolled-back attempt is granted back; `fail` dead-letters the job as usual. A pending job carries no lock fields, so nacking a job that was never pulled is indistinguishable from rollback recovery and reschedules quietly. Between a rollback and the recovery call another worker may re-pull the job; pass `p_worker_id` to `nack`/`fail` to refuse a job that is running under someone else.
+Each successful pull returns a `fence_token`. If a job times out and is pulled again, it keeps the same job ID but gets a new token. Operations that change a running job require that pull's token, so an earlier pull result cannot change a later attempt. Worker IDs are diagnostic only.
+
+If a transaction containing `pull` rolls back, the job is pending again and its attempt count is unchanged. Sequence values do not roll back, so discard the returned fence token and pull again; that token will never be issued to a later attempt.
+
+Operations on a missing or non-running job, or with an expired or superseded token, raise SQLSTATE `40001` with HINT `postkit:queue:FENCE_STALE`. Discard the token; retrying with it will fail again.
+
+Fence tokens are opaque and gaps are normal; never reset the sequence. Grant worker roles `USAGE`, but not `UPDATE`, on `queue.fence_token_seq`: `UPDATE` permits `setval()`, which can rewind the sequence and reuse an old token. Postkit does not issue deployment-specific grants.
 
 ## Schedules
 
@@ -105,11 +120,14 @@ SELECT * FROM queue.pull_any('acme', ARRAY['critical', 'default', 'bulk']);
 -- Pull a batch of jobs
 SELECT * FROM queue.pull_batch('acme', 'email', p_limit := 10);
 
--- Acknowledge a batch
-SELECT queue.ack_batch('acme', ARRAY[1, 2, 3]);
+-- Acknowledge a batch atomically with aligned fence tokens
+SELECT queue.ack_batch('acme', ARRAY[1, 2, 3], ARRAY[41, 42, 43]);
 
--- Extend processing time for a long-running job
-SELECT queue.extend_visibility('acme', 1, '10 minutes');
+-- Extend the deadline when processing will take longer than expected
+SELECT queue.extend_visibility('acme', 1, 41, '10 minutes');
+
+-- During shutdown, return an in-flight job immediately without backoff
+SELECT queue.release('acme', 1, 41);
 
 -- Namespace-wide stats
 SELECT * FROM queue.get_stats('acme');

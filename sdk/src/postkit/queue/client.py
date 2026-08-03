@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import timedelta
-from typing import Any
+from typing import Any, NoReturn
+
+import psycopg
 
 from postkit.base import BaseClient, PostkitError
 
@@ -17,26 +20,38 @@ class QueueValidationError(QueueError):
     """Raised when input validation fails."""
 
 
+class QueueFencingError(QueueError):
+    """The supplied token does not identify the current, unexpired attempt.
+
+    Raised when the job is missing or no longer running, the token belongs to a
+    different pull, or the visibility deadline has passed. Retrying with the same
+    token cannot succeed.
+    """
+
+
 class QueueClient(BaseClient):
     """Client for Postkit queue module.
 
-    Postgres-native job queues with multi-tenant support.
-    Jobs commit or rollback with your transaction.
+    Queue operations join an existing caller transaction, so a push, pull, or
+    acknowledgement can commit or roll back with surrounding database work. On
+    an idle connection, the SDK runs the operation in its own transaction.
 
     Example:
         queue = QueueClient(cursor, namespace="acme")
 
-        # Push a job
-        job_id = queue.push("email", {"to": "alice@example.com", "subject": "Hello"})
+        queue.push("email", {"to": "alice@example.com", "subject": "Hello"})
+        cursor.connection.commit()
 
-        # Pull and process
         job = queue.pull("email", worker_id="worker-1")
-        if job:
+        cursor.connection.commit()
+        if job is not None:
             try:
-                send_email(job["payload"])
-                queue.ack(job["id"])
-            except Exception as e:
-                queue.nack(job["id"], error=str(e))
+                send_email(job["payload"], idempotency_key=f"queue:{job['id']}")
+            except Exception as error:
+                queue.nack(job["id"], job["fence_token"], error=str(error))
+            else:
+                queue.ack(job["id"], job["fence_token"])
+            cursor.connection.commit()
     """
 
     _schema = "queue"
@@ -48,11 +63,20 @@ class QueueClient(BaseClient):
         "22026": QueueValidationError,  # string_data_length_mismatch
     }
 
+    def _handle_error(self, e: psycopg.Error) -> NoReturn:
+        # 40001 is shared with genuine serialization failures. Only the exact
+        # SQL contract hint identifies a stale queue fence.
+        sqlstate = getattr(e, "sqlstate", None)
+        hint = e.diag.message_hint if hasattr(e, "diag") and e.diag else None
+        if sqlstate == "40001" and hint == "postkit:queue:FENCE_STALE":
+            raise QueueFencingError(str(e), sqlstate, hint) from e
+        super()._handle_error(e)
+
     def __init__(self, cursor: Any, namespace: str) -> None:
         """Initialize the queue client.
 
         Args:
-            cursor: A DB-API 2.0 cursor (psycopg2, psycopg3, etc.)
+            cursor: A psycopg 3 cursor using the default tuple row factory
             namespace: Tenant namespace for multi-tenancy
         """
         super().__init__(cursor, namespace)
@@ -182,13 +206,21 @@ class QueueClient(BaseClient):
     ) -> dict[str, Any] | None:
         """Pull one job from a queue.
 
+        The job becomes running and receives a fence token that must accompany
+        later operations on this attempt. If no job is available, returns None.
+
+        Database-only work and settlement may share the pull transaction.
+        Before an external effect, confirm that the pull committed and use a stable
+        idempotency key. After a rollback or unknown commit outcome, discard the
+        result, reconnect, and poll again.
+
         Args:
             queue: Queue name
-            worker_id: Worker identifier (for debugging stuck jobs)
-            visibility_timeout: How long before job returns to queue if not ack'd
+            worker_id: Optional diagnostic worker identifier
+            visibility_timeout: How long before tick_timeouts may reclaim the job
 
         Returns:
-            Job dict with id, queue, payload, attempts, etc., or None if empty
+            Job dict with its payload, attempt count, and fence_token, or None
         """
         result = self._fetch_one(
             """SELECT * FROM queue.pull(
@@ -217,14 +249,22 @@ class QueueClient(BaseClient):
     ) -> list[dict[str, Any]]:
         """Pull multiple jobs from a queue.
 
+        Pulls up to limit jobs in one operation. Each returned job has its own
+        fence token for later operations on that attempt.
+
+        Database-only work and settlement may share the pull transaction.
+        Before external effects, confirm that the pull committed and use stable
+        idempotency keys. After a rollback or unknown commit outcome, discard the
+        results, reconnect, and poll again.
+
         Args:
             queue: Queue name
             limit: Maximum jobs to pull
-            worker_id: Worker identifier
-            visibility_timeout: How long before jobs return to queue
+            worker_id: Optional diagnostic worker identifier
+            visibility_timeout: How long before tick_timeouts may reclaim the jobs
 
         Returns:
-            List of job dicts
+            Job dicts with payloads, attempt counts, and distinct fence_token values
         """
         result = self._fetch_all(
             """SELECT * FROM queue.pull_batch(
@@ -252,15 +292,23 @@ class QueueClient(BaseClient):
         worker_id: str | None = None,
         visibility_timeout: timedelta | None = None,
     ) -> dict[str, Any] | None:
-        """Pull one job from multiple queues (priority order).
+        """Pull one job from the first available queue in priority order.
+
+        The job becomes running and receives a fence token that must accompany
+        later operations on this attempt.
+
+        Database-only work and settlement may share the pull transaction.
+        Before an external effect, confirm that the pull committed and use a stable
+        idempotency key. After a rollback or unknown commit outcome, discard the
+        result, reconnect, and poll again.
 
         Args:
             queues: Queue names in priority order (first checked first)
-            worker_id: Worker identifier
-            visibility_timeout: How long before job returns to queue
+            worker_id: Optional diagnostic worker identifier
+            visibility_timeout: How long before tick_timeouts may reclaim the job
 
         Returns:
-            Job dict from first queue with available job, or None
+            Job dict including fence_token, or None if every queue is empty
 
         Example:
             job = queue.pull_any(["critical", "default", "bulk"])
@@ -285,26 +333,34 @@ class QueueClient(BaseClient):
     def extend_visibility(
         self,
         job_id: int,
+        fence: int,
         extension: timedelta,
     ) -> bool:
         """Extend the visibility timeout of a running job.
 
+        Use this when processing will outlast the current deadline. The extension
+        is added to that deadline, not to the current time. Raises QueueFencingError
+        when the supplied token no longer identifies the current, unexpired attempt.
+
         Args:
             job_id: Job ID
-            extension: How much time to add
+            fence: Fence token returned by pull
+            extension: Amount of time to add to the current visibility timeout
 
         Returns:
-            True if extended, False if job not found or not running
+            True if extended
         """
         result = self._fetch_val(
             """SELECT queue.extend_visibility(
                 p_namespace := %s,
                 p_job_id := %s,
+                p_fence := %s,
                 p_extension := %s
             )""",
             (
                 self.namespace,
                 job_id,
+                fence,
                 extension,
             ),
             write=True,
@@ -315,43 +371,54 @@ class QueueClient(BaseClient):
     # Completion Operations
     # =========================================================================
 
-    def ack(self, job_id: int, *, worker_id: str | None = None) -> bool:
+    def ack(self, job_id: int, fence: int) -> bool:
         """Acknowledge successful job completion.
+
+        The job is deleted or retained as completed according to the queue's
+        archive_completed setting. Raises QueueFencingError when the supplied token
+        no longer identifies the current, unexpired attempt.
 
         Args:
             job_id: Job ID
-            worker_id: If set, refuse a job re-pulled under a different worker
+            fence: Fence token returned by pull
 
         Returns:
-            True if acknowledged, False if job not found, not running, or
-            running under a different worker than worker_id
+            True if acknowledged
         """
         result = self._fetch_val(
             """SELECT queue.ack(
                 p_namespace := %s,
                 p_job_id := %s,
-                p_worker_id := %s
+                p_fence := %s
             )""",
-            (self.namespace, job_id, worker_id),
+            (self.namespace, job_id, fence),
             write=True,
         )
         return bool(result)
 
-    def ack_batch(self, job_ids: list[int]) -> int:
-        """Acknowledge multiple jobs as completed.
+    def ack_batch(self, jobs: Sequence[tuple[int, int]]) -> int:
+        """Acknowledge multiple jobs atomically.
+
+        Every member is validated before any job changes. A missing or non-running
+        job, an expired attempt, or a token from another pull raises
+        QueueFencingError and leaves the batch unchanged. An empty sequence returns
+        zero; duplicate job IDs are rejected.
 
         Args:
-            job_ids: List of job IDs
+            jobs: Sequence of (job_id, fence) pairs
 
         Returns:
             Count of jobs acknowledged
         """
+        job_ids = [job_id for job_id, _ in jobs]
+        fences = [fence for _, fence in jobs]
         result = self._fetch_val(
             """SELECT queue.ack_batch(
                 p_namespace := %s,
-                p_job_ids := %s
+                p_job_ids := %s::bigint[],
+                p_fences := %s::bigint[]
             )""",
-            (self.namespace, job_ids),
+            (self.namespace, job_ids, fences),
             write=True,
         )
         return int(result) if result is not None else 0
@@ -359,44 +426,40 @@ class QueueClient(BaseClient):
     def nack(
         self,
         job_id: int,
+        fence: int,
         *,
         error: str | None = None,
         backoff: timedelta | None = None,
-        worker_id: str | None = None,
     ) -> bool:
-        """Return job to queue for retry (temporary failure).
+        """Schedule another attempt, or dead-letter the job when none remain.
 
-        Valid on running jobs and on pending jobs whose claim was rolled
-        back with the consumer's transaction.
+        The error is stored for diagnosis. A custom backoff overrides the queue's
+        exponential delay. Raises QueueFencingError when the supplied token no longer
+        identifies the current, unexpired attempt.
 
         Args:
             job_id: Job ID
+            fence: Fence token returned by pull
             error: Error message (stored for debugging)
             backoff: Custom backoff delay (default: exponential)
-            worker_id: If set, refuse jobs running under a different worker
 
         Returns:
-            True if returned to queue, False if max attempts exceeded (moved to DLQ)
-
-        Raises:
-            QueueValidationError: If job is settled (completed or dead), or
-                running under a different worker than worker_id
-            QueueError: If job does not exist
+            True if returned to the queue, False if moved to the dead-letter queue
         """
         result = self._fetch_val(
             """SELECT queue.nack(
                 p_namespace := %s,
                 p_job_id := %s,
+                p_fence := %s,
                 p_error := %s,
-                p_backoff := %s,
-                p_worker_id := %s
+                p_backoff := %s
             )""",
             (
                 self.namespace,
                 job_id,
+                fence,
                 error,
                 backoff,
-                worker_id,
             ),
             write=True,
         )
@@ -405,37 +468,63 @@ class QueueClient(BaseClient):
     def fail(
         self,
         job_id: int,
+        fence: int,
         *,
         error: str | None = None,
-        worker_id: str | None = None,
     ) -> bool:
-        """Move job to dead letter queue (permanent failure).
+        """Move a job directly to the dead-letter queue without retrying.
 
-        Valid on running jobs and on pending jobs whose claim was rolled
-        back with the consumer's transaction.
+        Use this for failures that another attempt cannot fix, such as an invalid
+        payload. Raises QueueFencingError when the supplied token no longer identifies
+        the current, unexpired attempt.
 
         Args:
             job_id: Job ID
+            fence: Fence token returned by pull
             error: Error message
-            worker_id: If set, refuse jobs running under a different worker
 
         Returns:
-            True if moved to DLQ, False if job settled, missing, or owned
-            by another worker
+            True if moved to the dead-letter queue
         """
         result = self._fetch_val(
             """SELECT queue.fail(
                 p_namespace := %s,
                 p_job_id := %s,
-                p_error := %s,
-                p_worker_id := %s
+                p_fence := %s,
+                p_error := %s
             )""",
             (
                 self.namespace,
                 job_id,
+                fence,
                 error,
-                worker_id,
             ),
+            write=True,
+        )
+        return bool(result)
+
+    def release(self, job_id: int, fence: int) -> bool:
+        """Return a running job to pending immediately, without backoff.
+
+        Release preserves the attempt count and affects only the supplied pull.
+        During graceful shutdown, release each in-flight job instead of waiting
+        for timeout recovery. Raises QueueFencingError when the supplied token no
+        longer identifies the current, unexpired attempt.
+
+        Args:
+            job_id: Job ID
+            fence: Fence token returned by pull
+
+        Returns:
+            True if released
+        """
+        result = self._fetch_val(
+            """SELECT queue.release(
+                p_namespace := %s,
+                p_job_id := %s,
+                p_fence := %s
+            )""",
+            (self.namespace, job_id, fence),
             write=True,
         )
         return bool(result)
@@ -443,9 +532,8 @@ class QueueClient(BaseClient):
     def cancel(self, job_id: int) -> bool:
         """Cancel a pending job by deleting it.
 
-        Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd,
-        or failed. Cancelled jobs are deleted - they were never processed, so
-        there is no completion state to retain.
+        Running jobs must instead be acknowledged, returned for retry, failed, or
+        released. Cancelled jobs are not archived because they were never processed.
 
         Args:
             job_id: Job ID
@@ -463,33 +551,12 @@ class QueueClient(BaseClient):
         )
         return bool(result)
 
-    def release_jobs(self, worker_id: str) -> int:
-        """Release all jobs held by a worker, returning them to pending.
-
-        Call during graceful shutdown so jobs are immediately re-deliverable
-        instead of waiting for visibility timeout expiry.
-
-        Args:
-            worker_id: Worker identifier (as passed to pull)
-
-        Returns:
-            Count of jobs released
-        """
-        result = self._fetch_val(
-            """SELECT queue.release_jobs(
-                p_namespace := %s,
-                p_worker_id := %s
-            )""",
-            (self.namespace, worker_id),
-            write=True,
-        )
-        return int(result) if result is not None else 0
-
     def purge_queue(self, queue: str) -> int:
         """Delete all pending jobs from a queue.
 
-        Only deletes pending jobs. Running jobs are held by workers - use
-        release_jobs to return them first, or wait for visibility timeout.
+        Running, completed, and dead jobs are not affected. Release running jobs
+        individually, or wait for timeout recovery, before purging if they should
+        also be removed.
 
         Args:
             queue: Queue name

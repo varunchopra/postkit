@@ -355,9 +355,14 @@ def extract_sql_docs(sql_dir: Path, root: Path) -> ExtractionResult:
     """Extract documentation from SQL files using pglast parser."""
     docs: list[FunctionDoc] = []
     all_public: list[str] = []
+    overviews: list[str] = []
 
     for sql_file in sorted(sql_dir.glob("*.sql")):
         content = sql_file.read_text()
+
+        overview = _extract_tag(content, "overview")
+        if overview:
+            overviews.append(overview)
 
         # Extract @group from file header
         group_match = re.search(r"--\s*@group\s+(.+)", content)
@@ -453,7 +458,11 @@ def extract_sql_docs(sql_dir: Path, root: Path) -> ExtractionResult:
     docs.sort(key=lambda d: d.name)
     all_public.sort()
 
-    return ExtractionResult(functions=docs, all_public_functions=all_public)
+    return ExtractionResult(
+        functions=docs,
+        all_public_functions=all_public,
+        overview="\n\n".join(overviews),
+    )
 
 
 def _extract_doc_blocks(content: str) -> dict[str, str]:

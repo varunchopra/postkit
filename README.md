@@ -103,9 +103,11 @@ presence.heartbeat("worker-7")            # every 10-60s while running
 deaths = presence.sweep()                 # from a cron: who went silent?
 
 # queue: job scheduling
-queue.push("email", {"to": "alice@example.com", "subject": "Welcome"})
-job = queue.pull("email", worker_id="worker-1")
-queue.ack(job["id"])
+queue.push("reindex", {"document_id": 42})
+job = queue.pull("reindex", worker_id="worker-1")
+if job is not None:
+    # Apply database changes, then acknowledge in the same transaction.
+    queue.ack(job["id"], job["fence_token"])
 
 # memory: durable agent memory (pgvector)
 memory.set_dimension(1536)                 # once, after install

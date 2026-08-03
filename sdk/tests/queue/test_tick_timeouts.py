@@ -59,7 +59,7 @@ class TestTickTimeouts:
         assert row[0] == 1
 
     def test_clears_lock_fields(self, queue):
-        """Reclaimed job has NULL locked_by, locked_at, visibility_timeout_at."""
+        """Reclamation clears the worker, lock timestamps, and fence token."""
         job = self._make_stuck_job(queue)
 
         results = queue.tick_timeouts()
@@ -67,7 +67,7 @@ class TestTickTimeouts:
         assert results[0]["job_id"] == job["id"]
 
         queue.cursor.execute(
-            "SELECT locked_by, locked_at, visibility_timeout_at "
+            "SELECT locked_by, locked_at, visibility_timeout_at, fence_token "
             "FROM queue.jobs WHERE namespace = %s AND id = %s",
             (queue.namespace, job["id"]),
         )
@@ -75,6 +75,7 @@ class TestTickTimeouts:
         assert row[0] is None  # locked_by
         assert row[1] is None  # locked_at
         assert row[2] is None  # visibility_timeout_at
+        assert row[3] is None  # fence_token
 
     def test_does_not_reclaim_unexpired_job(self, queue):
         """Running jobs whose timeout has not expired are left alone."""
@@ -108,17 +109,18 @@ class TestTickTimeouts:
         assert results[0]["stuck_duration"] is not None
         assert results[0]["stuck_duration"] > timedelta(0)
 
-    def test_reclaimed_job_is_pullable(self, queue):
-        """After tick_timeouts, the job can be pulled again."""
+    def test_reclaimed_job_is_pullable_with_new_fence(self, queue):
+        """After tick_timeouts, the job can be pulled with a new fence token."""
         job = self._make_stuck_job(queue)
 
         queue.tick_timeouts()
 
-        repulled = queue.pull("tasks")
-        assert repulled is not None
-        assert repulled["id"] == job["id"]
-        # attempts=2: 1 from first pull + 1 from this pull.
-        assert repulled["attempts"] == 2
+        reclaimed = queue.pull("tasks")
+        assert reclaimed is not None
+        assert reclaimed["id"] == job["id"]
+        assert reclaimed["fence_token"] != job["fence_token"]
+        # attempts=2: 1 from each pull.
+        assert reclaimed["attempts"] == 2
 
     def test_empty_result_when_no_stuck_jobs(self, queue):
         """Returns empty list when no jobs have expired timeouts."""

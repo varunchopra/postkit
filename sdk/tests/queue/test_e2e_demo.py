@@ -74,14 +74,14 @@ class FoodFlow:
 
         return {"order_job": order_job, "delivery_job": delivery_job}
 
-    def complete_order(self, job_id, order_id, amount):
+    def complete_order(self, job_id, fence, order_id, amount):
         """Complete an order: acknowledge it and push a billing job.
 
         Composes an ack and a push into a single business operation.
         The ack removes the order from the kitchen display, and the billing
         job triggers receipt/invoice generation.
         """
-        self.queue.ack(job_id)
+        self.queue.ack(job_id, fence)
 
         billing_job = self.queue.push(
             "billing",
@@ -136,12 +136,14 @@ class TestOrderProcessing:
         # 3. Complete and invoice
         # Chef finishes the thali. complete_order acks it and creates
         # a billing job for receipt generation.
-        billing_id = app.complete_order(first["id"], "ORD-102", 450)
+        billing_id = app.complete_order(
+            first["id"], first["fence_token"], "ORD-102", 450
+        )
 
         billing = queue.pull("billing", worker_id="pdf-worker-1")
         assert billing["id"] == billing_id
         assert billing["payload"]["amount"] == 450
-        queue.ack(billing["id"])
+        queue.ack(billing["id"], billing["fence_token"])
 
         # 4. Transient failure
         # Kitchen display tablet goes offline while showing the biryani
@@ -149,7 +151,9 @@ class TestOrderProcessing:
         second = queue.pull("orders", worker_id="kitchen-display-1")
         assert second["payload"]["order_id"] == "ORD-101"
 
-        returned = queue.nack(second["id"], error="display offline")
+        returned = queue.nack(
+            second["id"], second["fence_token"], error="display offline"
+        )
         assert returned is True  # Job returned to queue, not moved to DLQ.
 
         # 5. Permanent failure
@@ -158,7 +162,11 @@ class TestOrderProcessing:
         app.place_order("ORD-103", ["pav bhaji"], order_type="dine_in", table="T-5")
         bad_order = queue.pull("orders", worker_id="kitchen-display-2")
 
-        assert queue.fail(bad_order["id"], error="pav bhaji unavailable tonight")
+        assert queue.fail(
+            bad_order["id"],
+            bad_order["fence_token"],
+            error="pav bhaji unavailable tonight",
+        )
 
         # 6. Batch dispatch
         # Evening rush: multiple delivery orders are ready for riders.
@@ -174,7 +182,9 @@ class TestOrderProcessing:
         riders = queue.pull_batch("delivery", 10, worker_id="dispatch-svc")
         assert len(riders) == 4  # 1 from step 1 + 3 new.
 
-        dispatched = queue.ack_batch([j["id"] for j in riders])
+        dispatched = queue.ack_batch(
+            [(job["id"], job["fence_token"]) for job in riders]
+        )
         assert dispatched == 4
 
         # 7. Deduplication
@@ -204,7 +214,11 @@ class TestOrderProcessing:
 
         # Pull and fail one order to populate the dead letter queue.
         job = queue.pull("orders", worker_id="kitchen-display-1")
-        assert queue.fail(job["id"], error="kitchen closed unexpectedly")
+        assert queue.fail(
+            job["id"],
+            job["fence_token"],
+            error="kitchen closed unexpectedly",
+        )
 
         stats = queue.get_queue_stats()
         by_queue = {s["queue"]: s for s in stats}
@@ -234,24 +248,27 @@ class TestOrderProcessing:
         # Another display picks it up. The order wasn't lost.
         recovered = queue.pull("orders", worker_id="kitchen-display-4")
         assert recovered["id"] == stuck["id"]
-        queue.ack(recovered["id"])
+        queue.ack(recovered["id"], recovered["fence_token"])
 
         # 3. Graceful shutdown
         # Restaurant closes for the night. Two orders are still being
-        # displayed. release_jobs returns them to pending for the next shift.
+        # displayed. Release the jobs individually so the morning shift need
+        # not wait for the visibility timeout; worker ID is diagnostic only.
         app.place_order("ORD-303", ["samosa"], order_type="dine_in")
         app.place_order("ORD-304", ["pakora"], order_type="dine_in")
-        queue.pull("orders", worker_id="kitchen-display-1")
-        queue.pull("orders", worker_id="kitchen-display-1")
+        closing_jobs = [
+            queue.pull("orders", worker_id="kitchen-display-1"),
+            queue.pull("orders", worker_id="kitchen-display-1"),
+        ]
 
-        released = queue.release_jobs("kitchen-display-1")
-        assert released == 2
+        for closing_job in closing_jobs:
+            queue.release(closing_job["id"], closing_job["fence_token"])
 
         # Morning shift pulls them.
         for _ in range(2):
             job = queue.pull("orders", worker_id="kitchen-display-morning")
             assert job is not None
-            queue.ack(job["id"])
+            queue.ack(job["id"], job["fence_token"])
 
         # 4. Dead letter triage
         # Payment gateway was down overnight. Three delivery orders failed
@@ -259,7 +276,11 @@ class TestOrderProcessing:
         for order_id in ("ORD-401", "ORD-402", "ORD-403"):
             app.place_order(order_id, ["late night biryani"], order_type="delivery")
             job = queue.pull("orders", worker_id="kitchen-display-1")
-            queue.fail(job["id"], error="payment gateway timeout")
+            queue.fail(
+                job["id"],
+                job["fence_token"],
+                error="payment gateway timeout",
+            )
 
         # Morning ops checks the damage. (ORD-301 from step 1 + 3 new = 4.)
         stats = queue.get_queue_stats(queue="orders")
@@ -277,7 +298,7 @@ class TestOrderProcessing:
 
         retried = queue.pull("orders", worker_id="kitchen-display-1")
         assert retried["id"] == new_job_id
-        queue.ack(retried["id"])
+        queue.ack(retried["id"], retried["fence_token"])
 
         # Gateway is back. Bulk retry the remaining three.
         results = queue.retry_dead_letters("orders")
@@ -286,7 +307,7 @@ class TestOrderProcessing:
         for _ in results:
             job = queue.pull("orders", worker_id="kitchen-display-1")
             assert job is not None
-            queue.ack(job["id"])
+            queue.ack(job["id"], job["fence_token"])
 
         # 5. Cleanup
         # Dead letters accumulate over time. Purge entries older than 30 days
@@ -294,7 +315,7 @@ class TestOrderProcessing:
         for order_id in ("ORD-501", "ORD-502", "ORD-503"):
             app.place_order(order_id, ["old order"], order_type="dine_in")
             job = queue.pull("orders", worker_id="kitchen-display-1")
-            queue.fail(job["id"], error="historic failure")
+            queue.fail(job["id"], job["fence_token"], error="historic failure")
 
         # Backdate to simulate month-old failures.
         queue.cursor.execute(
@@ -317,7 +338,7 @@ class TestOrderProcessing:
         # Actor context tracks who authorized the action and why.
         queue.push("orders", {"order_id": "ORD-500", "items": ["dal makhani"]})
         job = queue.pull("orders", worker_id="kitchen-display-1")
-        queue.fail(job["id"], error="system error")
+        queue.fail(job["id"], job["fence_token"], error="system error")
 
         queue.cursor.execute(
             "SELECT id FROM queue.dead_letters "
@@ -356,8 +377,10 @@ class TestOrderProcessing:
         assert del_job["payload"]["order_id"] == "DEL-001"
 
         # Stats are scoped per tenant.
-        mumbai.ack(mum_job["id"])
-        delhi.fail(del_job["id"], error="kitchen closed")
+        mumbai.ack(mum_job["id"], mum_job["fence_token"])
+        assert delhi.fail(
+            del_job["id"], del_job["fence_token"], error="kitchen closed"
+        )
 
         mum_stats = mumbai.get_stats()
         del_stats = delhi.get_stats()

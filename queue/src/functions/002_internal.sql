@@ -99,19 +99,66 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
 
 
+-- @function queue._lock_current_attempt
+-- @brief Lock and return the running attempt identified by a fence token.
+-- @param p_namespace Tenant namespace
+-- @param p_job_id Job ID
+-- @param p_fence Fence token returned by pull
+-- @returns The locked job and the wall-clock time at which it was checked
+-- Fence and timeout checks happen after the row lock is acquired. A caller
+-- that waited for the lock therefore cannot act on a fence that expired while
+-- it was waiting.
+CREATE OR REPLACE FUNCTION queue._lock_current_attempt(
+    p_namespace text,
+    p_job_id bigint,
+    p_fence bigint
+)
+RETURNS TABLE(job queue.jobs, checked_at timestamptz) AS $$
+DECLARE
+    v_job queue.jobs;
+    v_found boolean;
+    v_checked_at timestamptz;
+BEGIN
+    SELECT j.* INTO v_job
+    FROM queue.jobs j
+    WHERE j.namespace = p_namespace
+      AND j.id = p_job_id
+    FOR UPDATE;
+
+    v_found := FOUND;
+    v_checked_at := clock_timestamp();
+
+    IF NOT v_found
+       OR v_job.status != 'running'
+       OR v_job.fence_token IS DISTINCT FROM p_fence
+       OR v_job.visibility_timeout_at IS NULL
+       OR v_job.visibility_timeout_at <= v_checked_at THEN
+        RAISE EXCEPTION 'Queue job fence is no longer valid'
+            USING ERRCODE = '40001',
+                  HINT = 'postkit:queue:FENCE_STALE';
+    END IF;
+
+    job := v_job;
+    checked_at := v_checked_at;
+    RETURN NEXT;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
 -- @function queue._move_to_dead_letter
--- @brief Move an already-locked job to the dead letter queue.
+-- @brief Move an already-locked job to the dead-letter queue.
 -- @param p_job The job record (caller must hold FOR UPDATE lock)
 -- @param p_error Error message for the dead letter entry
--- Called by nack (when max attempts exceeded) and fail. Caller is
--- responsible for locking the row; this function does no SELECT.
+-- @param p_checked_at Time at which the job's fence was checked
+-- Called by nack after the final attempt and by fail. The caller must have
+-- locked and fence-checked p_job; this function does not select the row again.
 CREATE OR REPLACE FUNCTION queue._move_to_dead_letter(
     p_job queue.jobs,
-    p_error text
+    p_error text,
+    p_checked_at timestamptz
 )
 RETURNS void AS $$
 BEGIN
-    -- Insert into dead letters
     INSERT INTO queue.dead_letters (
         namespace,
         queue,
@@ -123,6 +170,7 @@ BEGIN
         attempts,
         max_attempts,
         last_error,
+        failed_at,
         actor_id,
         request_id,
         on_behalf_of,
@@ -139,13 +187,13 @@ BEGIN
         p_job.attempts,
         p_job.max_attempts,
         COALESCE(p_error, p_job.error),
+        p_checked_at,
         p_job.actor_id,
         p_job.request_id,
         p_job.on_behalf_of,
         p_job.reason
     );
 
-    -- Mark job as dead
     UPDATE queue.jobs
     SET
         status = 'dead',
@@ -153,10 +201,12 @@ BEGIN
         locked_by = NULL,
         locked_at = NULL,
         visibility_timeout_at = NULL,
-        completed_at = now(),
-        updated_at = now()
+        fence_token = NULL,
+        completed_at = p_checked_at,
+        updated_at = p_checked_at
     WHERE id = p_job.id
       AND namespace = p_job.namespace
-      AND status IN ('pending', 'running');
+      AND status = 'running'
+      AND fence_token = p_job.fence_token;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;

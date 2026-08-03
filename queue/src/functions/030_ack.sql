@@ -1,65 +1,60 @@
+-- @overview Operations on a running job require the current, unexpired
+-- `fence_token` returned by `pull`. If the job is missing or no longer running,
+-- or if the token has expired or been superseded, the function raises SQLSTATE
+-- `40001` with HINT `postkit:queue:FENCE_STALE`. `ack_batch` validates the whole
+-- batch before changing any job.
 -- @group Completion
 
 -- @function queue.ack
 -- @brief Acknowledge successful job completion.
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
--- @param p_worker_id Optional worker identity; refuses jobs running under another worker
--- @returns True if acknowledged, false if job not found, not running, or owned by another worker
+-- @param p_fence Fence token returned by pull
+-- @returns True when acknowledged
 --
--- Job is either deleted or marked completed (based on archive_completed config).
---
--- After a visibility-timeout redelivery the job can be re-pulled by another
--- worker. Pass p_worker_id so a late ack from the timed-out worker does not
--- settle the successor's attempt; with NULL the caller is trusted and settles
--- whoever holds it. A wrong-owner ack returns false rather than raising,
--- consistent with ack's existing not-running return.
+-- The job is marked completed when archive_completed is enabled and deleted
+-- otherwise. Missing or non-running jobs and expired or superseded tokens raise
+-- FENCE_STALE rather than settling a later pull of the same job.
 CREATE OR REPLACE FUNCTION queue.ack(
     p_namespace text,
     p_job_id bigint,
-    p_worker_id text DEFAULT NULL
+    p_fence bigint
 )
 RETURNS boolean AS $$
 DECLARE
     v_config queue.config;
+    v_checked_at timestamptz;
     v_updated int;
 BEGIN
-    -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
-
-    IF p_job_id IS NULL THEN
-        RAISE EXCEPTION 'Job ID cannot be null'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:queue:VAL_JOB_ID_NULL';
-    END IF;
-
-    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._validate_job_id(p_job_id);
+    PERFORM queue._validate_fence(p_fence);
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-    -- Get config for archive setting
+    SELECT c.checked_at INTO v_checked_at
+    FROM queue._lock_current_attempt(p_namespace, p_job_id, p_fence) AS c;
+
     v_config := queue._get_config(p_namespace);
 
     IF v_config.archive_completed THEN
-        -- Mark as completed (keep for history)
         UPDATE queue.jobs
-        SET
-            status = 'completed',
+        SET status = 'completed',
             locked_by = NULL,
             locked_at = NULL,
             visibility_timeout_at = NULL,
-            completed_at = now(),
-            updated_at = now()
+            completed_at = v_checked_at,
+            updated_at = v_checked_at,
+            fence_token = NULL
         WHERE namespace = p_namespace
           AND id = p_job_id
           AND status = 'running'
-          AND (p_worker_id IS NULL OR locked_by IS NOT DISTINCT FROM p_worker_id);
+          AND fence_token = p_fence;
     ELSE
-        -- Delete the job
         DELETE FROM queue.jobs
         WHERE namespace = p_namespace
           AND id = p_job_id
           AND status = 'running'
-          AND (p_worker_id IS NULL OR locked_by IS NOT DISTINCT FROM p_worker_id);
+          AND fence_token = p_fence;
     END IF;
 
     GET DIAGNOSTICS v_updated = ROW_COUNT;
@@ -69,52 +64,122 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 
 
 -- @function queue.ack_batch
--- @brief Acknowledge multiple jobs as completed.
+-- @brief Acknowledge multiple jobs atomically.
 -- @param p_namespace Tenant namespace
--- @param p_job_ids Array of job IDs
--- @returns Count of jobs acknowledged
+-- @param p_job_ids Job IDs; must not contain NULLs or duplicates
+-- @param p_fences Fence tokens in the same order and number as p_job_ids; must not contain NULLs
+-- @returns Number acknowledged; zero when both arrays are NULL or both are empty
+--
+-- Jobs are locked in ascending ID order to avoid deadlocks. After every lock
+-- is held, one wall-clock timestamp validates the whole batch. If any job is
+-- missing, no longer running, expired, or has the wrong fence, the call raises
+-- FENCE_STALE and acknowledges none of them.
+--
+-- Two NULL arrays, or two empty arrays, return zero. Otherwise the arrays must
+-- both be non-NULL, have equal lengths, contain no NULL elements, and name each
+-- job ID at most once.
 CREATE OR REPLACE FUNCTION queue.ack_batch(
     p_namespace text,
-    p_job_ids bigint[]
+    p_job_ids bigint[],
+    p_fences bigint[]
 )
 RETURNS int AS $$
 DECLARE
+    v_locked_job queue.jobs;
+    v_locked_count int := 0;
+    v_requested_count int;
+    v_checked_at timestamptz;
     v_config queue.config;
     v_count int;
 BEGIN
-    -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
 
-    IF p_job_ids IS NULL OR array_length(p_job_ids, 1) IS NULL THEN
+    IF p_job_ids IS NULL AND p_fences IS NULL THEN
         RETURN 0;
     END IF;
-    PERFORM queue._validate_batch_size(cardinality(p_job_ids), 'job_ids');
 
-    -- Warn if namespace mismatch with RLS context
+    IF p_job_ids IS NULL OR p_fences IS NULL
+       OR cardinality(p_job_ids) != cardinality(p_fences) THEN
+        RAISE EXCEPTION 'Job IDs and fences must have equal lengths'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_ACK_BATCH_LENGTH';
+    END IF;
+
+    v_requested_count := cardinality(p_job_ids);
+    PERFORM queue._validate_batch_size(v_requested_count, 'job_ids');
+
+    IF v_requested_count = 0 THEN
+        RETURN 0;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM unnest(p_job_ids) AS item(value) WHERE value IS NULL) THEN
+        PERFORM queue._validate_job_id(NULL::bigint);
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM unnest(p_fences) AS item(value) WHERE value IS NULL) THEN
+        PERFORM queue._validate_fence(NULL::bigint);
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM unnest(p_job_ids) AS requested(job_id)
+        GROUP BY requested.job_id
+        HAVING count(*) > 1
+    ) THEN
+        RAISE EXCEPTION 'Job IDs cannot contain duplicates'
+            USING ERRCODE = 'invalid_parameter_value',
+                  HINT = 'postkit:queue:VAL_ACK_BATCH_DUPLICATE_JOB';
+    END IF;
+
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-    -- Get config for archive setting
+    FOR v_locked_job IN
+        SELECT j.*
+        FROM queue.jobs j
+        WHERE j.namespace = p_namespace
+          AND j.id = ANY(p_job_ids)
+        ORDER BY j.id
+        FOR UPDATE
+    LOOP
+        v_locked_count := v_locked_count + 1;
+    END LOOP;
+
+    v_checked_at := clock_timestamp();
+
+    IF v_locked_count != v_requested_count OR EXISTS (
+        SELECT 1
+        FROM unnest(p_job_ids, p_fences)
+            AS requested(job_id, fence)
+        JOIN queue.jobs j
+          ON j.namespace = p_namespace
+         AND j.id = requested.job_id
+        WHERE j.status != 'running'
+           OR j.fence_token IS DISTINCT FROM requested.fence
+           OR j.visibility_timeout_at IS NULL
+           OR j.visibility_timeout_at <= v_checked_at
+    ) THEN
+        RAISE EXCEPTION 'One or more queue job fences are no longer valid'
+            USING ERRCODE = '40001',
+                  HINT = 'postkit:queue:FENCE_STALE';
+    END IF;
+
     v_config := queue._get_config(p_namespace);
 
     IF v_config.archive_completed THEN
-        -- Mark as completed (keep for history)
         UPDATE queue.jobs
-        SET
-            status = 'completed',
+        SET status = 'completed',
             locked_by = NULL,
             locked_at = NULL,
             visibility_timeout_at = NULL,
-            completed_at = now(),
-            updated_at = now()
+            completed_at = v_checked_at,
+            updated_at = v_checked_at,
+            fence_token = NULL
         WHERE namespace = p_namespace
-          AND id = ANY(p_job_ids)
-          AND status = 'running';
+          AND id = ANY(p_job_ids);
     ELSE
-        -- Delete the jobs
         DELETE FROM queue.jobs
         WHERE namespace = p_namespace
-          AND id = ANY(p_job_ids)
-          AND status = 'running';
+          AND id = ANY(p_job_ids);
     END IF;
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
@@ -124,109 +189,66 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 
 
 -- @function queue.nack
--- @brief Return job to queue for retry (temporary failure).
+-- @brief Schedule another attempt with backoff, or dead-letter the job when none remain.
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
--- @param p_error Error message (stored for debugging)
--- @param p_backoff Optional custom backoff delay (default: exponential)
--- @param p_worker_id Optional worker identity; refuses jobs running under another worker
--- @returns True if returned to queue, false if max attempts exceeded (moved to DLQ)
+-- @param p_fence Fence token returned by pull
+-- @param p_error Error message stored for debugging
+-- @param p_backoff Optional custom delay; defaults to exponential backoff
+-- @returns True when returned to pending, false when moved to the dead-letter queue
 --
--- If max_attempts is exceeded, automatically moves to dead letter queue.
---
--- A pending job is a valid target: a consumer that rolled back its
--- transaction lost the claim, but its intent to retry stands. The backoff
--- comes from the committed attempt count, so an attempt whose pull rolled
--- back is granted back. A pending job carries no lock fields, so a nack of
--- a job that was never pulled is indistinguishable from rollback recovery
--- and reschedules quietly. Completed and dead jobs are settled and raise.
---
--- Between a rollback and the recovery call, another worker may re-pull the
--- job, and that attempt owns its fate. Pass p_worker_id to refuse such
--- jobs (BIZ_JOB_NOT_YOURS); with NULL the caller is trusted and may
--- release another worker's claim.
+-- A custom p_backoff overrides the exponential delay calculated from the
+-- attempt count. Once max_attempts is reached, the job moves to the
+-- dead-letter queue instead and the function returns false. Only the current,
+-- unexpired fence can schedule the job for another attempt.
 CREATE OR REPLACE FUNCTION queue.nack(
     p_namespace text,
     p_job_id bigint,
+    p_fence bigint,
     p_error text DEFAULT NULL,
-    p_backoff interval DEFAULT NULL,
-    p_worker_id text DEFAULT NULL
+    p_backoff interval DEFAULT NULL
 )
 RETURNS boolean AS $$
 DECLARE
+    v_locked record;
     v_job queue.jobs;
+    v_checked_at timestamptz;
     v_delay interval;
 BEGIN
-    -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
-
-    IF p_job_id IS NULL THEN
-        RAISE EXCEPTION 'Job ID cannot be null'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:queue:VAL_JOB_ID_NULL';
-    END IF;
-
-    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._validate_job_id(p_job_id);
+    PERFORM queue._validate_fence(p_fence);
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-    -- Lock the row to prevent concurrent ack/nack/fail from racing.
-    SELECT * INTO v_job
-    FROM queue.jobs
-    WHERE namespace = p_namespace
-      AND id = p_job_id
-      AND status IN ('pending', 'running')
-    FOR UPDATE;
+    SELECT c.job, c.checked_at INTO v_locked
+    FROM queue._lock_current_attempt(p_namespace, p_job_id, p_fence) AS c;
+    v_job := v_locked.job;
+    v_checked_at := v_locked.checked_at;
 
-    IF NOT FOUND THEN
-        -- Job settled or missing - check if it exists at all
-        IF EXISTS (SELECT 1 FROM queue.jobs WHERE namespace = p_namespace AND id = p_job_id) THEN
-            RAISE EXCEPTION 'Job % is already settled', p_job_id
-                USING ERRCODE = 'invalid_parameter_value',
-                      HINT = 'postkit:queue:BIZ_JOB_NOT_RUNNING';
-        ELSE
-            RAISE EXCEPTION 'Job % not found', p_job_id
-                USING ERRCODE = 'no_data_found',
-                      HINT = 'postkit:queue:DATA_JOB_NOT_FOUND';
-        END IF;
-    END IF;
-
-    IF p_worker_id IS NOT NULL AND v_job.status = 'running'
-       AND v_job.locked_by IS DISTINCT FROM p_worker_id THEN
-        RAISE EXCEPTION 'Job % is running under worker %, not %',
-            p_job_id, v_job.locked_by, p_worker_id
-            USING ERRCODE = 'invalid_parameter_value',
-                  HINT = 'postkit:queue:BIZ_JOB_NOT_YOURS';
-    END IF;
-
-    -- Check if max attempts exceeded
     IF v_job.attempts >= v_job.max_attempts THEN
-        -- Move to dead letter queue (row already locked, use internal helper)
-        PERFORM queue._move_to_dead_letter(v_job, p_error);
+        PERFORM queue._move_to_dead_letter(v_job, p_error, v_checked_at);
         RETURN false;
     END IF;
 
-    -- Calculate backoff
     IF p_backoff IS NOT NULL THEN
         v_delay := p_backoff;
     ELSE
         v_delay := queue._calculate_backoff(v_job.attempts);
     END IF;
 
-    -- Return job to pending with backoff. The status predicate is defense
-    -- in depth: the FOR UPDATE above re-checks status after any lock wait,
-    -- so a job settled by a concurrent call never reaches this UPDATE.
     UPDATE queue.jobs
-    SET
-        status = 'pending',
+    SET status = 'pending',
         error = p_error,
-        scheduled_at = now() + v_delay,
+        scheduled_at = v_checked_at + v_delay,
         locked_by = NULL,
         locked_at = NULL,
         visibility_timeout_at = NULL,
-        updated_at = now()
+        updated_at = v_checked_at,
+        fence_token = NULL
     WHERE namespace = p_namespace
       AND id = p_job_id
-      AND status IN ('pending', 'running');
+      AND status = 'running'
+      AND fence_token = p_fence;
 
     RETURN true;
 END;
@@ -234,63 +256,86 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 
 
 -- @function queue.fail
--- @brief Move job to dead letter queue (permanent failure).
+-- @brief Move a running job directly to the dead-letter queue.
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
+-- @param p_fence Fence token returned by pull
 -- @param p_error Error message
--- @param p_worker_id Optional worker identity; refuses jobs running under another worker
--- @returns True if moved to DLQ, false if job settled, missing, or owned by another worker
+-- @returns True when moved to the dead-letter queue
 --
--- Use when a job cannot be retried (invalid data, business logic failure, etc).
---
--- A pending job is a valid target: a consumer that rolled back its
--- transaction can still dead-letter a poison job. Pass p_worker_id to
--- refuse jobs another worker has since re-pulled; refusal returns false,
--- matching fail's silent cleanup character.
+-- Use for errors that should not be retried, such as an invalid payload or a
+-- permanent business-rule failure. Only the current, unexpired fence can fail
+-- the job.
 CREATE OR REPLACE FUNCTION queue.fail(
     p_namespace text,
     p_job_id bigint,
-    p_error text DEFAULT NULL,
-    p_worker_id text DEFAULT NULL
+    p_fence bigint,
+    p_error text DEFAULT NULL
 )
 RETURNS boolean AS $$
 DECLARE
+    v_locked record;
     v_job queue.jobs;
+    v_checked_at timestamptz;
 BEGIN
-    -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
-
-    IF p_job_id IS NULL THEN
-        RAISE EXCEPTION 'Job ID cannot be null'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:queue:VAL_JOB_ID_NULL';
-    END IF;
-
-    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._validate_job_id(p_job_id);
+    PERFORM queue._validate_fence(p_fence);
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
-    -- Lock the row to prevent concurrent fail/nack from racing.
-    SELECT * INTO v_job
-    FROM queue.jobs
+    SELECT c.job, c.checked_at INTO v_locked
+    FROM queue._lock_current_attempt(p_namespace, p_job_id, p_fence) AS c;
+    v_job := v_locked.job;
+    v_checked_at := v_locked.checked_at;
+
+    PERFORM queue._move_to_dead_letter(v_job, p_error, v_checked_at);
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue.release
+-- @brief Return a running job to the queue immediately.
+-- @param p_namespace Tenant namespace
+-- @param p_job_id Job ID
+-- @param p_fence Fence token returned by pull
+-- @returns True when released
+--
+-- Release applies no retry backoff and preserves the attempt count. The job is
+-- immediately available for another pull. During graceful shutdown, release
+-- each in-flight job instead of waiting for timeout recovery.
+CREATE OR REPLACE FUNCTION queue.release(
+    p_namespace text,
+    p_job_id bigint,
+    p_fence bigint
+)
+RETURNS boolean AS $$
+DECLARE
+    v_checked_at timestamptz;
+    v_updated int;
+BEGIN
+    PERFORM queue._validate_namespace(p_namespace);
+    PERFORM queue._validate_job_id(p_job_id);
+    PERFORM queue._validate_fence(p_fence);
+    PERFORM queue._warn_namespace_mismatch(p_namespace);
+
+    SELECT c.checked_at INTO v_checked_at
+    FROM queue._lock_current_attempt(p_namespace, p_job_id, p_fence) AS c;
+
+    UPDATE queue.jobs
+    SET status = 'pending',
+        locked_by = NULL,
+        locked_at = NULL,
+        visibility_timeout_at = NULL,
+        updated_at = v_checked_at,
+        fence_token = NULL
     WHERE namespace = p_namespace
       AND id = p_job_id
-      AND status IN ('pending', 'running')
-    FOR UPDATE;
+      AND status = 'running'
+      AND fence_token = p_fence;
 
-    IF NOT FOUND THEN
-        -- Intentionally silent. nack() raises because a retry on a settled
-        -- job is a caller bug, but fail() is a cleanup call where the caller
-        -- does not care why the job was not there to fail.
-        RETURN false;
-    END IF;
-
-    IF p_worker_id IS NOT NULL AND v_job.status = 'running'
-       AND v_job.locked_by IS DISTINCT FROM p_worker_id THEN
-        RETURN false;
-    END IF;
-
-    PERFORM queue._move_to_dead_letter(v_job, p_error);
-    RETURN true;
+    GET DIAGNOSTICS v_updated = ROW_COUNT;
+    RETURN v_updated > 0;
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 
@@ -299,11 +344,11 @@ $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 -- @brief Cancel a pending job by deleting it.
 -- @param p_namespace Tenant namespace
 -- @param p_job_id Job ID
--- @returns True if cancelled, false if job not found or not pending
+-- @returns True if cancelled, false if the job was not pending
 --
--- Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd,
--- or failed. Cancelled jobs are deleted (not archived) because they were
--- never processed - there is no completion state to retain.
+-- Only pending jobs can be cancelled. Running jobs must be acknowledged,
+-- returned for retry, failed, or released with their fence. Cancelled jobs are
+-- deleted rather than archived because they were never processed.
 CREATE OR REPLACE FUNCTION queue.cancel(
     p_namespace text,
     p_job_id bigint
@@ -312,16 +357,8 @@ RETURNS boolean AS $$
 DECLARE
     v_deleted int;
 BEGIN
-    -- Validate inputs
     PERFORM queue._validate_namespace(p_namespace);
-
-    IF p_job_id IS NULL THEN
-        RAISE EXCEPTION 'Job ID cannot be null'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:queue:VAL_JOB_ID_NULL';
-    END IF;
-
-    -- Warn if namespace mismatch with RLS context
+    PERFORM queue._validate_job_id(p_job_id);
     PERFORM queue._warn_namespace_mismatch(p_namespace);
 
     DELETE FROM queue.jobs
@@ -335,62 +372,15 @@ END;
 $$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
 
 
--- @function queue.release_jobs
--- @brief Release all jobs held by a worker, returning them to pending.
--- @param p_namespace Tenant namespace
--- @param p_worker_id Worker identifier (as passed to pull)
--- @returns Count of jobs released
---
--- Call during graceful shutdown so jobs are immediately re-deliverable
--- instead of waiting for visibility timeout expiry. Clears lock fields
--- per jobs_locked_consistency; preserves attempt count (consistent with
--- tick_timeouts behavior).
-CREATE OR REPLACE FUNCTION queue.release_jobs(
-    p_namespace text,
-    p_worker_id text
-)
-RETURNS int AS $$
-DECLARE
-    v_count int;
-BEGIN
-    -- Validate inputs
-    PERFORM queue._validate_namespace(p_namespace);
-
-    IF p_worker_id IS NULL THEN
-        RAISE EXCEPTION 'Worker ID cannot be null'
-            USING ERRCODE = 'null_value_not_allowed',
-                  HINT = 'postkit:queue:VAL_WORKER_ID_NULL';
-    END IF;
-
-    -- Warn if namespace mismatch with RLS context
-    PERFORM queue._warn_namespace_mismatch(p_namespace);
-
-    UPDATE queue.jobs
-    SET
-        status = 'pending',
-        locked_by = NULL,
-        locked_at = NULL,
-        visibility_timeout_at = NULL,
-        updated_at = now()
-    WHERE namespace = p_namespace
-      AND locked_by = p_worker_id
-      AND status = 'running';
-
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-    RETURN v_count;
-END;
-$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = queue, pg_temp;
-
-
 -- @function queue.purge_queue
 -- @brief Delete all pending jobs from a queue.
 -- @param p_namespace Tenant namespace
 -- @param p_queue Queue name
 -- @returns Count of deleted jobs
 --
--- Only deletes pending jobs. Running jobs are held by workers - use
--- release_jobs to return them first, or wait for visibility timeout.
--- Completed and dead jobs are historical and not affected.
+-- Running, completed, and dead jobs are not affected. Release running jobs
+-- individually, or wait for timeout recovery, before purging if they should
+-- also be removed.
 CREATE OR REPLACE FUNCTION queue.purge_queue(
     p_namespace text,
     p_queue text

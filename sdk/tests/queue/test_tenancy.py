@@ -1,8 +1,7 @@
 """Tests for multi-tenancy isolation in the queue module."""
 
 import pytest
-from postkit.errors import QueueErrorCode
-from postkit.queue import QueueError
+from postkit.queue import QueueFencingError
 
 
 class TestNamespaceIsolation:
@@ -23,7 +22,7 @@ class TestNamespaceIsolation:
         job = tenant_a.pull("email")
         assert job is not None
         assert job["payload"]["to"] == "alice@example.com"
-        tenant_a.ack(job["id"])
+        tenant_a.ack(job["id"], job["fence_token"])
 
     def test_stats_scoped_to_namespace(self, make_queue):
         """get_stats() only counts the calling tenant's jobs."""
@@ -51,32 +50,31 @@ class TestNamespaceIsolation:
         assert job_b is not None
 
         # Tenant A tries to ack tenant B's job ID
-        result = tenant_a.ack(job_b["id"])
-        assert result is False
+        with pytest.raises(QueueFencingError):
+            tenant_a.ack(job_b["id"], job_b["fence_token"])
 
         # Tenant B's job is still running
         b_stats = tenant_b.get_stats()
         assert b_stats["running"] == 1
 
-        tenant_b.ack(job_b["id"])
+        tenant_b.ack(job_b["id"], job_b["fence_token"])
 
-    def test_release_jobs_does_not_affect_other_tenants(self, make_queue):
-        """Tenant A cannot release jobs held by tenant B's workers."""
+    def test_release_does_not_affect_other_tenants(self, make_queue):
+        """Tenant A cannot release tenant B's running job."""
         tenant_a = make_queue("iso_release_a")
         tenant_b = make_queue("iso_release_b")
 
         tenant_b.push("tasks", {"task": "b_job"})
-        tenant_b.pull("tasks", worker_id="worker-1")
+        job_b = tenant_b.pull("tasks", worker_id="worker-1")
 
-        # Tenant A tries to release worker-1's jobs.
-        count = tenant_a.release_jobs("worker-1")
-        assert count == 0
+        with pytest.raises(QueueFencingError):
+            tenant_a.release(job_b["id"], job_b["fence_token"])
 
         # Tenant B's job is still running.
         b_stats = tenant_b.get_stats()
         assert b_stats["running"] == 1
 
-        tenant_b.release_jobs("worker-1")
+        tenant_b.release(job_b["id"], job_b["fence_token"])
 
     def test_empty_namespace_returns_no_rows(self, make_queue):
         """A tenant with no jobs gets empty results from all operations."""
@@ -101,16 +99,15 @@ class TestNamespaceIsolation:
         job_b = tenant_b.pull("tasks")
         assert job_b is not None
 
-        # Tenant A tries to nack tenant B's job - appears as nonexistent
-        with pytest.raises(QueueError) as exc_info:
-            tenant_a.nack(job_b["id"])
-        assert exc_info.value.error_code == QueueErrorCode.DATA_JOB_NOT_FOUND
+        # Tenant A tries to nack tenant B's job.
+        with pytest.raises(QueueFencingError):
+            tenant_a.nack(job_b["id"], job_b["fence_token"])
 
         # Tenant B's job is unaffected
         b_stats = tenant_b.get_stats()
         assert b_stats["running"] == 1
 
-        tenant_b.ack(job_b["id"])
+        tenant_b.ack(job_b["id"], job_b["fence_token"])
 
     def test_fail_does_not_affect_other_tenants_job(self, make_queue):
         """Tenant A cannot fail a job belonging to tenant B."""
@@ -122,15 +119,15 @@ class TestNamespaceIsolation:
         assert job_b is not None
 
         # Tenant A tries to fail tenant B's job
-        result = tenant_a.fail(job_b["id"])
-        assert result is False
+        with pytest.raises(QueueFencingError):
+            tenant_a.fail(job_b["id"], job_b["fence_token"])
 
         # Tenant B's job is still running (not moved to DLQ)
         b_stats = tenant_b.get_stats()
         assert b_stats["running"] == 1
         assert b_stats["dead"] == 0
 
-        tenant_b.ack(job_b["id"])
+        tenant_b.ack(job_b["id"], job_b["fence_token"])
 
     def test_cancel_does_not_affect_other_tenants_job(self, make_queue):
         """Tenant A cannot cancel a pending job belonging to tenant B."""
@@ -167,4 +164,4 @@ class TestNamespaceIsolation:
         job = tenant_b.pull("tasks")
         assert job is not None
         assert job["payload"] == {"task": "b_job"}
-        tenant_b.ack(job["id"])
+        tenant_b.ack(job["id"], job["fence_token"])

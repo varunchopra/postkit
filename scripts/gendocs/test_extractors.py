@@ -6,6 +6,7 @@ from gendocs.extractors import (
     _extract_tag,
     _parse_docstring,
     extract_python_docs,
+    extract_sql_docs,
 )
 
 
@@ -384,3 +385,24 @@ def test_extract_python_docs_skips_private_classes(tmp_path):
     result = extract_python_docs(module, tmp_path)
     assert result.all_public_functions == ["get"]
     assert [f.name for f in result.functions] == ["get"]
+
+
+def test_extract_sql_docs_collects_module_overview(tmp_path):
+    """A module overview is kept separate from per-function documentation."""
+    functions = tmp_path / "queue" / "src" / "functions"
+    functions.mkdir(parents=True)
+    (functions / "010_api.sql").write_text(
+        "-- @overview Shared contract for every function.\n"
+        "-- Additional operational detail.\n"
+        "-- @group Jobs\n"
+        "-- @function queue.work\n"
+        "-- @brief Do work.\n"
+        "CREATE FUNCTION queue.work() RETURNS void LANGUAGE sql AS 'SELECT';\n"
+    )
+
+    result = extract_sql_docs(functions, tmp_path)
+
+    assert result.overview == (
+        "Shared contract for every function. Additional operational detail."
+    )
+    assert [function.name for function in result.functions] == ["queue.work"]

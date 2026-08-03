@@ -164,6 +164,37 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
 
+
+-- @function queue._validate_job_id
+-- @brief Require a non-null job ID.
+-- @param p_value Job ID to validate
+CREATE OR REPLACE FUNCTION queue._validate_job_id(p_value bigint)
+RETURNS void AS $$
+BEGIN
+    IF p_value IS NULL THEN
+        RAISE EXCEPTION 'Job ID cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:queue:VAL_JOB_ID_NULL';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
+-- @function queue._validate_fence
+-- @brief Require a non-null fence token.
+-- @param p_value Fence token returned by pull
+CREATE OR REPLACE FUNCTION queue._validate_fence(p_value bigint)
+RETURNS void AS $$
+BEGIN
+    IF p_value IS NULL THEN
+        RAISE EXCEPTION 'Fence token cannot be null'
+            USING ERRCODE = 'null_value_not_allowed',
+                  HINT = 'postkit:queue:VAL_FENCE_NULL';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path = queue, pg_temp;
+
+
 CREATE OR REPLACE FUNCTION queue._validate_limit(p_value int, p_name text, p_max int)
 RETURNS void AS $$
 BEGIN

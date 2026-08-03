@@ -37,3 +37,4 @@ class ExtractionResult:
 
     functions: list[FunctionDoc]
     all_public_functions: list[str]
+    overview: str = ""

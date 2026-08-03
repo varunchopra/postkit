@@ -72,7 +72,7 @@ class TestPush:
         assert job["metadata"] == {"source": "signup"}
         assert job["unique_key"] == "email:alice:welcome"
 
-        queue.ack(job["id"])
+        queue.ack(job["id"], job["fence_token"])
 
 
 class TestPushDeduplication:
@@ -109,7 +109,7 @@ class TestPushDeduplication:
         # Push and complete first job
         queue.push("sync", {"user": 1}, unique_key="sync:user:1")
         job = queue.pull("sync")
-        queue.ack(job["id"])
+        queue.ack(job["id"], job["fence_token"])
 
         # Same unique_key should work now
         job_id2 = queue.push("sync", {"user": 1}, unique_key="sync:user:1")
@@ -160,7 +160,7 @@ class TestPushBatch:
             assert job["tags"] == ["critical"]
 
         for job in jobs:
-            queue.ack(job["id"])
+            queue.ack(job["id"], job["fence_token"])
 
 
 class TestPushValidation:

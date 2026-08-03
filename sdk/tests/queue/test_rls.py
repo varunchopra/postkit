@@ -181,7 +181,7 @@ class TestQueueRowLevelSecurity:
         q = QueueClient(su, "rls_a")
         q.push("tasks", {"data": "test"})
         job = q.pull("tasks")
-        q.fail(job["id"], error="test failure")
+        q.fail(job["id"], job["fence_token"], error="test failure")
 
         cursor = rls_connection.cursor()
         QueueClient(cursor, "rls_b")

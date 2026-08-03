@@ -2,12 +2,14 @@
 
 # Queue SQL API
 
+Operations on a running job require the current, unexpired `fence_token` returned by `pull`. If the job is missing or no longer running, or if the token has expired or been superseded, the function raises SQLSTATE `40001` with HINT `postkit:queue:FENCE_STALE`. `ack_batch` validates the whole batch before changing any job.
+
 ## Completion
 
 ### queue.ack
 
 ```sql
-queue.ack(p_namespace: text, p_job_id: int8, p_worker_id: text) -> bool
+queue.ack(p_namespace: text, p_job_id: int8, p_fence: int8) -> bool
 ```
 
 Acknowledge successful job completion.
@@ -15,29 +17,30 @@ Acknowledge successful job completion.
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
-- `p_worker_id`: Optional worker identity; refuses jobs running under another worker
+- `p_fence`: Fence token returned by pull
 
-**Returns:** True if acknowledged, false if job not found, not running, or owned by another worker
+**Returns:** True when acknowledged
 
-*Source: queue/src/functions/030_ack.sql:17*
+*Source: queue/src/functions/030_ack.sql:18*
 
 ---
 
 ### queue.ack_batch
 
 ```sql
-queue.ack_batch(p_namespace: text, p_job_ids: int8[]) -> int4
+queue.ack_batch(p_namespace: text, p_job_ids: int8[], p_fences: int8[]) -> int4
 ```
 
-Acknowledge multiple jobs as completed.
+Acknowledge multiple jobs atomically.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
-- `p_job_ids`: Array of job IDs
+- `p_job_ids`: Job IDs; must not contain NULLs or duplicates
+- `p_fences`: Fence tokens in the same order and number as p_job_ids; must not contain NULLs
 
-**Returns:** Count of jobs acknowledged
+**Returns:** Number acknowledged; zero when both arrays are NULL or both are empty
 
-*Source: queue/src/functions/030_ack.sql:76*
+*Source: queue/src/functions/030_ack.sql:81*
 
 ---
 
@@ -53,50 +56,50 @@ Cancel a pending job by deleting it.
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
 
-**Returns:** True if cancelled, false if job not found or not pending
+**Returns:** True if cancelled, false if the job was not pending
 
-*Source: queue/src/functions/030_ack.sql:307*
+*Source: queue/src/functions/030_ack.sql:352*
 
 ---
 
 ### queue.fail
 
 ```sql
-queue.fail(p_namespace: text, p_job_id: int8, p_error: text, p_worker_id: text) -> bool
+queue.fail(p_namespace: text, p_job_id: int8, p_fence: int8, p_error: text) -> bool
 ```
 
-Move job to dead letter queue (permanent failure).
+Move a running job directly to the dead-letter queue.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
+- `p_fence`: Fence token returned by pull
 - `p_error`: Error message
-- `p_worker_id`: Optional worker identity; refuses jobs running under another worker
 
-**Returns:** True if moved to DLQ, false if job settled, missing, or owned by another worker
+**Returns:** True when moved to the dead-letter queue
 
-*Source: queue/src/functions/030_ack.sql:250*
+*Source: queue/src/functions/030_ack.sql:269*
 
 ---
 
 ### queue.nack
 
 ```sql
-queue.nack(p_namespace: text, p_job_id: int8, p_error: text, p_backoff: interval, p_worker_id: text) -> bool
+queue.nack(p_namespace: text, p_job_id: int8, p_fence: int8, p_error: text, p_backoff: interval) -> bool
 ```
 
-Return job to queue for retry (temporary failure).
+Schedule another attempt with backoff, or dead-letter the job when none remain.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
-- `p_error`: Error message (stored for debugging)
-- `p_backoff`: Optional custom backoff delay (default: exponential)
-- `p_worker_id`: Optional worker identity; refuses jobs running under another worker
+- `p_fence`: Fence token returned by pull
+- `p_error`: Error message stored for debugging
+- `p_backoff`: Optional custom delay; defaults to exponential backoff
 
-**Returns:** True if returned to queue, false if max attempts exceeded (moved to DLQ)
+**Returns:** True when returned to pending, false when moved to the dead-letter queue
 
-*Source: queue/src/functions/030_ack.sql:148*
+*Source: queue/src/functions/030_ack.sql:204*
 
 ---
 
@@ -114,25 +117,26 @@ Delete all pending jobs from a queue.
 
 **Returns:** Count of deleted jobs
 
-*Source: queue/src/functions/030_ack.sql:394*
+*Source: queue/src/functions/030_ack.sql:384*
 
 ---
 
-### queue.release_jobs
+### queue.release
 
 ```sql
-queue.release_jobs(p_namespace: text, p_worker_id: text) -> int4
+queue.release(p_namespace: text, p_job_id: int8, p_fence: int8) -> bool
 ```
 
-Release all jobs held by a worker, returning them to pending.
+Return a running job to the queue immediately.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
-- `p_worker_id`: Worker identifier (as passed to pull)
+- `p_job_id`: Job ID
+- `p_fence`: Fence token returned by pull
 
-**Returns:** Count of jobs released
+**Returns:** True when released
 
-*Source: queue/src/functions/030_ack.sql:348*
+*Source: queue/src/functions/030_ack.sql:307*
 
 ---
 
@@ -301,7 +305,7 @@ SELECT queue.channel_name('default', 'emails');
 ### queue.extend_visibility
 
 ```sql
-queue.extend_visibility(p_namespace: text, p_job_id: int8, p_extension: interval) -> bool
+queue.extend_visibility(p_namespace: text, p_job_id: int8, p_fence: int8, p_extension: interval) -> bool
 ```
 
 Extend the visibility timeout of a running job.
@@ -309,11 +313,12 @@ Extend the visibility timeout of a running job.
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_job_id`: Job ID
-- `p_extension`: How much time to add
+- `p_fence`: Fence token returned by pull
+- `p_extension`: Amount of time to add to the current deadline
 
-**Returns:** True if extended, false if job not found or not running
+**Returns:** True when extended
 
-*Source: queue/src/functions/020_pull.sql:208*
+*Source: queue/src/functions/020_pull.sql:241*
 
 ---
 
@@ -323,17 +328,17 @@ Extend the visibility timeout of a running job.
 queue.pull(p_namespace: text, p_queue: text, p_worker_id: text, p_visibility_timeout: interval) -> setof queue.jobs
 ```
 
-Pull one job from a queue.
+Pull one available job and return its fence token.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_queue`: Queue name
-- `p_worker_id`: Worker identifier (for debugging stuck jobs)
-- `p_visibility_timeout`: How long before job returns to queue if not ack'd
+- `p_worker_id`: Optional diagnostic worker identifier
+- `p_visibility_timeout`: How long before tick_timeouts may reclaim the job
 
-**Returns:** Job record, or NULL if queue is empty
+**Returns:** Job record including fence_token, or no row if the queue is empty
 
-*Source: queue/src/functions/020_pull.sql:13*
+*Source: queue/src/functions/020_pull.sql:16*
 
 ---
 
@@ -343,17 +348,17 @@ Pull one job from a queue.
 queue.pull_any(p_namespace: text, p_queues: text[], p_worker_id: text, p_visibility_timeout: interval) -> setof queue.jobs
 ```
 
-Pull one job from multiple queues (priority order).
+Pull one job from the first queue with available work.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_queues`: Queue names in priority order (first queue checked first)
-- `p_worker_id`: Worker identifier
-- `p_visibility_timeout`: How long before job returns to queue
+- `p_worker_id`: Optional diagnostic worker identifier
+- `p_visibility_timeout`: How long before tick_timeouts may reclaim the job
 
-**Returns:** Job record from first queue with available job, or NULL
+**Returns:** Job record including fence_token from the first available queue, or no row
 
-*Source: queue/src/functions/020_pull.sql:137*
+*Source: queue/src/functions/020_pull.sql:161*
 
 ---
 
@@ -363,18 +368,18 @@ Pull one job from multiple queues (priority order).
 queue.pull_batch(p_namespace: text, p_queue: text, p_limit: int4, p_worker_id: text, p_visibility_timeout: interval) -> setof queue.jobs
 ```
 
-Pull multiple jobs from a queue.
+Pull up to a limit of available jobs in one operation.
 
 **Parameters:**
 - `p_namespace`: Tenant namespace
 - `p_queue`: Queue name
 - `p_limit`: Maximum jobs to pull
-- `p_worker_id`: Worker identifier (for debugging stuck jobs)
-- `p_visibility_timeout`: How long before jobs return to queue if not ack'd
+- `p_worker_id`: Optional diagnostic worker identifier
+- `p_visibility_timeout`: How long before tick_timeouts may reclaim the jobs
 
-**Returns:** Set of job records
+**Returns:** Job records including fence_token
 
-*Source: queue/src/functions/020_pull.sql:74*
+*Source: queue/src/functions/020_pull.sql:84*
 
 ---
 

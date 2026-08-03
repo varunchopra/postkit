@@ -89,7 +89,7 @@ def _run_worker(conn, namespace, *, crash: bool):
         conn.rollback()  # crash before ack: nothing committed
         return None
 
-    queue.ack(job["id"], worker_id="consolidator-1")
+    assert queue.ack(job["id"], job["fence_token"]) is True
     conn.commit()
     return result
 

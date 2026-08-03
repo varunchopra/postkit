@@ -30,12 +30,19 @@
 
 CREATE SCHEMA IF NOT EXISTS queue;
 
+-- Generates a distinct identity for each running attempt. nextval() does not
+-- roll back, so a token from a rolled-back pull cannot be issued again.
+CREATE SEQUENCE queue.fence_token_seq
+    AS bigint
+    NO CYCLE
+    OWNED BY NONE;
+
 -- =============================================================================
 -- JOBS TABLE
 -- =============================================================================
 -- Main job storage. Status transitions:
 --   pending -> running -> completed (success)
---   pending -> running -> pending (nack/timeout, retry)
+--   pending -> running -> pending (nack, release, or timeout)
 --   pending -> running -> dead (max attempts exceeded or explicit fail)
 
 CREATE TABLE queue.jobs (
@@ -81,13 +88,24 @@ CREATE TABLE queue.jobs (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
 
+    -- Identity of the current running attempt
+    fence_token bigint,                        -- Token returned by the current pull
+
     -- Constraints
     CONSTRAINT jobs_status_valid CHECK (
         status IN ('pending', 'running', 'completed', 'dead')
     ),
     CONSTRAINT jobs_locked_consistency CHECK (
-        (status = 'running' AND locked_by IS NOT NULL AND locked_at IS NOT NULL AND visibility_timeout_at IS NOT NULL)
-        OR (status != 'running' AND locked_by IS NULL AND locked_at IS NULL AND visibility_timeout_at IS NULL)
+        (status = 'running'
+            AND locked_by IS NOT NULL
+            AND locked_at IS NOT NULL
+            AND visibility_timeout_at IS NOT NULL
+            AND fence_token IS NOT NULL)
+        OR (status != 'running'
+            AND locked_by IS NULL
+            AND locked_at IS NULL
+            AND visibility_timeout_at IS NULL
+            AND fence_token IS NULL)
     ),
     CONSTRAINT jobs_completed_consistency CHECK (
         (status IN ('completed', 'dead') AND completed_at IS NOT NULL)

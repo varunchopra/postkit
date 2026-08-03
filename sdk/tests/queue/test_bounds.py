@@ -7,7 +7,10 @@ def test_every_bounded_queue_api_rejects_max_plus_one(queue):
         (lambda: queue.push_batch("jobs", [{}] * 1001), "VAL_BATCH_TOO_LARGE"),
         (lambda: queue.pull_batch("jobs", limit=1001), "VAL_LIMIT_TOO_LARGE"),
         (lambda: queue.pull_any(["jobs"] * 1001), "VAL_BATCH_TOO_LARGE"),
-        (lambda: queue.ack_batch([0] * 1001), "VAL_BATCH_TOO_LARGE"),
+        (
+            lambda: queue.ack_batch([(value, value) for value in range(1, 1002)]),
+            "VAL_BATCH_TOO_LARGE",
+        ),
         (lambda: queue.list_schedules(limit=1001), "VAL_LIMIT_TOO_LARGE"),
         (lambda: queue.tick_schedules(limit=1001), "VAL_LIMIT_TOO_LARGE"),
         (lambda: queue.tick_timeouts(limit=1001), "VAL_LIMIT_TOO_LARGE"),

@@ -46,7 +46,7 @@ class TestGetQueueStats:
         """oldest_pending_seconds is None when no pending jobs exist."""
         queue.push("tasks", {"task": 1})
         job = queue.pull("tasks")
-        queue.ack(job["id"])
+        queue.ack(job["id"], job["fence_token"])
 
         # Push a new job and pull it so queue has only running jobs.
         queue.push("tasks", {"task": 2})
@@ -64,7 +64,7 @@ class TestGetQueueStats:
         # Fail both jobs to DLQ.
         for _ in range(2):
             job = queue.pull("tasks")
-            queue.fail(job["id"], error="test")
+            queue.fail(job["id"], job["fence_token"], error="test")
 
         stats = queue.get_queue_stats(queue="tasks")
         assert len(stats) == 1
@@ -81,7 +81,7 @@ class TestGetQueueStats:
         for i in range(2):
             queue.push("tasks", {"task": i})
             job = queue.pull("tasks")
-            queue.fail(job["id"], error=f"failure {i}")
+            queue.fail(job["id"], job["fence_token"], error=f"failure {i}")
 
         stats = queue.get_queue_stats(queue="tasks")
         assert stats[0]["dead_letters"] == 2
@@ -108,7 +108,7 @@ class TestGetQueueStats:
         # Pull one (running), fail one (dead), leave one (pending).
         queue.pull("tasks")  # Now running.
         job_fail = queue.pull("tasks")
-        queue.fail(job_fail["id"], error="test")
+        queue.fail(job_fail["id"], job_fail["fence_token"], error="test")
 
         stats = queue.get_queue_stats(queue="tasks")
         assert len(stats) == 1
@@ -127,7 +127,7 @@ class TestGetQueueStats:
 
         queue.push("tasks", {"task": "keep"})
         job = queue.pull("tasks")
-        queue.ack(job["id"])
+        queue.ack(job["id"], job["fence_token"])
 
         stats = queue.get_queue_stats(queue="tasks")
         assert len(stats) == 1

@@ -21,7 +21,7 @@ class TestRetryDeadLetter:
             metadata={"source": "test"},
         )
         job = queue.pull("tasks")
-        queue.fail(job["id"], error="test failure")
+        queue.fail(job["id"], job["fence_token"], error="test failure")
 
         # Fetch the dead letter ID.
         queue.cursor.execute(
@@ -163,7 +163,7 @@ class TestRetryDeadLetters:
         for i in range(count):
             queue.push("tasks", {"task": i}, priority=i + 1, max_attempts=5)
             job = queue.pull("tasks")
-            queue.fail(job["id"], error=f"failure {i}")
+            queue.fail(job["id"], job["fence_token"], error=f"failure {i}")
 
     def test_retries_dead_letters_by_queue(self, queue):
         """Bulk retry returns (dead_letter_id, job_id) pairs."""
@@ -243,7 +243,7 @@ class TestPurgeDeadLetters:
         """Push, pull, and fail a job to create a dead letter."""
         queue.push(queue_name, {"task": "dead"})
         job = queue.pull(queue_name)
-        queue.fail(job["id"], error="permanent")
+        queue.fail(job["id"], job["fence_token"], error="permanent")
 
     def test_purge_deletes_old_dead_letters(self, queue):
         """Dead letters older than the threshold are deleted."""

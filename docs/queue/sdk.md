@@ -5,36 +5,39 @@
 ### ack
 
 ```python
-ack(job_id: int, *, worker_id: str | None = None) -> bool
+ack(job_id: int, fence: int) -> bool
 ```
 
 Acknowledge successful job completion.
 
+The job is deleted or retained as completed according to the queue's archive_completed setting. Raises QueueFencingError when the supplied token no longer identifies the current, unexpired attempt.
+
 **Parameters:**
 - `job_id`: Job ID
-- `worker_id`: If set, refuse a job re-pulled under a different worker
+- `fence`: Fence token returned by pull
 
-**Returns:** True if acknowledged, False if job not found, not running, or
-running under a different worker than worker_id
+**Returns:** True if acknowledged
 
-*Source: sdk/src/postkit/queue/client.py:318*
+*Source: sdk/src/postkit/queue/client.py:374*
 
 ---
 
 ### ack_batch
 
 ```python
-ack_batch(job_ids: list[int]) -> int
+ack_batch(jobs: Sequence[tuple[int, int]]) -> int
 ```
 
-Acknowledge multiple jobs as completed.
+Acknowledge multiple jobs atomically.
+
+Every member is validated before any job changes. A missing or non-running job, an expired attempt, or a token from another pull raises QueueFencingError and leaves the batch unchanged. An empty sequence returns zero; duplicate job IDs are rejected.
 
 **Parameters:**
-- `job_ids`: List of job IDs
+- `jobs`: Sequence of (job_id, fence) pairs
 
 **Returns:** Count of jobs acknowledged
 
-*Source: sdk/src/postkit/queue/client.py:340*
+*Source: sdk/src/postkit/queue/client.py:399*
 
 ---
 
@@ -60,14 +63,14 @@ cancel(job_id: int) -> bool
 
 Cancel a pending job by deleting it.
 
-Only pending jobs can be cancelled. Running jobs must be ack'd, nack'd, or failed. Cancelled jobs are deleted - they were never processed, so there is no completion state to retain.
+Running jobs must instead be acknowledged, returned for retry, failed, or released. Cancelled jobs are not archived because they were never processed.
 
 **Parameters:**
 - `job_id`: Job ID
 
 **Returns:** True if cancelled, False if job not found or not pending
 
-*Source: sdk/src/postkit/queue/client.py:443*
+*Source: sdk/src/postkit/queue/client.py:532*
 
 ---
 
@@ -107,7 +110,7 @@ Schedules use either a cron expression or a fixed interval, not both. The schedu
 
 **Returns:** Schedule ID
 
-*Source: sdk/src/postkit/queue/client.py:553*
+*Source: sdk/src/postkit/queue/client.py:620*
 
 ---
 
@@ -124,47 +127,49 @@ Delete a schedule by name.
 
 **Returns:** True if deleted, False if not found
 
-*Source: sdk/src/postkit/queue/client.py:667*
+*Source: sdk/src/postkit/queue/client.py:734*
 
 ---
 
 ### extend_visibility
 
 ```python
-extend_visibility(job_id: int, extension: timedelta) -> bool
+extend_visibility(job_id: int, fence: int, extension: timedelta) -> bool
 ```
 
 Extend the visibility timeout of a running job.
 
+Use this when processing will outlast the current deadline. The extension is added to that deadline, not to the current time. Raises QueueFencingError when the supplied token no longer identifies the current, unexpired attempt.
+
 **Parameters:**
 - `job_id`: Job ID
-- `extension`: How much time to add
+- `fence`: Fence token returned by pull
+- `extension`: Amount of time to add to the current visibility timeout
 
-**Returns:** True if extended, False if job not found or not running
+**Returns:** True if extended
 
-*Source: sdk/src/postkit/queue/client.py:285*
+*Source: sdk/src/postkit/queue/client.py:333*
 
 ---
 
 ### fail
 
 ```python
-fail(job_id: int, *, error: str | None = None, worker_id: str | None = None) -> bool
+fail(job_id: int, fence: int, *, error: str | None = None) -> bool
 ```
 
-Move job to dead letter queue (permanent failure).
+Move a job directly to the dead-letter queue without retrying.
 
-Valid on running jobs and on pending jobs whose claim was rolled back with the consumer's transaction.
+Use this for failures that another attempt cannot fix, such as an invalid payload. Raises QueueFencingError when the supplied token no longer identifies the current, unexpired attempt.
 
 **Parameters:**
 - `job_id`: Job ID
+- `fence`: Fence token returned by pull
 - `error`: Error message
-- `worker_id`: If set, refuse jobs running under a different worker
 
-**Returns:** True if moved to DLQ, False if job settled, missing, or owned
-by another worker
+**Returns:** True if moved to the dead-letter queue
 
-*Source: sdk/src/postkit/queue/client.py:405*
+*Source: sdk/src/postkit/queue/client.py:468*
 
 ---
 
@@ -184,7 +189,7 @@ Unlike get_stats (namespace-wide totals), this breaks down by queue and includes
 **Returns:** List of dicts with queue, pending, running, completed, dead,
 oldest_pending_seconds, and dead_letters (un-retried only) per queue
 
-*Source: sdk/src/postkit/queue/client.py:527*
+*Source: sdk/src/postkit/queue/client.py:594*
 
 ---
 
@@ -201,7 +206,7 @@ Get a schedule by name.
 
 **Returns:** Schedule dict with all fields, or None if not found
 
-*Source: sdk/src/postkit/queue/client.py:620*
+*Source: sdk/src/postkit/queue/client.py:687*
 
 ---
 
@@ -216,7 +221,7 @@ Get namespace-wide queue statistics.
 **Returns:** Dict with total_jobs, pending, running, completed, dead, and
 total_queues counts
 
-*Source: sdk/src/postkit/queue/client.py:514*
+*Source: sdk/src/postkit/queue/client.py:581*
 
 ---
 
@@ -236,29 +241,29 @@ List schedules with optional filters and cursor pagination.
 
 **Returns:** List of schedule dicts ordered by name
 
-*Source: sdk/src/postkit/queue/client.py:637*
+*Source: sdk/src/postkit/queue/client.py:704*
 
 ---
 
 ### nack
 
 ```python
-nack(job_id: int, *, error: str | None = None, backoff: timedelta | None = None, worker_id: str | None = None) -> bool
+nack(job_id: int, fence: int, *, error: str | None = None, backoff: timedelta | None = None) -> bool
 ```
 
-Return job to queue for retry (temporary failure).
+Schedule another attempt, or dead-letter the job when none remain.
 
-Valid on running jobs and on pending jobs whose claim was rolled back with the consumer's transaction.
+The error is stored for diagnosis. A custom backoff overrides the queue's exponential delay. Raises QueueFencingError when the supplied token no longer identifies the current, unexpired attempt.
 
 **Parameters:**
 - `job_id`: Job ID
+- `fence`: Fence token returned by pull
 - `error`: Error message (stored for debugging)
 - `backoff`: Custom backoff delay (default: exponential)
-- `worker_id`: If set, refuse jobs running under a different worker
 
-**Returns:** True if returned to queue, False if max attempts exceeded (moved to DLQ)
+**Returns:** True if returned to the queue, False if moved to the dead-letter queue
 
-*Source: sdk/src/postkit/queue/client.py:359*
+*Source: sdk/src/postkit/queue/client.py:426*
 
 ---
 
@@ -275,7 +280,7 @@ Pause an active schedule.
 
 **Returns:** True if paused, False if already paused or not found
 
-*Source: sdk/src/postkit/queue/client.py:686*
+*Source: sdk/src/postkit/queue/client.py:753*
 
 ---
 
@@ -287,14 +292,18 @@ pull(queue: str, *, worker_id: str | None = None, visibility_timeout: timedelta 
 
 Pull one job from a queue.
 
+The job becomes running and receives a fence token that must accompany later operations on this attempt. If no job is available, returns None.
+
+Database-only work and settlement may share the pull transaction. Before an external effect, confirm that the pull committed and use a stable idempotency key. After a rollback or unknown commit outcome, discard the result, reconnect, and poll again.
+
 **Parameters:**
 - `queue`: Queue name
-- `worker_id`: Worker identifier (for debugging stuck jobs)
-- `visibility_timeout`: How long before job returns to queue if not ack'd
+- `worker_id`: Optional diagnostic worker identifier
+- `visibility_timeout`: How long before tick_timeouts may reclaim the job
 
-**Returns:** Job dict with id, queue, payload, attempts, etc., or None if empty
+**Returns:** Job dict with its payload, attempt count, and fence_token, or None
 
-*Source: sdk/src/postkit/queue/client.py:176*
+*Source: sdk/src/postkit/queue/client.py:200*
 
 ---
 
@@ -304,21 +313,25 @@ Pull one job from a queue.
 pull_any(queues: list[str], *, worker_id: str | None = None, visibility_timeout: timedelta | None = None) -> dict[str, Any] | None
 ```
 
-Pull one job from multiple queues (priority order).
+Pull one job from the first available queue in priority order.
+
+The job becomes running and receives a fence token that must accompany later operations on this attempt.
+
+Database-only work and settlement may share the pull transaction. Before an external effect, confirm that the pull committed and use a stable idempotency key. After a rollback or unknown commit outcome, discard the result, reconnect, and poll again.
 
 **Parameters:**
 - `queues`: Queue names in priority order (first checked first)
-- `worker_id`: Worker identifier
-- `visibility_timeout`: How long before job returns to queue
+- `worker_id`: Optional diagnostic worker identifier
+- `visibility_timeout`: How long before tick_timeouts may reclaim the job
 
-**Returns:** Job dict from first queue with available job, or None
+**Returns:** Job dict including fence_token, or None if every queue is empty
 
 **Example:**
 ```python
 job = queue.pull_any(["critical", "default", "bulk"])
 ```
 
-*Source: sdk/src/postkit/queue/client.py:248*
+*Source: sdk/src/postkit/queue/client.py:288*
 
 ---
 
@@ -330,15 +343,19 @@ pull_batch(queue: str, limit: int = 10, *, worker_id: str | None = None, visibil
 
 Pull multiple jobs from a queue.
 
+Pulls up to limit jobs in one operation. Each returned job has its own fence token for later operations on that attempt.
+
+Database-only work and settlement may share the pull transaction. Before external effects, confirm that the pull committed and use stable idempotency keys. After a rollback or unknown commit outcome, discard the results, reconnect, and poll again.
+
 **Parameters:**
 - `queue`: Queue name
 - `limit`: Maximum jobs to pull
-- `worker_id`: Worker identifier
-- `visibility_timeout`: How long before jobs return to queue
+- `worker_id`: Optional diagnostic worker identifier
+- `visibility_timeout`: How long before tick_timeouts may reclaim the jobs
 
-**Returns:** List of job dicts
+**Returns:** Job dicts with payloads, attempt counts, and distinct fence_token values
 
-*Source: sdk/src/postkit/queue/client.py:210*
+*Source: sdk/src/postkit/queue/client.py:242*
 
 ---
 
@@ -358,7 +375,7 @@ Only purges un-retried entries. Retried dead letters are kept as historical reco
 
 **Returns:** Count of deleted dead letters
 
-*Source: sdk/src/postkit/queue/client.py:835*
+*Source: sdk/src/postkit/queue/client.py:902*
 
 ---
 
@@ -370,14 +387,14 @@ purge_queue(queue: str) -> int
 
 Delete all pending jobs from a queue.
 
-Only deletes pending jobs. Running jobs are held by workers - use release_jobs to return them first, or wait for visibility timeout.
+Running, completed, and dead jobs are not affected. Release running jobs individually, or wait for timeout recovery, before purging if they should also be removed.
 
 **Parameters:**
 - `queue`: Queue name
 
 **Returns:** Count of deleted jobs
 
-*Source: sdk/src/postkit/queue/client.py:488*
+*Source: sdk/src/postkit/queue/client.py:554*
 
 ---
 
@@ -401,7 +418,7 @@ Push a job onto a queue.
 
 **Returns:** Job ID, or None if deduplicated (unique_key already exists)
 
-*Source: sdk/src/postkit/queue/client.py:76*
+*Source: sdk/src/postkit/queue/client.py:100*
 
 ---
 
@@ -422,26 +439,27 @@ Push multiple jobs onto a queue efficiently.
 
 **Returns:** List of job IDs
 
-*Source: sdk/src/postkit/queue/client.py:130*
+*Source: sdk/src/postkit/queue/client.py:154*
 
 ---
 
-### release_jobs
+### release
 
 ```python
-release_jobs(worker_id: str) -> int
+release(job_id: int, fence: int) -> bool
 ```
 
-Release all jobs held by a worker, returning them to pending.
+Return a running job to pending immediately, without backoff.
 
-Call during graceful shutdown so jobs are immediately re-deliverable instead of waiting for visibility timeout expiry.
+Release preserves the attempt count and affects only the supplied pull. During graceful shutdown, release each in-flight job instead of waiting for timeout recovery. Raises QueueFencingError when the supplied token no longer identifies the current, unexpired attempt.
 
 **Parameters:**
-- `worker_id`: Worker identifier (as passed to pull)
+- `job_id`: Job ID
+- `fence`: Fence token returned by pull
 
-**Returns:** Count of jobs released
+**Returns:** True if released
 
-*Source: sdk/src/postkit/queue/client.py:466*
+*Source: sdk/src/postkit/queue/client.py:506*
 
 ---
 
@@ -458,7 +476,7 @@ Resume a paused schedule. Recalculates next_run_at from now.
 
 **Returns:** True if resumed, False if already active or not found
 
-*Source: sdk/src/postkit/queue/client.py:705*
+*Source: sdk/src/postkit/queue/client.py:772*
 
 ---
 
@@ -478,7 +496,7 @@ The dead letter is marked as retried to prevent double-retry. The new job gets a
 
 **Returns:** New job ID
 
-*Source: sdk/src/postkit/queue/client.py:772*
+*Source: sdk/src/postkit/queue/client.py:839*
 
 ---
 
@@ -498,7 +516,7 @@ Retries un-retried dead letters oldest-first. Uses FOR UPDATE SKIP LOCKED so con
 
 **Returns:** List of dicts with dead_letter_id and job_id for each retry
 
-*Source: sdk/src/postkit/queue/client.py:807*
+*Source: sdk/src/postkit/queue/client.py:874*
 
 ---
 
@@ -542,7 +560,7 @@ Finds active schedules where next_run_at <= now(), creates a job for each, and a
 
 **Returns:** List of dicts with schedule_name, job_id, and next_run_at
 
-*Source: sdk/src/postkit/queue/client.py:724*
+*Source: sdk/src/postkit/queue/client.py:791*
 
 ---
 
@@ -561,6 +579,6 @@ Workers that crash or hang leave jobs stuck in 'running' status. This function r
 
 **Returns:** List of dicts with job_id, queue, and stuck_duration
 
-*Source: sdk/src/postkit/queue/client.py:746*
+*Source: sdk/src/postkit/queue/client.py:813*
 
 ---

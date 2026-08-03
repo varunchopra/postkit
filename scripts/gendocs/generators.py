@@ -189,6 +189,10 @@ def generate_sql_markdown(module: str, results: ExtractionResult) -> str:
         "",
     ]
 
+    if results.overview:
+        lines.append(results.overview)
+        lines.append("")
+
     # Only include documented functions
     documented = [f for f in results.functions if f.brief]
 
